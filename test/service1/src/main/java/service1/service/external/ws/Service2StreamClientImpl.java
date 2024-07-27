@@ -13,7 +13,6 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
@@ -49,7 +48,13 @@ public class Service2StreamClientImpl implements AutoCloseable {
     @EventListener
     public void onEvent(ApplicationReadyEvent event) {
         sessionCompletableFuture = subscribe();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> close(sessionCompletableFuture)));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                close(sessionCompletableFuture);
+            } catch (Exception e) {
+                log.error("close websocket session in shutdown hook", e);
+            }
+        }));
     }
 
     public Future<WebSocketSession> subscribe() {

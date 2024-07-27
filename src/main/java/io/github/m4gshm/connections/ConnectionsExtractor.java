@@ -38,6 +38,7 @@ import static java.util.Arrays.stream;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Stream.concat;
+import static java.util.stream.Collectors.toList;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -54,7 +55,7 @@ public class ConnectionsExtractor {
                     Stream.ofNullable(m.getAnnotation(JmsListener.class)),
                     Stream.ofNullable(m.getAnnotation(JmsListeners.class))
                             .map(JmsListeners::value).flatMap(Stream::of)
-            ).map(l -> newJmsListener(m, l))).filter(Objects::nonNull).toList();
+            ).map(l -> newJmsListener(m, l))).filter(Objects::nonNull).collect(toList());
         } catch (NoClassDefFoundError e) {
             log.debug("getJmsListenerMethods", e);
         }
@@ -122,10 +123,11 @@ public class ConnectionsExtractor {
         var httpInterfaces = new LinkedHashMap<String, HttpInterface>();
         var httpClients = new LinkedHashMap<String, Components.HttpClient>();
         var jmsListeners = new HashMap<String, Components.JmsListener>();
-        if (!(context instanceof ConfigurableApplicationContext configurableContext)) {
+        if (!(context instanceof ConfigurableApplicationContext)) {
             throw new IllegalStateException("unsupportable application context " + context.getClass().getName() +
                     ", expected " + ConfigurableApplicationContext.class.getName());
         }
+        var configurableContext = (ConfigurableApplicationContext) context;
         var beanFactory = configurableContext.getBeanFactory();
         var allBeans = Arrays.asList(context.getBeanDefinitionNames());
 

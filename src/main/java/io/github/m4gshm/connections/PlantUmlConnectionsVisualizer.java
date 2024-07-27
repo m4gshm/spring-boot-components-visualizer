@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import static io.github.m4gshm.connections.Components.HttpInterface.getHttpInterfaceName;
+import static java.lang.String.format;
 
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
@@ -23,7 +24,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
         out.append("@startuml\n");
 
-        out.append("component \"%s\" as %s\n".formatted(applicationName, pumlAlias(applicationName)));
+        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
         if (simple) {
             visualizeSimple(components.getBeanDependencies(), out);
@@ -38,7 +39,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private void visualizeSimple(Map<String, List<String>> beanDependencies, StringBuilder out) {
         beanDependencies.forEach((bean, dependencies) -> {
             for (String dependency : dependencies) {
-                out.append("%s )..> %s\n".formatted(pumlAlias(dependency), pumlAlias(bean)));
+                out.append(format("%s )..> %s\n", pumlAlias(dependency), pumlAlias(bean)));
             }
         });
 
@@ -50,13 +51,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             out.append("cloud \"REST API\" {\n");
             httpInterfaces.forEach((beanName, httpInterface) -> {
                 var name = getHttpInterfaceName(beanName, httpInterface);
-                out.append("\tinterface \"%s\" as %s\n".formatted(name, pumlAlias(name)));
+                out.append(format("\tinterface \"%s\" as %s\n", name, pumlAlias(name)));
             });
             out.append("}\n");
 
             httpInterfaces.forEach((beanName, httpInterface) -> {
                 var name = getHttpInterfaceName(beanName, httpInterface);
-                out.append("%s )..> %s\n".formatted(pumlAlias(name), pumlAlias(applicationName)));
+                out.append(format("%s )..> %s\n", pumlAlias(name), pumlAlias(applicationName)));
             });
         }
 
@@ -64,12 +65,12 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         if (!jmsListeners.isEmpty()) {
             out.append("queue \"Input queues\" {\n");
             for (var jmsQueue : jmsListeners.values()) {
-                out.append("\tqueue \"%s\" as %s\n".formatted(jmsQueue.getDestination(), pumlAlias(jmsQueue.getName())));
+                out.append(format("\tqueue \"%s\" as %s\n", jmsQueue.getDestination(), pumlAlias(jmsQueue.getName())));
             }
             out.append("}\n");
 
             for (var jmsQueue : jmsListeners.values()) {
-                out.append("%s ..> %s: jms\n".formatted(pumlAlias(jmsQueue.getName()), pumlAlias(applicationName)));
+                out.append(format("%s ..> %s: jms\n", pumlAlias(jmsQueue.getName()), pumlAlias(applicationName)));
             }
         }
 
@@ -77,7 +78,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         if (!(httpClients.isEmpty())) {
             out.append("cloud \"H2H Services\" {\n");
             for (var target : httpClients.values()) {
-                out.append("\tcomponent \"%s\" as %s\n".formatted(
+                out.append(format("\tcomponent \"%s\" as %s\n",
                         target.getName(),
                         pumlAlias(target.getName()))
                 );
@@ -86,7 +87,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             out.append("}\n");
 
             for (var target : httpClients.values()) {
-                out.append("%s ..> %s: http\n".formatted(pumlAlias(applicationName), pumlAlias(target.getName())));
+                out.append(format("%s ..> %s: http\n", pumlAlias(applicationName), pumlAlias(target.getName())));
             }
         }
 
@@ -97,6 +98,5 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         //}
         //
     }
-
 
 }

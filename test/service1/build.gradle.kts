@@ -37,3 +37,9 @@ tasks.test {
     useJUnitPlatform()
     environment("CONNECTIONS_VISUALIZE_PLANTUML_OUT", "$projectDir/src/schema/connections.puml")
 }
+
+java {
+    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_11
+    modularity.inferModulePath.set(true)
+}
