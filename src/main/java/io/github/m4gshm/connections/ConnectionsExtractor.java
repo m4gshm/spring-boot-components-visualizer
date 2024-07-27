@@ -8,8 +8,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.annotation.JmsListeners;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,10 +31,13 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.Components.HttpClient.Type.Feign;
 import static io.github.m4gshm.connections.Components.HttpClient.Type.RestTemplateBased;
 import static io.github.m4gshm.connections.Components.HttpInterface.Type.Controller;
+import static java.lang.reflect.Modifier.isPublic;
+import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.stream;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
+import static java.util.stream.Stream.concat;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -44,7 +50,7 @@ public class ConnectionsExtractor {
 
     private static List<Components.JmsListener> getMethodJmsListeners(Class<?> beanType) {
         try {
-            return stream(beanType.getMethods()).flatMap(m -> Stream.concat(
+            return stream(beanType.getMethods()).flatMap(m -> concat(
                     Stream.ofNullable(m.getAnnotation(JmsListener.class)),
                     Stream.ofNullable(m.getAnnotation(JmsListeners.class))
                             .map(JmsListeners::value).flatMap(Stream::of)
@@ -88,7 +94,31 @@ public class ConnectionsExtractor {
         return null;
     }
 
+    private static boolean hasMainMethod(Class<?> beanType) {
+        return Stream.of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
+                && isOnlyOneArgStringArray(method)
+                && method.getReturnType().equals(void.class)
+                && isStatic(method.getModifiers()) && isPublic(method.getModifiers()));
+    }
+
+    private static boolean isOnlyOneArgStringArray(Method method) {
+        var parameterTypes = method.getParameterTypes();
+        return parameterTypes.length == 1 && String[].class.equals(parameterTypes[0]);
+    }
+
+    private static boolean isConfigurationBean(Class<?> type) {
+        boolean isConfig;
+        while (!(isConfig = type.getAnnotation(Configuration.class) != null)) {
+            type = type.getSuperclass();
+            if (type == null || Object.class.equals(type)) {
+                break;
+            }
+        }
+        return isConfig;
+    }
+
     public Components getComponents() {
+        var beanDependencies = new LinkedHashMap<String, List<String>>();
         var httpInterfaces = new LinkedHashMap<String, HttpInterface>();
         var httpClients = new LinkedHashMap<String, Components.HttpClient>();
         var jmsListeners = new HashMap<String, Components.JmsListener>();
@@ -97,9 +127,20 @@ public class ConnectionsExtractor {
                     ", expected " + ConfigurableApplicationContext.class.getName());
         }
         var beanFactory = configurableContext.getBeanFactory();
-        var beanDefinitionNames = context.getBeanDefinitionNames();
+        var allBeans = Arrays.asList(context.getBeanDefinitionNames());
 
-        for (var beanName : beanDefinitionNames) {
+        var rootBean = allBeans.stream().filter(this::isSpringBootMainClass).findFirst().orElse(null);
+
+        var rootPackage = rootBean != null ? context.getType(rootBean).getPackage() : null;
+
+
+        var beanStream = allBeans.stream().filter(beanName -> !isConfigurationBean(context.getType(beanName)));
+        if (rootPackage != null) {
+            beanStream = beanStream.filter(beanName -> context.getType(beanName).getPackage().getName().startsWith(rootPackage.getName()));
+        }
+        var beans = beanStream.toList();
+
+        for (var beanName : beans) {
             try {
                 var beanType = context.getType(beanName);
 
@@ -108,11 +149,13 @@ public class ConnectionsExtractor {
                     httpInterfaces.put(beanName, httpInterface);
                 }
 
-                var dependenciesForBean = beanFactory.getDependenciesForBean(beanName);
-                if (dependenciesForBean.length > 0) {
+                var dependenciesForBean = List.of(beanFactory.getDependenciesForBean(beanName));
+                beanDependencies.put(beanName, dependenciesForBean);
+
+                if (!dependenciesForBean.isEmpty()) {
                     boolean useRestTemplate;
                     try {
-                        useRestTemplate = stream(dependenciesForBean).map(context::getType)
+                        useRestTemplate = dependenciesForBean.stream().map(context::getType)
                                 .filter(Objects::nonNull).anyMatch(RestTemplate.class::isAssignableFrom);
                     } catch (NoSuchBeanDefinitionException e) {
                         log.trace("useRestTemplate, bean {}", beanName, e);
@@ -148,11 +191,19 @@ public class ConnectionsExtractor {
             }
         }
         return Components.builder()
+                .beanDependencies(beanDependencies)
                 .httpClients(httpClients)
                 .httpInterfaces(httpInterfaces)
                 .jmsListeners(jmsListeners)
                 .build();
 
+    }
+
+    private boolean isSpringBootMainClass(String beanName) {
+        var beanType = context.getType(beanName);
+        var hasMainMethod = hasMainMethod(beanType);
+        var isSpringBootApp = beanType.getAnnotation(SpringBootApplication.class) != null;
+        return hasMainMethod && isSpringBootApp;
     }
 
     private FeignClient extractFeignClient(String name) {

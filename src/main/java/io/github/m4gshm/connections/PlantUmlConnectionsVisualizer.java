@@ -2,16 +2,19 @@ package io.github.m4gshm.connections;
 
 import lombok.RequiredArgsConstructor;
 
+import java.util.List;
+import java.util.Map;
+
 import static io.github.m4gshm.connections.Components.HttpInterface.getHttpInterfaceName;
-import static java.util.Optional.ofNullable;
 
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
 
     private final String applicationName;
+    private final boolean simple;
 
     private static String pumlAlias(String name) {
-        return name.replace("-", "").replace(".", "");
+        return name.replace("-", "").replace(".", "").replace("$", "").replace("@", "");
     }
 
     @Override
@@ -22,6 +25,26 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
         out.append("component \"%s\" as %s\n".formatted(applicationName, pumlAlias(applicationName)));
 
+        if (simple) {
+            visualizeSimple(components.getBeanDependencies(), out);
+        } else {
+            visualizeStructured(components, out);
+        }
+
+        out.append("@enduml\n");
+        return out.toString();
+    }
+
+    private void visualizeSimple(Map<String, List<String>> beanDependencies, StringBuilder out) {
+        beanDependencies.forEach((bean, dependencies) -> {
+            for (String dependency : dependencies) {
+                out.append("%s )..> %s\n".formatted(pumlAlias(dependency), pumlAlias(bean)));
+            }
+        });
+
+    }
+
+    private void visualizeStructured(Components components, StringBuilder out) {
         var httpInterfaces = components.getHttpInterfaces();
         if (!httpInterfaces.isEmpty()) {
             out.append("cloud \"REST API\" {\n");
@@ -50,10 +73,10 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             }
         }
 
-        var feignClients = components.getHttpClients();
-        if (!(feignClients.isEmpty())) {
+        var httpClients = components.getHttpClients();
+        if (!(httpClients.isEmpty())) {
             out.append("cloud \"H2H Services\" {\n");
-            for (var target : feignClients.values()) {
+            for (var target : httpClients.values()) {
                 out.append("\tcomponent \"%s\" as %s\n".formatted(
                         target.getName(),
                         pumlAlias(target.getName()))
@@ -62,7 +85,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
             out.append("}\n");
 
-            for (var target : feignClients.values()) {
+            for (var target : httpClients.values()) {
                 out.append("%s ..> %s: http\n".formatted(pumlAlias(applicationName), pumlAlias(target.getName())));
             }
         }
@@ -73,11 +96,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         //    component  "minio"
         //}
         //
-
-        out.append("@enduml\n");
-        return out.toString();
     }
-
 
 
 }

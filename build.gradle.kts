@@ -14,7 +14,9 @@ configurations.annotationProcessor {
 }
 
 dependencies {
-    compileOnly("org.projectlombok:lombok:1.18.30")
+    compileOnly("org.projectlombok:lombok:1.18.34")
+
+//    implementation("net.sourceforge.plantuml:plantuml-mit:1.2024.6")
 
     implementation("org.slf4j:slf4j-api:2.0.9")
 

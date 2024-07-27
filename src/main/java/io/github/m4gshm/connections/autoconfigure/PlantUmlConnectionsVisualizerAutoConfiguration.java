@@ -12,6 +12,6 @@ public class PlantUmlConnectionsVisualizerAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(ConnectionsVisualizer.class)
     PlantUmlConnectionsVisualizer plantUmlConnectionsVisualizer(Environment environment) {
-        return new PlantUmlConnectionsVisualizer(ConnectionsVisualizer.getApplicationName(environment));
+        return new PlantUmlConnectionsVisualizer(ConnectionsVisualizer.getApplicationName(environment), true);
     }
 }
