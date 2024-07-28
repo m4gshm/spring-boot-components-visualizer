@@ -1,23 +1,30 @@
 @startuml
-component "service1" as service1
-cloud "REST API" {
-	interface "mainController" as mainController
-	interface "openApiResource" as openApiResource
-	interface "swaggerConfigResource" as swaggerConfigResource
+  [service1Application] as service1Application
+package "api" as api {
+  package "http" as api.http {
+    [mainController] as mainController
+  }
 }
-mainController )..> service1
-openApiResource )..> service1
-swaggerConfigResource )..> service1
-queue "Input queues" {
-	queue "queue2" as listenQueue2
-	queue "queue1" as listenQueue1
+package "service" as service {
+  package "external" as service.external {
+    package "jms" as service.external.jms {
+      [jmsQueue1Listener] as jmsQueue1Listener
+    }
+    package "rest" as service.external.rest {
+      [service2LegacyImpl] as service2LegacyImpl
+    }
+    package "ws" as service.external.ws {
+      [service2StreamClientImpl] as service2StreamClientImpl
+    }
+  }
 }
-listenQueue2 ..> service1: jms
-listenQueue1 ..> service1: jms
-cloud "H2H Services" {
-	component "service2LegacyImpl" as service2LegacyImpl
-	component "service2FeignClient" as service2FeignClient
+package "internal" as internal {
+  package "ws" as internal.ws {
+    package "EventsHandler" as internal.ws.EventsHandler {
+      [eventsHandler] as eventsHandler
+    }
+  }
 }
-service1 ..> service2LegacyImpl: http
-service1 ..> service2FeignClient: http
+service2LegacyImpl ..> restTemplate
+service2StreamClientImpl ..> webSocketClient
 @enduml

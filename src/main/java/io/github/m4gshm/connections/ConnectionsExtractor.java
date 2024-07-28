@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import feign.Target;
 import io.github.m4gshm.connections.Components.HttpInterface;
+import io.github.m4gshm.connections.model.Component;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +10,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ApplicationContext;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.JmsListener;
@@ -18,14 +19,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.Components.HttpClient.Type.Feign;
@@ -34,16 +36,17 @@ import static io.github.m4gshm.connections.Components.HttpInterface.Type.Control
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
+import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Stream.concat;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Stream.concat;
 
 @Slf4j
 @RequiredArgsConstructor
 public class ConnectionsExtractor {
-    private final ApplicationContext context;
+    private final ConfigurableApplicationContext context;
 
     private static boolean isFeignHandler(Class<? extends InvocationHandler> handlerClass) {
         return "FeignInvocationHandler".equals(handlerClass.getSimpleName());
@@ -107,52 +110,42 @@ public class ConnectionsExtractor {
         return parameterTypes.length == 1 && String[].class.equals(parameterTypes[0]);
     }
 
-    private static boolean isConfigurationBean(Class<?> type) {
-        boolean isConfig;
-        while (!(isConfig = type.getAnnotation(Configuration.class) != null)) {
-            type = type.getSuperclass();
-            if (type == null || Object.class.equals(type)) {
-                break;
-            }
-        }
-        return isConfig;
-    }
-
     public Components getComponents() {
-        var beanDependencies = new LinkedHashMap<String, List<String>>();
+        var beanDependencies = new LinkedHashMap<Component, List<String>>();
         var httpInterfaces = new LinkedHashMap<String, HttpInterface>();
         var httpClients = new LinkedHashMap<String, Components.HttpClient>();
         var jmsListeners = new HashMap<String, Components.JmsListener>();
-        if (!(context instanceof ConfigurableApplicationContext)) {
-            throw new IllegalStateException("unsupportable application context " + context.getClass().getName() +
-                    ", expected " + ConfigurableApplicationContext.class.getName());
-        }
-        var configurableContext = (ConfigurableApplicationContext) context;
-        var beanFactory = configurableContext.getBeanFactory();
-        var allBeans = Arrays.asList(context.getBeanDefinitionNames());
+        var beanFactory = context.getBeanFactory();
+        var allBeans = asList(context.getBeanDefinitionNames());
 
-        var rootBean = allBeans.stream().filter(this::isSpringBootMainClass).findFirst().orElse(null);
+        var rootBean = allBeans.stream().filter(this::isSpringBootMainClass)
+                .map(beanName -> newBean(beanName, context.getType(beanName), null))
+                .findFirst().orElse(null);
+        var rootPackage = rootBean != null ? rootBean.getType().getPackage() : null;
 
-        var rootPackage = rootBean != null ? context.getType(rootBean).getPackage() : null;
+        var beanStream = allBeans.stream()
+                .map(beanName -> newBean(beanName, context.getType(beanName), rootPackage))
+                .filter(bean -> isIncluded(bean.getType()));
 
+        //todo config
+        beanStream = filterByRootPackage(rootBean, beanStream);
 
-        var beanStream = allBeans.stream().filter(beanName -> !isConfigurationBean(context.getType(beanName)));
-        if (rootPackage != null) {
-            beanStream = beanStream.filter(beanName -> context.getType(beanName).getPackage().getName().startsWith(rootPackage.getName()));
-        }
-        var beans = beanStream.toList();
+        var beans = beanStream.collect(toList());
 
-        for (var beanName : beans) {
+        for (var bean : beans) {
+            var beanName = bean.getName();
             try {
-                var beanType = context.getType(beanName);
-
+                var beanType = bean.getType();
                 var httpInterface = extractHttpInterface(beanName, beanType);
                 if (httpInterface != null) {
                     httpInterfaces.put(beanName, httpInterface);
                 }
 
                 var dependenciesForBean = List.of(beanFactory.getDependenciesForBean(beanName));
-                beanDependencies.put(beanName, dependenciesForBean);
+                beanDependencies.put(bean, dependenciesForBean.stream()
+                        .filter(dependencyBeanName -> isIncluded(context.getType(dependencyBeanName)))
+                        .collect(toList())
+                );
 
                 if (!dependenciesForBean.isEmpty()) {
                     boolean useRestTemplate;
@@ -199,6 +192,64 @@ public class ConnectionsExtractor {
                 .jmsListeners(jmsListeners)
                 .build();
 
+    }
+
+    private static boolean isIncluded(Class<?> type) {
+        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isStorage(type));
+    }
+
+    private static boolean isSpringBootTest(Class<?> beanType) {
+        return hasAnnotation(beanType, () -> SpringBootTest.class);
+    }
+
+    private static boolean isSpringConfiguration(Class<?> beanType) {
+        return hasAnnotation(beanType, () -> Configuration.class);
+    }
+
+    private static boolean isStorage(Class<?> beanType) {
+        return OnApplicationReadyEventConnectionsVisualizeGenerator.Storage.class.isAssignableFrom(beanType);
+    }
+
+    private static <T extends Annotation> boolean hasAnnotation(Class<?> beanType, Supplier<Class<T>> supplier) {
+        try {
+            var annotationClass = supplier.get();
+            boolean match;
+            while (!(match = beanType.getAnnotation(annotationClass) != null)) {
+                beanType = beanType.getSuperclass();
+                if (beanType == null || Object.class.equals(beanType)) {
+                    break;
+                }
+            }
+            return match;
+        } catch (Error e) {
+            log.error("hasAnnotation error", e);
+            return false;
+        }
+    }
+
+
+    private static Component newBean(String beanName, Class<?> beanType, Package rootPackage) {
+        return Component.newBean(beanName, getBeanPath(rootPackage, beanType), beanType);
+    }
+
+    private static String getBeanPath(Package rootPackage, Class<?> beanType) {
+        if (rootPackage != null) {
+            var rootPackageName = rootPackage.getName();
+            var typePackageName = beanType.getPackage().getName();
+            if (typePackageName.startsWith(rootPackageName)) {
+                var path = typePackageName.substring(rootPackageName.length());
+                return path.startsWith(".") ? path.substring(1) : path;
+            }
+        }
+        return "";
+    }
+
+    private Stream<Component> filterByRootPackage(Component rootComponent, Stream<Component> beanStream) {
+        var rootPackage = rootComponent != null ? rootComponent.getType().getPackage() : null;
+        if (rootPackage != null) {
+            beanStream = beanStream.filter(bean -> bean.getType().getPackage().getName().startsWith(rootPackage.getName()));
+        }
+        return beanStream;
     }
 
     private boolean isSpringBootMainClass(String beanName) {

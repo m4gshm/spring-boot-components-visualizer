@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.model.Component;
 import lombok.Builder;
 import lombok.Data;
 
@@ -11,7 +12,7 @@ import static java.util.Optional.ofNullable;
 @Data
 @Builder
 public class Components {
-    private final Map<String, List<String>> beanDependencies;
+    private final Map<Component, List<String>> beanDependencies;
     private final Map<String, HttpInterface> httpInterfaces;
     private final Map<String, HttpClient> httpClients;
     private final Map<String, JmsListener> jmsListeners;

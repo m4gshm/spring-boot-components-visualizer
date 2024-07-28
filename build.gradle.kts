@@ -17,6 +17,7 @@ dependencies {
     compileOnly("org.projectlombok:lombok:1.18.34")
 
 //    implementation("net.sourceforge.plantuml:plantuml-mit:1.2024.6")
+    implementation("com.google.guava:guava:33.2.1-jre")
 
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -29,6 +30,7 @@ dependencies {
     implementation("io.github.openfeign:feign-core:12.5")
     implementation("org.springframework.cloud:spring-cloud-openfeign-core:3.1.9")
     implementation("org.springframework.cloud:spring-cloud-context:3.1.8")
+    compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
