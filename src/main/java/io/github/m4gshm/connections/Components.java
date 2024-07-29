@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.model.Component;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -12,10 +13,7 @@ import static java.util.Optional.ofNullable;
 @Data
 @Builder
 public class Components {
-    private final Map<Component, List<String>> beanDependencies;
-    private final Map<String, HttpInterface> httpInterfaces;
-    private final Map<String, HttpClient> httpClients;
-    private final Map<String, JmsListener> jmsListeners;
+    private final Collection<Component> components;
 
     @Data
     @Builder
@@ -34,7 +32,7 @@ public class Components {
     @Builder
     public static class HttpInterface {
         private String name;
-        private String[] paths;
+        private Collection<String> paths;
         private Type type;
 
         public static String getHttpInterfaceName(String beanName, Components.HttpInterface httpInterface) {

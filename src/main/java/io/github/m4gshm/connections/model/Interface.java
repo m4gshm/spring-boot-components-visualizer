@@ -11,4 +11,17 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
     String name;
+    Direction direction;
+    Type type;
+
+    public enum Direction {
+        in, out;
+    }
+
+    public enum Type {
+        http, ws, grpc, jms, kafka;
+    }
+
+
+
 }

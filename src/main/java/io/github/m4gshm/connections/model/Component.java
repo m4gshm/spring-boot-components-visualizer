@@ -2,9 +2,10 @@ package io.github.m4gshm.connections.model;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.FieldDefaults;
 
-import java.util.Set;
+import java.util.List;
 
 import static lombok.AccessLevel.PRIVATE;
 
@@ -12,17 +13,10 @@ import static lombok.AccessLevel.PRIVATE;
 @Builder
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Component {
-    String name;
-    String path;
-    Class<?> type;
-    Set<Stereotype> stereotypes;
-    Set<Interface> interfaces;
-
-    public static Component newBean(String beanName, String path, Class<?> type) {
-        return builder().name(beanName).path(path).type(type).build();
-    }
-
-    enum Stereotype {
-        MainClass, Configuration, RestController, Controller, HttpRouter, HttpClient, WebsocketClient, JmsListener, KafkaListener, Repository
-    }
+    @EqualsAndHashCode.Include
+    private final String name;
+    private final String path;
+    private final Class<?> type;
+    private final List<Interface> interfaces;
+    private final List<Component> dependencies;
 }

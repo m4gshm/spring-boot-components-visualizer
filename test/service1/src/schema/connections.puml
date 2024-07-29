@@ -1,5 +1,4 @@
 @startuml
-  [service1Application] as service1Application
 package "api" as api {
   package "http" as api.http {
     [mainController] as mainController
@@ -27,4 +26,11 @@ package "internal" as internal {
 }
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
+eventsHandler ..> webSocketConfig
+rectangle "in" as in {
+  cloud "http" as in.http {
+    interface "/api/v1//req" as mainController.in.http..api.v1..req
+    mainController.in.http..api.v1..req )..> mainController
+  }
+}
 @enduml
