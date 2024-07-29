@@ -1,5 +1,7 @@
 package io.github.m4gshm.connections;
 
+import feign.InvocationHandlerFactory.MethodHandler;
+import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.Components.HttpMethod;
 import io.github.m4gshm.connections.model.Component;
@@ -14,33 +16,28 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.annotation.JmsListeners;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getAnnotation;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getAnnotationMap;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getMethods;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasAnnotation;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasMainMethod;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
+import static io.github.m4gshm.connections.model.Interface.Direction.out;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
-import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.ofNullable;
@@ -82,35 +79,6 @@ public class ConnectionsExtractor {
         return (Target) targetField.get(handler);
     }
 
-    private static Collection<HttpMethod> extractHttpMethods(Class<?> beanType) {
-        var restController = getAnnotation(beanType, () -> Controller.class);
-        if (restController == null) {
-            return List.of();
-        }
-        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
-                .map(RequestMapping::path)
-                .flatMap(Arrays::stream).findFirst().orElse("");
-        return getAnnotationMap(getMethods(beanType), () -> RequestMapping.class).keySet().stream().flatMap(requestMapping -> {
-            var methods = getHttpMethods(requestMapping);
-            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
-                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().path(path).method(method).build()));
-        }).collect(toCollection(LinkedHashSet::new));
-    }
-
-    private static Collection<String> getPaths(RequestMapping requestMapping) {
-        var path = List.of(requestMapping.path());
-        return path.isEmpty() ? List.of("") : path;
-    }
-
-    private static List<String> getHttpMethods(RequestMapping requestMapping) {
-        var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
-        return methods.isEmpty() ? List.of("*") : methods;
-    }
-
-    private static String concatPath(String path, String root) {
-        return (root.endsWith("/") || path.startsWith("/")) ? root + path : root + "/" + path;
-    }
-
     private static String getComponentPath(Package rootPackage, Class<?> beanType) {
         if (rootPackage != null) {
             var rootPackageName = rootPackage.getName();
@@ -125,6 +93,63 @@ public class ConnectionsExtractor {
 
     private static boolean isSpringBootMainClass(Class<?> beanType) {
         return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
+    }
+
+    private static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
+        try {
+            var bean = context.getBean(name);
+            if (!isProxyClass(bean.getClass())) {
+                return null;
+            }
+            var handler = Proxy.getInvocationHandler(bean);
+            var handlerClass = handler.getClass();
+            if (!isFeignHandler(handlerClass)) {
+                return null;
+            }
+
+            var httpMethods = ((Collection<?>) ((Map) getFieldValue("dispatch", handler)).values()
+            ).stream().map(value -> (MethodHandler) value).map(value -> {
+                var buildTemplateFromArgs = getFieldValue("buildTemplateFromArgs", value);
+                var metadata = (MethodMetadata) getFieldValue("metadata", buildTemplateFromArgs);
+                var template = metadata.template();
+                var method = template.method();
+                var url = template.url();
+                return HttpMethod.builder().method(method).url(url).build();
+            }).collect(toList());
+
+            var target = getFeignTarget(handlerClass, handler);
+            var type = target.type();
+
+            return FeignClient.builder()
+                    .type(type)
+                    .name(target.name())
+                    .url(target.url())
+                    .httpMethods(httpMethods)
+                    .build();
+
+        } catch (NoClassDefFoundError | NoSuchBeanDefinitionException e) {
+            log.debug("extractFeignClient bean {}", name, e);
+            return null;
+        }
+    }
+
+    private static Object getFieldValue(String name, Object object) {
+        Field dispatch;
+        try {
+            dispatch = object.getClass().getDeclaredField(name);
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+        dispatch.setAccessible(true);
+        try {
+            return dispatch.get(object);
+        } catch (IllegalAccessException e) {
+            return null;
+        }
+    }
+
+    private static String httpInterfaceName(String method, String url) {
+        return method == null || method.isEmpty() ? url : method + ":" + url;
     }
 
     public Components getComponents() {
@@ -144,57 +169,7 @@ public class ConnectionsExtractor {
                 .filter(Objects::nonNull).filter(bean -> isIncluded(bean.getType())))
                 .collect(toList());
 
-//        for (var component : components) {
-//            var componentName = component.getName();
-//            try {
-//                var beanType = component.getType();
-//
-//                components.put(component, dependenciesForBean.stream()
-//                        .filter(dependencyBeanName -> isIncluded(context.getType(dependencyBeanName)))
-//                        .collect(toList())
-//                );
-//
-//                if (!dependenciesForBean.isEmpty()) {
-//                    boolean useRestTemplate;
-//                    try {
-//                        useRestTemplate = dependenciesForBean.stream().map(context::getType)
-//                                .filter(Objects::nonNull).anyMatch(RestTemplate.class::isAssignableFrom);
-//                    } catch (NoSuchBeanDefinitionException e) {
-//                        log.trace("useRestTemplate, component {}", componentName, e);
-//                        useRestTemplate = false;
-//                    }
-//                    if (useRestTemplate) {
-//                        httpClients.put(componentName, Components.HttpClient.builder()
-//                                .name(componentName)
-//                                .type(RestTemplateBased)
-//                                .build());
-//                        log.debug("rest template dependent component {}, type {}", componentName, beanType);
-//                    }
-//                }
-//
-//                var feignClient = extractFeignClient(componentName);
-//                if (feignClient != null) {
-//                    httpClients.put(componentName, Components.HttpClient.builder()
-//                            .name(feignClient.getName())
-//                            .url(feignClient.getUrl())
-//                            .type(Feign)
-//                            .build());
-//                }
-//
-//                var beanJmsListeners = getMethodJmsListeners(beanType);
-//                if (!beanJmsListeners.isEmpty()) {
-//                    log.debug("jms method listeners, class {}, amount {}", beanType, jmsListeners.size());
-//                    for (var beanJmsListener : beanJmsListeners) {
-//                        jmsListeners.put(componentName + "." + beanJmsListener.getName(), beanJmsListener);
-//                    }
-//                }
-//            } catch (NoClassDefFoundError e) {
-//                log.debug("bad component {}", componentName, e);
-//            }
-//        }
-        return Components.builder()
-                .components(components)
-                .build();
+        return Components.builder().components(components).build();
     }
 
     private Component newComponent(String componentName, Package rootPackage, Map<String, Component> cache) {
@@ -210,30 +185,40 @@ public class ConnectionsExtractor {
             //log
             componentType = null;
         }
+
+        var feignClient = extractFeignClient(componentName, context);
+        if (feignClient != null) {
+            //log
+            componentType = feignClient.getType();
+        }
+
         if (componentType == null) {
             return null;
         }
-        var dependencies = stream(context.getBeanFactory().getDependenciesForBean(componentName))
+
+        var dependencies = feignClient != null ? List.<Component>of() : stream(context.getBeanFactory()
+                .getDependenciesForBean(componentName))
                 .map(dep -> newComponent(dep, rootPackage, cache))
                 .collect(toList());
 
-        var httpMethods = extractHttpMethods(componentType);
+        var outHttpInterface = ofNullable(feignClient).map(c -> c.httpMethods).filter(Objects::nonNull).flatMap(Collection::stream)
+                .map(m -> httpInterfaceName(m.getMethod(), m.getUrl()))
+                .map(interfaceName -> Interface.builder().name(interfaceName).direction(out).type(http).build());
 
-        var httpInterfaces = httpMethods.stream().map(httpMethod -> {
-            var method = httpMethod.getMethod();
-            var path = httpMethod.getPath();
-            return method == null || method.isEmpty() ? path : method + ":" + path;
-        }).map(interfaceName -> Interface.builder().name(interfaceName).direction(in).type(http).build()).collect(toList());
+        var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
+                .map(httpMethod -> httpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
+                .map(interfaceName -> Interface.builder().name(interfaceName).direction(in).type(http).build());
 
+        var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
         var component = Component.builder()
-                .name(componentName)
+                .name(name)
                 .path(getComponentPath(rootPackage, componentType))
                 .type(componentType)
-                .interfaces(httpInterfaces)
+                .interfaces(Stream.of(inHttpInterfaces, outHttpInterface).flatMap(s -> s).collect(toList()))
                 .dependencies(dependencies)
                 .build();
 
-        cache.put(component.getName(), component);
+        cache.put(componentName, component);
         return component;
     }
 
@@ -245,40 +230,12 @@ public class ConnectionsExtractor {
         return componentStream;
     }
 
-    private FeignClient extractFeignClient(String name) {
-        try {
-            final FeignClient feignClient;
-            var bean = context.getBean(name);
-            if (isProxyClass(bean.getClass()) && !this.getClass().isAssignableFrom(bean.getClass())) {
-                var handler = Proxy.getInvocationHandler(bean);
-                var handlerClass = handler.getClass();
-                if (isFeignHandler(handlerClass)) {
-                    var target = getFeignTarget(handlerClass, handler);
-                    var url = target.url();
-                    log.debug("feign {}", url);
-                    feignClient = FeignClient.builder()
-                            .type(target.type())
-                            .name(target.name())
-                            .url(target.url())
-                            .build();
-                } else {
-                    feignClient = null;
-                }
-            } else {
-                feignClient = null;
-            }
-            return feignClient;
-        } catch (NoClassDefFoundError e) {
-            log.debug("extractFeignClient bean {}", name, e);
-            return null;
-        }
-    }
-
     @Data
     @Builder
     public static class FeignClient {
         private final Class<?> type;
         private final String name;
         private final String url;
+        private final List<HttpMethod> httpMethods;
     }
 }

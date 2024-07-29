@@ -4,16 +4,26 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Map.entry;
+import static java.util.stream.Collectors.toCollection;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
@@ -100,4 +110,34 @@ public class ConnectionsExtractorUtils {
         methods.addAll(superMethods);
         return methods;
     }
+
+    public static Collection<Components.HttpMethod> extractControllerHttpMethods(Class<?> beanType) {
+        var restController = getAnnotation(beanType, () -> Controller.class);
+        if (restController == null) {
+            return List.of();
+        }
+        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
+                .map(RequestMapping::path)
+                .flatMap(Arrays::stream).findFirst().orElse("");
+        return getAnnotationMap(getMethods(beanType), () -> RequestMapping.class).keySet().stream().flatMap(requestMapping -> {
+            var methods = getHttpMethods(requestMapping);
+            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
+                    .flatMap(path -> methods.stream().map(method -> Components.HttpMethod.builder().url(path).method(method).build()));
+        }).collect(toCollection(LinkedHashSet::new));
+    }
+
+    private static Collection<String> getPaths(RequestMapping requestMapping) {
+        var path = List.of(requestMapping.path());
+        return path.isEmpty() ? List.of("") : path;
+    }
+
+    private static List<String> getHttpMethods(RequestMapping requestMapping) {
+        var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
+        return methods.isEmpty() ? List.of("*") : methods;
+    }
+
+    private static String concatPath(String path, String root) {
+        return (root.endsWith("/") || path.startsWith("/")) ? root + path : root + "/" + path;
+    }
+
 }

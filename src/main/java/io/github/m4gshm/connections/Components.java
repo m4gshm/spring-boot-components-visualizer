@@ -27,7 +27,7 @@ public class Components {
     @Data
     @Builder(toBuilder = true)
     public static class HttpMethod {
-        private String path;
+        private String url;
         private String method;
     }
 

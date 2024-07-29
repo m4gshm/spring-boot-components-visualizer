@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
@@ -15,6 +16,7 @@ import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
+import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
@@ -33,7 +35,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private final boolean simple;
 
     public static String pumlAlias(String name) {
-        var onRemove = List.of("*", "$").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
+        var onRemove = List.of("*", "$", "{", "}").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
         var onEscape = List.of("-", "/", ":").stream().reduce((l, r) -> l + "|" + r).orElse("");
         String s = name.replaceAll(onRemove, "").replaceAll(onEscape, ".");
         return s;
@@ -96,11 +98,14 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                         throw new IllegalArgumentException("cannot merge packages with different names '" + lName + "', '" + rName + "'");
                     }
 
+                    var components = Stream.of(l.getComponents(), r.getComponents())
+                            .filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
+
                     var distinctPackages = distinctPackages(getElementId(parentPath, l.getName()), concat(
                             ofNullable(l.getPackages()).orElse(emptyList()).stream(),
                             ofNullable(r.getPackages()).orElse(emptyList()).stream())
                     );
-                    var pack = l.toBuilder().packages(copyOf(distinctPackages.values())).build();
+                    var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
                     return pack;
                 }, LinkedHashMap::new));
     }
@@ -147,12 +152,14 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
             reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(bean)));
 
-            return reversePathBuilders.stream().reduce((l, r) -> {
-                r.packages(singletonList(l.build()));
+            var aPackage = reversePathBuilders.stream().reduce((l, r) -> {
+                var lPack = l.build();
+                r.packages(singletonList(lPack));
                 return r;
             }).map(Package.PackageBuilder::build).orElse(
                     Package.builder().name(beanPath).components(singletonList(bean)).build()
             );
+            return aPackage;
 
         })).values();
 
@@ -183,7 +190,11 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                             out.append(prefix + INDENT.repeat(2));
                             out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
                             out.append(prefix + INDENT.repeat(2));
-                            out.append(format("%s )..> %s\n", interfaceId, getComponentId(component)));
+                            if (direction == in) {
+                                out.append(format("%s )..> %s\n", interfaceId, getComponentId(component)));
+                            } else {
+                                out.append(format("%s )..> %s\n", getComponentId(component), interfaceId));
+                            }
                         });
                     });
                 });
