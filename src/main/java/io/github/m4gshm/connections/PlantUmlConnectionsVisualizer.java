@@ -191,9 +191,9 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                             out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
                             out.append(prefix + INDENT.repeat(2));
                             if (direction == in) {
-                                out.append(format("%s )..> %s\n", interfaceId, getComponentId(component)));
+                                out.append(format("%s ).. %s\n", interfaceId, getComponentId(component)));
                             } else {
-                                out.append(format("%s )..> %s\n", getComponentId(component), interfaceId));
+                                out.append(format("%s ..( %s\n", getComponentId(component), interfaceId));
                             }
                         });
                     });

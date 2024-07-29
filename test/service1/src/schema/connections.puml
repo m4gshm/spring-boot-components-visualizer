@@ -30,20 +30,20 @@ mainController ..> service2LegacyImpl
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 eventsHandler ..> webSocketConfig
-rectangle "out" as out {
-  cloud "http" as out.http {
-    interface "GET:/{id}" as standaloneService2Api.out.http.GET..id
-    standaloneService2Api )..> standaloneService2Api.out.http.GET..id
-    interface "GET:/{id}" as service2FeignClient.out.http.GET..id
-    service2FeignClient )..> service2FeignClient.out.http.GET..id
-  }
-}
 rectangle "in" as in {
   cloud "http" as in.http {
     interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
-    mainController.in.http.GET..api.v1.req )..> mainController
+    mainController.in.http.GET..api.v1.req ).. mainController
     interface "*:/api/v1/" as mainController.in.http...api.v1.
-    mainController.in.http...api.v1. )..> mainController
+    mainController.in.http...api.v1. ).. mainController
+  }
+}
+rectangle "out" as out {
+  cloud "http" as out.http {
+    interface "GET:/{id}" as standaloneService2Api.out.http.GET..id
+    standaloneService2Api ..( standaloneService2Api.out.http.GET..id
+    interface "GET:/{id}" as service2FeignClient.out.http.GET..id
+    service2FeignClient ..( service2FeignClient.out.http.GET..id
   }
 }
 @enduml
