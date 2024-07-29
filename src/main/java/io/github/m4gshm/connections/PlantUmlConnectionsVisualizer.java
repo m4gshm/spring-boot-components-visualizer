@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
@@ -20,7 +21,9 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
@@ -29,78 +32,11 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private final String applicationName;
     private final boolean simple;
 
-    private static String pumlAlias(String name) {
-        return name.replace("-", "").replace("/", ".").replace("$", "").replace("@", "");
-    }
-
-    @Override
-    public String visualize(Components components) {
-        var out = new StringBuilder();
-
-        out.append("@startuml\n");
-
-//        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
-
-        visualize(components.getComponents(), out);
-
-        out.append("@enduml\n");
-        return out.toString();
-    }
-
-    private void visualize(Collection<Component> components, StringBuilder out) {
-        var prefix = "";
-
-        var packages = distinctPackages(prefix, components.stream().map(bean -> {
-            var beanPath = bean.getPath();
-
-            var reversePathBuilders = reverse(asList(beanPath.split("\\."))).stream()
-                    .map(packageName -> Package.builder().name(packageName))
-                    .collect(toList());
-
-            reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(bean)));
-
-            return reversePathBuilders.stream().reduce((l, r) -> {
-                r.packages(singletonList(l.build()));
-                return r;
-            }).map(Package.PackageBuilder::build).orElse(
-                    Package.builder().name(beanPath).components(singletonList(bean)).build()
-            );
-
-        })).values();
-
-        for (var pack : packages) {
-            printPackage(out, prefix, pack);
-        }
-
-        components.forEach(component -> {
-            component.getDependencies().stream().map(Component::getName).forEach(dependency -> {
-                out.append(format("%s ..> %s\n", getComponentId(component), pumlAlias(dependency)));
-            });
-        });
-
-        var groupedInterfaces = components.stream().flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
-                .collect(groupingBy(entry -> entry.getKey().getDirection(), groupingBy(entry -> entry.getKey().getType())));
-
-        groupedInterfaces.forEach((direction, byType) -> {
-            var directionName = direction.name();
-            printPackage(out, prefix, directionName, directionName, rectangle, () -> {
-                byType.forEach((type, interfaceComponentLink) -> {
-                    var typeName = type.name();
-                    printPackage(out, prefix + INDENT, typeName, getElementId(directionName, typeName), cloud, () -> {
-                        interfaceComponentLink.forEach(entry -> {
-                            var anInterface = entry.getKey();
-                            var component = entry.getValue();
-                            var interfaceId = getInterfaceId(component, anInterface);
-                            out.append(prefix + INDENT.repeat(2));
-                            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
-                            out.append(prefix + INDENT.repeat(2));
-                            out.append(format("%s )..> %s\n", interfaceId, getComponentId(component)));
-                        });
-                    });
-                });
-            });
-        });
+    public static String pumlAlias(String name) {
+        var onRemove = List.of("*", "$").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
+        var onEscape = List.of("-", "/", ":").stream().reduce((l, r) -> l + "|" + r).orElse("");
+        String s = name.replaceAll(onRemove, "").replaceAll(onEscape, ".");
+        return s;
     }
 
     private static String getInterfaceId(Component component, Interface anInterface) {
@@ -110,15 +46,6 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
     private static String getComponentId(Component component) {
         return pumlAlias(component.getName());
-    }
-
-    @RequiredArgsConstructor
-    public enum PackageOutType {
-        rectangle("rectangle"),
-        pack("package"),
-        cloud("cloud");
-
-        private final String code;
     }
 
     private static void printPackage(StringBuilder out, String prefix, Package pack) {
@@ -192,6 +119,85 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
     private static void printUniqueComponent(StringBuilder out, String prefix, String name, String id) {
         out.append(prefix + format("[%s] as %s\n", name, id));
+    }
+
+    @Override
+    public String visualize(Components components) {
+        var out = new StringBuilder();
+
+        out.append("@startuml\n");
+
+//        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
+
+        visualize(components.getComponents(), out);
+
+        out.append("@enduml\n");
+        return out.toString();
+    }
+
+    private void visualize(Collection<Component> components, StringBuilder out) {
+        var prefix = "";
+
+        var packages = distinctPackages(prefix, components.stream().map(bean -> {
+            var beanPath = bean.getPath();
+
+            var reversePathBuilders = reverse(asList(beanPath.split("\\."))).stream()
+                    .map(packageName -> Package.builder().name(packageName))
+                    .collect(toList());
+
+            reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(bean)));
+
+            return reversePathBuilders.stream().reduce((l, r) -> {
+                r.packages(singletonList(l.build()));
+                return r;
+            }).map(Package.PackageBuilder::build).orElse(
+                    Package.builder().name(beanPath).components(singletonList(bean)).build()
+            );
+
+        })).values();
+
+        for (var pack : packages) {
+            printPackage(out, prefix, pack);
+        }
+
+        components.forEach(component -> {
+            component.getDependencies().stream().map(Component::getName).forEach(dependency -> {
+                out.append(format("%s ..> %s\n", getComponentId(component), pumlAlias(dependency)));
+            });
+        });
+
+        var groupedInterfaces = components.stream().flatMap(component -> Stream.ofNullable(component.getInterfaces())
+                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
+                .collect(groupingBy(entry -> entry.getKey().getDirection(), groupingBy(entry -> entry.getKey().getType())));
+
+        groupedInterfaces.forEach((direction, byType) -> {
+            var directionName = direction.name();
+            printPackage(out, prefix, directionName, directionName, rectangle, () -> {
+                byType.forEach((type, interfaceComponentLink) -> {
+                    var typeName = type.name();
+                    printPackage(out, prefix + INDENT, typeName, getElementId(directionName, typeName), cloud, () -> {
+                        interfaceComponentLink.forEach(entry -> {
+                            var anInterface = entry.getKey();
+                            var component = entry.getValue();
+                            var interfaceId = getInterfaceId(component, anInterface);
+                            out.append(prefix + INDENT.repeat(2));
+                            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+                            out.append(prefix + INDENT.repeat(2));
+                            out.append(format("%s )..> %s\n", interfaceId, getComponentId(component)));
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    @RequiredArgsConstructor
+    public enum PackageOutType {
+        rectangle("rectangle"),
+        pack("package"),
+        cloud("cloud");
+
+        private final String code;
     }
 
 //    private void visualizeStructured(Components components, StringBuilder out) {

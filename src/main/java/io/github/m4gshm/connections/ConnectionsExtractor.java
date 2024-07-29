@@ -1,7 +1,7 @@
 package io.github.m4gshm.connections;
 
 import feign.Target;
-import io.github.m4gshm.connections.Components.HttpInterface;
+import io.github.m4gshm.connections.Components.HttpMethod;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.Builder;
@@ -14,20 +14,27 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.annotation.JmsListeners;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.Components.HttpClient.Type.Feign;
-import static io.github.m4gshm.connections.Components.HttpClient.Type.RestTemplateBased;
-import static io.github.m4gshm.connections.Components.HttpInterface.Type.Controller;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.*;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getAnnotation;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getAnnotationMap;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getMethods;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasAnnotation;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasMainMethod;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.reflect.Proxy.isProxyClass;
@@ -36,6 +43,7 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
+import static java.util.stream.Stream.ofNullable;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -49,8 +57,8 @@ public class ConnectionsExtractor {
     private static List<Components.JmsListener> getMethodJmsListeners(Class<?> beanType) {
         try {
             return stream(beanType.getMethods()).flatMap(m -> concat(
-                    Stream.ofNullable(m.getAnnotation(JmsListener.class)),
-                    Stream.ofNullable(m.getAnnotation(JmsListeners.class))
+                    ofNullable(m.getAnnotation(JmsListener.class)),
+                    ofNullable(m.getAnnotation(JmsListeners.class))
                             .map(JmsListeners::value).flatMap(Stream::of)
             ).map(l -> newJmsListener(m, l))).filter(Objects::nonNull).collect(toList());
         } catch (NoClassDefFoundError e) {
@@ -74,33 +82,33 @@ public class ConnectionsExtractor {
         return (Target) targetField.get(handler);
     }
 
-    private static HttpInterface extractHttpInterface(String beanName, Class<?> beanType) {
-        try {
-            var restController = getAnnotation(beanType, () -> RestController.class);
-            if (restController != null) {
-                var rootPath = Stream.ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
-                        .map(RequestMapping::path)
-                        .filter(Objects::nonNull)
-                        .flatMap(Arrays::stream).findFirst();
-
-                var paths = getAnnotationMap(getMethods(beanType), () -> RequestMapping.class).keySet().stream()
-                        .map(RequestMapping::path)
-                        .filter(Objects::nonNull)
-                        .flatMap(Arrays::stream)
-                        .map(path -> rootPath.map(root -> root + "/" + path).orElse(path))
-                        .collect(toCollection(LinkedHashSet::new));
-
-                var httpInterface = HttpInterface.builder()
-                        .type(Controller)
-                        .name(restController.value())
-                        .paths(paths)
-                        .build();
-                return httpInterface;
-            }
-        } catch (NoClassDefFoundError e) {
-            log.debug("extractHttpInterface bean {}", beanName, e);
+    private static Collection<HttpMethod> extractHttpMethods(Class<?> beanType) {
+        var restController = getAnnotation(beanType, () -> Controller.class);
+        if (restController == null) {
+            return List.of();
         }
-        return null;
+        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
+                .map(RequestMapping::path)
+                .flatMap(Arrays::stream).findFirst().orElse("");
+        return getAnnotationMap(getMethods(beanType), () -> RequestMapping.class).keySet().stream().flatMap(requestMapping -> {
+            var methods = getHttpMethods(requestMapping);
+            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
+                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().path(path).method(method).build()));
+        }).collect(toCollection(LinkedHashSet::new));
+    }
+
+    private static Collection<String> getPaths(RequestMapping requestMapping) {
+        var path = List.of(requestMapping.path());
+        return path.isEmpty() ? List.of("") : path;
+    }
+
+    private static List<String> getHttpMethods(RequestMapping requestMapping) {
+        var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
+        return methods.isEmpty() ? List.of("*") : methods;
+    }
+
+    private static String concatPath(String path, String root) {
+        return (root.endsWith("/") || path.startsWith("/")) ? root + path : root + "/" + path;
     }
 
     private static String getComponentPath(Package rootPackage, Class<?> beanType) {
@@ -113,6 +121,10 @@ public class ConnectionsExtractor {
             }
         }
         return "";
+    }
+
+    private static boolean isSpringBootMainClass(Class<?> beanType) {
+        return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
     }
 
     public Components getComponents() {
@@ -205,19 +217,19 @@ public class ConnectionsExtractor {
                 .map(dep -> newComponent(dep, rootPackage, cache))
                 .collect(toList());
 
-        var httpInterface = Stream.ofNullable(extractHttpInterface(componentName, componentType));
+        var httpMethods = extractHttpMethods(componentType);
 
-        var interfaces = httpInterface.map(HttpInterface::getPaths)
-                .filter(Objects::nonNull)
-                .flatMap(Collection::stream)
-                .map(path -> Interface.builder().name(path).direction(in).type(http).build())
-                .collect(toList());
+        var httpInterfaces = httpMethods.stream().map(httpMethod -> {
+            var method = httpMethod.getMethod();
+            var path = httpMethod.getPath();
+            return method == null || method.isEmpty() ? path : method + ":" + path;
+        }).map(interfaceName -> Interface.builder().name(interfaceName).direction(in).type(http).build()).collect(toList());
 
         var component = Component.builder()
                 .name(componentName)
                 .path(getComponentPath(rootPackage, componentType))
                 .type(componentType)
-                .interfaces(interfaces)
+                .interfaces(httpInterfaces)
                 .dependencies(dependencies)
                 .build();
 
@@ -231,10 +243,6 @@ public class ConnectionsExtractor {
             componentStream = componentStream.filter(bean -> bean.getType().getPackage().getName().startsWith(rootPackage.getName()));
         }
         return componentStream;
-    }
-
-    private static boolean isSpringBootMainClass(Class<?> beanType) {
-        return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
     }
 
     private FeignClient extractFeignClient(String name) {

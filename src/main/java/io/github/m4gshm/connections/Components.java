@@ -5,10 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-
-import static java.util.Optional.ofNullable;
 
 @Data
 @Builder
@@ -29,19 +25,10 @@ public class Components {
     }
 
     @Data
-    @Builder
-    public static class HttpInterface {
-        private String name;
-        private Collection<String> paths;
-        private Type type;
-
-        public static String getHttpInterfaceName(String beanName, Components.HttpInterface httpInterface) {
-            return ofNullable(httpInterface.getName()).filter(s -> !s.isEmpty()).orElse(beanName);
-        }
-
-        public enum Type {
-            Controller
-        }
+    @Builder(toBuilder = true)
+    public static class HttpMethod {
+        private String path;
+        private String method;
     }
 
     @Data

@@ -22,6 +22,4 @@ public class Interface {
         http, ws, grpc, jms, kafka;
     }
 
-
-
 }

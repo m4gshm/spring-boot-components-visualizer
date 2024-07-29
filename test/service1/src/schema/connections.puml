@@ -24,13 +24,16 @@ package "internal" as internal {
     }
   }
 }
+mainController ..> service2LegacyImpl
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 eventsHandler ..> webSocketConfig
 rectangle "in" as in {
   cloud "http" as in.http {
-    interface "/api/v1//req" as mainController.in.http..api.v1..req
-    mainController.in.http..api.v1..req )..> mainController
+    interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
+    mainController.in.http.GET..api.v1.req )..> mainController
+    interface "*:/api/v1/" as mainController.in.http...api.v1.
+    mainController.in.http...api.v1. )..> mainController
   }
 }
 @enduml
