@@ -50,37 +50,47 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return pumlAlias(component.getName());
     }
 
-    private static void printPackage(StringBuilder out, String prefix, Package pack) {
-        printPackage(out, prefix, pack, PackageOutType.pack);
+    private static void printPackage(StringBuilder out, int indent, Package pack) {
+        printPackage(out, indent, pack, PackageOutType.pack);
     }
 
-    private static void printPackage(StringBuilder out, String prefix, Package pack, PackageOutType packageType) {
+    private static void printPackage(StringBuilder out, int indent, Package pack, PackageOutType packageType) {
         var packageName = pack.getName();
         var wrapByPack = !packageName.isEmpty();
 
         Runnable printInternal = () -> {
             var beans = pack.getComponents();
             if (beans != null) {
-                beans.forEach(bean -> printComponent(out, prefix + "  ", bean));
+                beans.forEach(bean -> printComponent(out, INDENT.repeat(indent + 1), bean));
             }
             var packages = pack.getPackages();
             if (packages != null) {
-                packages.forEach(subPack -> printPackage(out, prefix + (wrapByPack ? "  " : ""), subPack));
+                packages.forEach(subPack -> printPackage(out, indent + (wrapByPack ? 1 : 0), subPack));
             }
         };
 
         if (wrapByPack) {
-            printPackage(out, prefix, packageName, pack.getPath(), packageType, printInternal);
+            printPackage(out, indent, packageName, pack.getPath(), packageType, printInternal);
         } else {
             printInternal.run();
         }
     }
 
-    private static void printPackage(StringBuilder out, String prefix, String name, String id,
+
+    private static void printPackage(StringBuilder out, int indent, String name, String id,
                                      PackageOutType packageType, Runnable internal) {
-        out.append(format(prefix + "%s \"%s\" as %s {\n", packageType.code, name, id));
+        printPackage(true, out, indent, name, id, packageType, internal);
+    }
+
+    private static void printPackage(boolean wrap, StringBuilder out, int indent, String name, String id,
+                                     PackageOutType packageType, Runnable internal) {
+        if (wrap) {
+            out.append(format(INDENT.repeat(indent) + "%s \"%s\" as %s {\n", packageType.code, name, id));
+        }
         internal.run();
-        out.append(prefix).append("}\n");
+        if (wrap) {
+            out.append(INDENT.repeat(indent)).append("}\n");
+        }
     }
 
     private static String getElementId(String... parts) {
@@ -141,9 +151,9 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     }
 
     private void visualize(Collection<Component> components, StringBuilder out) {
-        var prefix = "";
+        var depth = 0;
 
-        var packages = distinctPackages(prefix, components.stream().map(bean -> {
+        var packages = distinctPackages(INDENT.repeat(depth), components.stream().map(bean -> {
             var beanPath = bean.getPath();
 
             var reversePathBuilders = reverse(asList(beanPath.split("\\."))).stream()
@@ -164,7 +174,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         })).values();
 
         for (var pack : packages) {
-            printPackage(out, prefix, pack);
+            printPackage(out, depth, pack);
         }
 
         components.forEach(component -> {
@@ -173,28 +183,39 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             });
         });
 
-        var groupedInterfaces = components.stream().flatMap(component -> Stream.ofNullable(component.getInterfaces())
+        var groupedInterfaces = components.stream()
+                .flatMap(component -> Stream.ofNullable(component.getInterfaces())
                         .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
-                .collect(groupingBy(entry -> entry.getKey().getDirection(), groupingBy(entry -> entry.getKey().getType())));
+                .collect(
+                        groupingBy(entry -> entry.getKey().getDirection(),
+                                groupingBy(entry -> entry.getKey().getType(),
+                                        groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""))))
+                );
 
         groupedInterfaces.forEach((direction, byType) -> {
             var directionName = direction.name();
-            printPackage(out, prefix, directionName, directionName, rectangle, () -> {
-                byType.forEach((type, interfaceComponentLink) -> {
+            printPackage(out, depth, directionName, directionName, rectangle, () -> {
+                byType.forEach((type, byGroup) -> {
                     var typeName = type.name();
-                    printPackage(out, prefix + INDENT, typeName, getElementId(directionName, typeName), cloud, () -> {
-                        interfaceComponentLink.forEach(entry -> {
-                            var anInterface = entry.getKey();
-                            var component = entry.getValue();
-                            var interfaceId = getInterfaceId(component, anInterface);
-                            out.append(prefix + INDENT.repeat(2));
-                            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
-                            out.append(prefix + INDENT.repeat(2));
-                            if (direction == in) {
-                                out.append(format("%s ).. %s\n", interfaceId, getComponentId(component)));
-                            } else {
-                                out.append(format("%s ..( %s\n", getComponentId(component), interfaceId));
-                            }
+                    printPackage(out, depth + 1, typeName, getElementId(directionName, typeName), cloud, () -> {
+                        byGroup.forEach((group, interfaceComponentLink) -> {
+                            var wrap = group != null && !group.isEmpty();
+                            var depthDelta = wrap ? 1 : 0;
+                            printPackage(wrap, out, depth + 1 + depthDelta, group, getElementId(directionName, group), cloud, () ->
+                                    interfaceComponentLink.forEach(entry -> {
+                                        var anInterface = entry.getKey();
+                                        var component = entry.getValue();
+                                        var interfaceId = getInterfaceId(component, anInterface);
+                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                        out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                        var componentId = getComponentId(component);
+                                        if (direction == in) {
+                                            out.append(format("%s )..> %s\n", interfaceId, componentId));
+                                        } else {
+                                            out.append(format("%s ..( %s\n", componentId, interfaceId));
+                                        }
+                                    }));
                         });
                     });
                 });

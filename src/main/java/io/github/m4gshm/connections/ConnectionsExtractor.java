@@ -201,15 +201,19 @@ public class ConnectionsExtractor {
                 .map(dep -> newComponent(dep, rootPackage, cache))
                 .collect(toList());
 
-        var outHttpInterface = ofNullable(feignClient).map(c -> c.httpMethods).filter(Objects::nonNull).flatMap(Collection::stream)
-                .map(m -> httpInterfaceName(m.getMethod(), m.getUrl()))
-                .map(interfaceName -> Interface.builder().name(interfaceName).direction(out).type(http).build());
+        var outHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
+                .filter(Objects::nonNull)
+                .flatMap(Collection::stream)
+                .map(httpMethod -> httpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
+                .map(interfaceName -> Interface.builder().group(client.getUrl()).name(interfaceName).direction(out).type(http).build())
+        );
 
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                 .map(httpMethod -> httpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
                 .map(interfaceName -> Interface.builder().name(interfaceName).direction(in).type(http).build());
 
         var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
+
         var component = Component.builder()
                 .name(name)
                 .path(getComponentPath(rootPackage, componentType))

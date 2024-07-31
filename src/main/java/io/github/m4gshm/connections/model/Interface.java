@@ -11,6 +11,7 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
     String name;
+    String group;
     Direction direction;
     Type type;
 
