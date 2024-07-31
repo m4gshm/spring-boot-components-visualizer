@@ -30,6 +30,7 @@ package "internal" as internal {
 mainController ..> coreService
 coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
+coreService ..> standaloneService2Api
 jmsQueue1Listener ..> coreService
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
