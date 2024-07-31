@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.annotation.JmsListeners;
 import org.springframework.stereotype.Service;
-import service1.service.external.CoreService;
+import service1.service.CoreService;
 
 @Service
 @RequiredArgsConstructor

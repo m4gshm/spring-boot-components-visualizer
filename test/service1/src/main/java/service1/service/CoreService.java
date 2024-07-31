@@ -1,6 +1,5 @@
-package service1.service.external;
+package service1.service;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import service1.service.external.rest.AbstractService2FeignClient;
