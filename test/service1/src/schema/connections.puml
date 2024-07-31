@@ -3,6 +3,10 @@ package "api" as api {
   package "http" as api.http {
     [mainController] as mainController
   }
+  package "ws" as api.ws {
+    [eventsHandler] as eventsHandler
+    [eventsHandler] as eventsHandler
+  }
 }
 package "service" as service {
   [coreService] as coreService
@@ -20,13 +24,6 @@ package "service" as service {
     }
   }
 }
-package "internal" as internal {
-  package "ws" as internal.ws {
-    package "EventsHandler" as internal.ws.EventsHandler {
-      [eventsHandler] as eventsHandler
-    }
-  }
-}
 mainController ..> coreService
 coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
@@ -35,6 +32,26 @@ jmsQueue1Listener ..> coreService
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 eventsHandler ..> webSocketConfig
+rectangle "in" as in {
+  cloud "http" as in.http {
+    interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
+    mainController.in.http.GET..api.v1.req )..> mainController
+    interface "*:/api/v1/" as mainController.in.http...api.v1.
+    mainController.in.http...api.v1. )..> mainController
+  }
+  cloud "web socket" as in.websocket {
+    interface "/events" as eventsHandler.in.ws..events
+    eventsHandler.in.ws..events )..> eventsHandler
+  }
+  cloud "jms" as in.jms {
+    queue "jmsQueue1Listener" as in.jmsQueue1Listener {
+      interface "queue1" as jmsQueue1Listener.in.jms.queue1
+      jmsQueue1Listener.in.jms.queue1 )..> jmsQueue1Listener
+      interface "queue2" as jmsQueue1Listener.in.jms.queue2
+      jmsQueue1Listener.in.jms.queue2 )..> jmsQueue1Listener
+    }
+  }
+}
 rectangle "out" as out {
   cloud "http" as out.http {
     cloud "standalone-service2" as out.standalone.service2 {
@@ -44,22 +61,6 @@ rectangle "out" as out {
     cloud "http://service2" as out.http...service2 {
       interface "GET:/{id}" as service2FeignClient.out.http.GET..id
       service2FeignClient ..( service2FeignClient.out.http.GET..id
-    }
-  }
-}
-rectangle "in" as in {
-  cloud "http" as in.http {
-    interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
-    mainController.in.http.GET..api.v1.req )..> mainController
-    interface "*:/api/v1/" as mainController.in.http...api.v1.
-    mainController.in.http...api.v1. )..> mainController
-  }
-  cloud "jms" as in.jms {
-    queue "jmsQueue1Listener" as in.jmsQueue1Listener {
-      interface "queue1" as jmsQueue1Listener.in.jms.queue1
-      jmsQueue1Listener.in.jms.queue1 )..> jmsQueue1Listener
-      interface "queue2" as jmsQueue1Listener.in.jms.queue2
-      jmsQueue1Listener.in.jms.queue2 )..> jmsQueue1Listener
     }
   }
 }

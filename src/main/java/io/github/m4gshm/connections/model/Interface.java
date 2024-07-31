@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.model;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -19,8 +20,13 @@ public class Interface {
         in, out;
     }
 
+    @RequiredArgsConstructor
     public enum Type {
-        http, ws, grpc, jms, kafka;
+        http, ws("web socket"), grpc, jms, kafka;
+        Type() {
+            code = this.name();
+        }
+        public final String code;
     }
 
 }

@@ -6,18 +6,13 @@ import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
-import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
-import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
-import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.*;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -25,9 +20,7 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.*;
 
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
@@ -37,7 +30,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private final boolean simple;
 
     public static String pumlAlias(String name) {
-        var onRemove = List.of("*", "$", "{", "}").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
+        var onRemove = List.of("*", "$", "{", "}", " ").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
         var onEscape = List.of("-", "/", ":").stream().reduce((l, r) -> l + "|" + r).orElse("");
         String s = name.replaceAll(onRemove, "").replaceAll(onEscape, ".");
         return s;
@@ -78,7 +71,6 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         }
     }
 
-
     private static void printPackage(StringBuilder out, int indent, String name, String id,
                                      PackageOutType packageType, Runnable internal) {
         printPackage(true, out, indent, name, id, packageType, internal);
@@ -100,26 +92,24 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     }
 
     private static LinkedHashMap<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
-        return packageStream
-                .map(p -> populatePath(parentPath, p))
-                .collect(toMap(Package::getName, p -> p, (l, r) -> {
-                    var lName = l.getName();
-                    var rName = r.getName();
-                    var validPackages = lName != null && lName.equals(rName) || rName == null;
-                    if (!validPackages) {
-                        throw new IllegalArgumentException("cannot merge packages with different names '" + lName + "', '" + rName + "'");
-                    }
+        return packageStream.map(p -> populatePath(parentPath, p)).collect(toMap(Package::getName, p -> p, (l, r) -> {
+            var lName = l.getName();
+            var rName = r.getName();
+            var validPackages = lName != null && lName.equals(rName) || rName == null;
+            if (!validPackages) {
+                throw new IllegalArgumentException("cannot merge packages with different names '" + lName + "', '" + rName + "'");
+            }
 
-                    var components = Stream.of(l.getComponents(), r.getComponents())
-                            .filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
+            var components = Stream.of(l.getComponents(), r.getComponents())
+                    .filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
 
-                    var distinctPackages = distinctPackages(getElementId(parentPath, l.getName()), concat(
-                            ofNullable(l.getPackages()).orElse(emptyList()).stream(),
-                            ofNullable(r.getPackages()).orElse(emptyList()).stream())
-                    );
-                    var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
-                    return pack;
-                }, LinkedHashMap::new));
+            var distinctPackages = distinctPackages(getElementId(parentPath, l.getName()), concat(
+                    ofNullable(l.getPackages()).orElse(emptyList()).stream(),
+                    ofNullable(r.getPackages()).orElse(emptyList()).stream())
+            );
+            var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
+            return pack;
+        }, LinkedHashMap::new));
     }
 
     private static Package populatePath(String parentPath, Package pack) {
@@ -194,36 +184,40 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                         groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""))))
                 );
 
-        groupedInterfaces.forEach((direction, byType) -> {
-            var directionName = direction.name();
-            printPackage(out, depth, directionName, directionName, rectangle, () -> {
-                byType.forEach((type, byGroup) -> {
-                    var typeName = type.name();
-                    printPackage(out, depth + 1, typeName, getElementId(directionName, typeName), cloud, () -> {
-                        byGroup.forEach((group, interfaceComponentLink) -> {
-                            var wrap = group != null && !group.isEmpty();
-                            var depthDelta = wrap ? 1 : 0;
-                            var packageType = type == Type.jms ? queue : cloud;
-                            printPackage(wrap, out, depth + 1 + depthDelta, group, getElementId(directionName, group), packageType, () ->
-                                    interfaceComponentLink.forEach(entry -> {
-                                        var anInterface = entry.getKey();
-                                        var component = entry.getValue();
-                                        var interfaceId = getInterfaceId(component, anInterface);
-                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                        out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
-                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                        var componentId = getComponentId(component);
-                                        if (direction == in) {
-                                            out.append(format("%s )..> %s\n", interfaceId, componentId));
-                                        } else {
-                                            out.append(format("%s ..( %s\n", componentId, interfaceId));
-                                        }
-                                    }));
-                        });
-                    });
+        for (var direction : Interface.Direction.values()) {
+            var byType = groupedInterfaces.getOrDefault(direction, Map.of());
+            if (!byType.isEmpty()) {
+                var directionName = direction.name();
+                printPackage(out, depth, directionName, directionName, rectangle, () -> {
+                    for (var type : Type.values()) {
+                        var byGroup = byType.getOrDefault(type, Map.of());
+                        if (!byGroup.isEmpty()) {
+                            var typeName = type.code;
+                            printPackage(out, depth + 1, typeName, getElementId(directionName, typeName), cloud, () -> byGroup.forEach((group, interfaceComponentLink) -> {
+                                var wrap = group != null && !group.isEmpty();
+                                var depthDelta = wrap ? 1 : 0;
+                                var packageType = type == Type.jms ? queue : cloud;
+                                var groupId = getElementId(directionName, group);
+                                printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> interfaceComponentLink.forEach(entry -> {
+                                    var anInterface = entry.getKey();
+                                    var component = entry.getValue();
+                                    var interfaceId = getInterfaceId(component, anInterface);
+                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                    out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                    var componentId = getComponentId(component);
+                                    if (direction == in) {
+                                        out.append(format("%s )..> %s\n", interfaceId, componentId));
+                                    } else {
+                                        out.append(format("%s ..( %s\n", componentId, interfaceId));
+                                    }
+                                }));
+                            }));
+                        }
+                    }
                 });
-            });
-        });
+            }
+        }
     }
 
     @RequiredArgsConstructor

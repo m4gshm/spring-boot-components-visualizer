@@ -25,8 +25,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVer")
 
     compileOnly("org.springframework:spring-web:5.3.31")
+    compileOnly("org.springframework:spring-webmvc:5.3.31")
+    compileOnly("org.springframework:spring-websocket:5.3.32")
     compileOnly("org.springframework:spring-jms:5.3.32")
+
     compileOnly("io.github.openfeign:feign-core:12.5")
+
     compileOnly("org.springframework.cloud:spring-cloud-openfeign-core:3.1.9")
     compileOnly("org.springframework.cloud:spring-cloud-context:3.1.8")
     compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")

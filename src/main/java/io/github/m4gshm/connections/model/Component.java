@@ -6,17 +6,18 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.FieldDefaults;
 
 import java.util.List;
+import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Component {
     @EqualsAndHashCode.Include
     private final String name;
     private final String path;
     private final Class<?> type;
-    private final List<Interface> interfaces;
-    private final List<Component> dependencies;
+    private final Set<Interface> interfaces;
+    private final Set<Component> dependencies;
 }

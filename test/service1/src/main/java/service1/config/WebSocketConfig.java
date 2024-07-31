@@ -6,7 +6,7 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import service1.internal.ws.EventsHandler.EventsHandler;
+import service1.api.ws.EventsHandler;
 
 @Configuration
 @EnableWebSocket

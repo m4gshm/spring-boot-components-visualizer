@@ -1,12 +1,18 @@
 package io.github.m4gshm.connections;
 
+import feign.InvocationHandlerFactory;
+import feign.MethodMetadata;
+import feign.Target;
 import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -14,21 +20,17 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.lang.reflect.Proxy;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
-import static java.util.stream.Collectors.toCollection;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
+import static java.lang.reflect.Proxy.isProxyClass;
+import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedAnnotation;
@@ -50,7 +52,7 @@ public class ConnectionsExtractorUtils {
     }
 
     static boolean isIncluded(Class<?> type) {
-        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isStorage(type));
+        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isVisualizeAPI(type));
     }
 
     static boolean isSpringBootTest(Class<?> beanType) {
@@ -61,7 +63,7 @@ public class ConnectionsExtractorUtils {
         return hasAnnotation(beanType, () -> Configuration.class);
     }
 
-    static boolean isStorage(Class<?> beanType) {
+    static boolean isVisualizeAPI(Class<?> beanType) {
         return OnApplicationReadyEventConnectionsVisualizeGenerator.Storage.class.isAssignableFrom(beanType);
     }
 
@@ -168,10 +170,9 @@ public class ConnectionsExtractorUtils {
     }
 
     static Object getFieldValue(String name, Object object) {
-        Field field;
-        try {
-            field = object.getClass().getDeclaredField(name);
-        } catch (NoSuchFieldException e) {
+        var aClass = object.getClass();
+        var field = getField(name, aClass);
+        if (field == null) {
             return null;
         }
         field.setAccessible(true);
@@ -182,7 +183,81 @@ public class ConnectionsExtractorUtils {
         }
     }
 
+    private static Field getField(String name, Class<?> aClass) {
+        while (!(aClass == null || Object.class.equals(aClass))) try {
+            return aClass.getDeclaredField(name);
+        } catch (NoSuchFieldException e) {
+            aClass = aClass.getSuperclass();
+        }
+        return null;
+    }
+
     static String getHttpInterfaceName(String method, String url) {
         return method == null || method.isEmpty() ? url : method + ":" + url;
+    }
+
+    static List<ConnectionsExtractor.JmsClientListener> extractMethodJmsListeners(Class<?> beanType) {
+        var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
+        return annotationMap.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> Map.entry(entry.getKey(), annotation)))
+                .map(entry -> ConnectionsExtractor.JmsClientListener.builder()
+                        .type(ConnectionsExtractor.JmsClientListener.Type.JmsListenerMethod)
+                        .name(entry.getKey().getName())
+                        .destination(entry.getValue().destination())
+                        .build()).collect(toList());
+    }
+
+    static ConnectionsExtractor.FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
+        try {
+            var bean = context.getBean(name);
+            if (!isProxyClass(bean.getClass())) {
+                return null;
+            }
+            var handler = Proxy.getInvocationHandler(bean);
+            var handlerClass = handler.getClass();
+            if (!"FeignInvocationHandler".equals(handlerClass.getSimpleName())) {
+                return null;
+            }
+
+            var httpMethods = ((Collection<?>) ((Map) getFieldValue("dispatch", handler)).values()
+            ).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
+                var buildTemplateFromArgs = getFieldValue("buildTemplateFromArgs", value);
+                var metadata = (MethodMetadata) getFieldValue("metadata", buildTemplateFromArgs);
+                var template = metadata.template();
+                var method = template.method();
+                var url = template.url();
+                return HttpMethod.builder().method(method).url(url).build();
+            }).collect(toList());
+
+            var target = (Target) getFieldValue("target", handler);
+            if (target == null) {
+                //log
+                return null;
+            }
+            var type = target.type();
+
+            return ConnectionsExtractor.FeignClient.builder()
+                    .type(type)
+                    .name(target.name())
+                    .url(target.url())
+                    .httpMethods(httpMethods)
+                    .build();
+
+        } catch (NoClassDefFoundError | NoSuchBeanDefinitionException e) {
+            log.debug("extractFeignClient bean {}", name, e);
+            return null;
+        }
+    }
+
+    static String getComponentPath(Package rootPackage, Class<?> componentType) {
+        if (rootPackage != null) {
+            var rootPackageName = rootPackage.getName();
+            var typePackageName = componentType.getPackage().getName();
+            if (typePackageName.startsWith(rootPackageName)) {
+                var path = typePackageName.substring(rootPackageName.length());
+                return path.startsWith(".") ? path.substring(1) : path;
+            }
+        }
+        return "";
     }
 }

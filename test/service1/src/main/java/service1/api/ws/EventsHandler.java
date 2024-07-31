@@ -1,4 +1,4 @@
-package service1.internal.ws.EventsHandler;
+package service1.api.ws;
 
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
