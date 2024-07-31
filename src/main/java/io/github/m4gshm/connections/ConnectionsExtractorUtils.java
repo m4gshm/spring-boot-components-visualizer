@@ -1,9 +1,11 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -12,22 +14,23 @@ import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedAnnotation;
+import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedRepeatableAnnotations;
 
 @Slf4j
 @UtilityClass
@@ -80,14 +83,32 @@ public class ConnectionsExtractorUtils {
 
     }
 
-    static <T extends Annotation, E extends AnnotatedElement> Map<T, E> getAnnotationMap(
-            Collection<E> elements, Supplier<Class<T>> supplier
+    static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(
+            Collection<E> elements, Supplier<Class<A>> supplier
+    ) {
+        return getAnnotations(elements, supplier, AnnotatedElementUtils::getAllMergedAnnotations);
+    }
+
+    static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
+            Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
+    ) {
+        var annotationClass = getAnnotationClass(supplier);
+        if (annotationClass == null) {
+            return Set.of();
+        } else {
+            return elements.stream()
+                    .map(element -> extractor.apply(element, annotationClass)).flatMap(Collection::stream)
+                    .collect(toCollection(LinkedHashSet::new));
+        }
+    }
+
+    static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
+            Collection<E> elements, Supplier<Class<A>> supplier
     ) {
         var annotationClass = getAnnotationClass(supplier);
         return annotationClass == null ? Map.of() : elements.stream()
-                .flatMap(element -> ofNullable(getMergedAnnotation(element, annotationClass))
-                        .map(annotation -> entry(annotation, element)))
-                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (l, r) -> l, LinkedHashMap::new));
+                .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
+
     }
 
     private static <T extends Annotation> Class<T> getAnnotationClass(Supplier<Class<T>> supplier) {
@@ -111,7 +132,7 @@ public class ConnectionsExtractorUtils {
         return methods;
     }
 
-    public static Collection<Components.HttpMethod> extractControllerHttpMethods(Class<?> beanType) {
+    public static Collection<HttpMethod> extractControllerHttpMethods(Class<?> beanType) {
         var restController = getAnnotation(beanType, () -> Controller.class);
         if (restController == null) {
             return List.of();
@@ -119,10 +140,10 @@ public class ConnectionsExtractorUtils {
         var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
                 .map(RequestMapping::path)
                 .flatMap(Arrays::stream).findFirst().orElse("");
-        return getAnnotationMap(getMethods(beanType), () -> RequestMapping.class).keySet().stream().flatMap(requestMapping -> {
+        return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream().flatMap(requestMapping -> {
             var methods = getHttpMethods(requestMapping);
             return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
-                    .flatMap(path -> methods.stream().map(method -> Components.HttpMethod.builder().url(path).method(method).build()));
+                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().url(path).method(method).build()));
         }).collect(toCollection(LinkedHashSet::new));
     }
 

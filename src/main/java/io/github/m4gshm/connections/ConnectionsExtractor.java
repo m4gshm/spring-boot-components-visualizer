@@ -3,7 +3,6 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory.MethodHandler;
 import feign.MethodMetadata;
 import feign.Target;
-import io.github.m4gshm.connections.Components.HttpMethod;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.Builder;
@@ -15,7 +14,6 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.annotation.JmsListener;
-import org.springframework.jms.annotation.JmsListeners;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -29,6 +27,7 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getMergedRepeatableAnnotationsMap;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasAnnotation;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasMainMethod;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
@@ -39,7 +38,6 @@ import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
-import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.ofNullable;
 
 @Slf4j
@@ -51,22 +49,19 @@ public class ConnectionsExtractor {
         return "FeignInvocationHandler".equals(handlerClass.getSimpleName());
     }
 
-    private static List<Components.JmsListener> getMethodJmsListeners(Class<?> beanType) {
-        try {
-            return stream(beanType.getMethods()).flatMap(m -> concat(
-                    ofNullable(m.getAnnotation(JmsListener.class)),
-                    ofNullable(m.getAnnotation(JmsListeners.class))
-                            .map(JmsListeners::value).flatMap(Stream::of)
-            ).map(l -> newJmsListener(m, l))).filter(Objects::nonNull).collect(toList());
-        } catch (NoClassDefFoundError e) {
-            log.debug("getJmsListenerMethods", e);
-        }
-        return List.of();
+    private static List<JmsClientListener> getMethodJmsListeners(Class<?> beanType) {
+
+        var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
+
+        return annotationMap.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> Map.entry(entry.getKey(), annotation)))
+                .map(entry -> newJmsListener(entry.getKey(), entry.getValue())).collect(toList());
+
     }
 
-    private static Components.JmsListener newJmsListener(Method m, JmsListener jmsListener) {
-        return Components.JmsListener.builder()
-                .type(Components.JmsListener.Type.JmsListenerMethod)
+    private static JmsClientListener newJmsListener(Method m, JmsListener jmsListener) {
+        return JmsClientListener.builder()
+                .type(JmsClientListener.Type.JmsListenerMethod)
                 .name(m.getName())
                 .destination(jmsListener.destination())
                 .build();
@@ -155,7 +150,7 @@ public class ConnectionsExtractor {
     public Components getComponents() {
 //        var httpInterfaces = new LinkedHashMap<String, HttpInterface>();
 //        var httpClients = new LinkedHashMap<String, Components.HttpClient>();
-//        var jmsListeners = new HashMap<String, Components.JmsListener>();
+//        var jmsListeners = new HashMap<String, JmsListener>();
         var allBeans = asList(context.getBeanDefinitionNames());
 
         var componentCache = new HashMap<String, Component>();
@@ -241,5 +236,25 @@ public class ConnectionsExtractor {
         private final String name;
         private final String url;
         private final List<HttpMethod> httpMethods;
+    }
+
+
+    @Data
+    @Builder(toBuilder = true)
+    public static class HttpMethod {
+        private String url;
+        private String method;
+    }
+
+    @Data
+    @Builder
+    public static class JmsClientListener {
+        private String name;
+        private String destination;
+        private Type type;
+
+        public enum Type {
+            JmsListenerMethod
+        }
     }
 }
