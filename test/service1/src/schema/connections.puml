@@ -6,6 +6,7 @@ package "api" as api {
 }
 package "service" as service {
   package "external" as service.external {
+    [coreService] as coreService
     package "jms" as service.external.jms {
       [jmsQueue1Listener] as jmsQueue1Listener
     }
@@ -26,10 +27,29 @@ package "internal" as internal {
     }
   }
 }
-mainController ..> service2LegacyImpl
+mainController ..> coreService
+coreService ..> service2FeignClient
+coreService ..> service2LegacyImpl
+jmsQueue1Listener ..> coreService
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 eventsHandler ..> webSocketConfig
+rectangle "in" as in {
+  cloud "jms" as in.jms {
+    queue "jmsQueue1Listener" as in.jmsQueue1Listener {
+      interface "queue1" as jmsQueue1Listener.in.jms.queue1
+      jmsQueue1Listener.in.jms.queue1 )..> jmsQueue1Listener
+      interface "queue2" as jmsQueue1Listener.in.jms.queue2
+      jmsQueue1Listener.in.jms.queue2 )..> jmsQueue1Listener
+    }
+  }
+  cloud "http" as in.http {
+    interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
+    mainController.in.http.GET..api.v1.req )..> mainController
+    interface "*:/api/v1/" as mainController.in.http...api.v1.
+    mainController.in.http...api.v1. )..> mainController
+  }
+}
 rectangle "out" as out {
   cloud "http" as out.http {
     cloud "standalone-service2" as out.standalone.service2 {
@@ -40,14 +60,6 @@ rectangle "out" as out {
       interface "GET:/{id}" as service2FeignClient.out.http.GET..id
       service2FeignClient ..( service2FeignClient.out.http.GET..id
     }
-  }
-}
-rectangle "in" as in {
-  cloud "http" as in.http {
-    interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
-    mainController.in.http.GET..api.v1.req )..> mainController
-    interface "*:/api/v1/" as mainController.in.http...api.v1.
-    mainController.in.http...api.v1. )..> mainController
   }
 }
 @enduml

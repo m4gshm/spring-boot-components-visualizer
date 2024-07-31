@@ -3,6 +3,7 @@ package io.github.m4gshm.connections;
 import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
@@ -161,4 +163,26 @@ public class ConnectionsExtractorUtils {
         return (root.endsWith("/") || path.startsWith("/")) ? root + path : root + "/" + path;
     }
 
+    static boolean isSpringBootMainClass(Class<?> beanType) {
+        return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
+    }
+
+    static Object getFieldValue(String name, Object object) {
+        Field field;
+        try {
+            field = object.getClass().getDeclaredField(name);
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+        field.setAccessible(true);
+        try {
+            return field.get(object);
+        } catch (IllegalAccessException e) {
+            return null;
+        }
+    }
+
+    static String getHttpInterfaceName(String method, String url) {
+        return method == null || method.isEmpty() ? url : method + ":" + url;
+    }
 }

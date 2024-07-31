@@ -5,19 +5,15 @@ import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.Interface.InterfaceBuilder;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.annotation.JmsListener;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Collection;
 import java.util.HashMap;
@@ -28,12 +24,11 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getMergedRepeatableAnnotationsMap;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasAnnotation;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.hasMainMethod;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
+import static io.github.m4gshm.connections.model.Interface.Type.jms;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -45,49 +40,15 @@ import static java.util.stream.Stream.ofNullable;
 public class ConnectionsExtractor {
     private final ConfigurableApplicationContext context;
 
-    private static boolean isFeignHandler(Class<? extends InvocationHandler> handlerClass) {
-        return "FeignInvocationHandler".equals(handlerClass.getSimpleName());
-    }
-
-    private static List<JmsClientListener> getMethodJmsListeners(Class<?> beanType) {
-
+    private static List<JmsClientListener> extractMethodJmsListeners(Class<?> beanType) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
-
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> Map.entry(entry.getKey(), annotation)))
-                .map(entry -> newJmsListener(entry.getKey(), entry.getValue())).collect(toList());
-
-    }
-
-    private static JmsClientListener newJmsListener(Method m, JmsListener jmsListener) {
-        return JmsClientListener.builder()
-                .type(JmsClientListener.Type.JmsListenerMethod)
-                .name(m.getName())
-                .destination(jmsListener.destination())
-                .build();
-    }
-
-    @SneakyThrows
-    private static Target getFeignTarget(Class<? extends InvocationHandler> handlerClass, InvocationHandler handler) {
-        var targetField = handlerClass.getDeclaredField("target");
-        targetField.setAccessible(true);
-        return (Target) targetField.get(handler);
-    }
-
-    private static String getComponentPath(Package rootPackage, Class<?> beanType) {
-        if (rootPackage != null) {
-            var rootPackageName = rootPackage.getName();
-            var typePackageName = beanType.getPackage().getName();
-            if (typePackageName.startsWith(rootPackageName)) {
-                var path = typePackageName.substring(rootPackageName.length());
-                return path.startsWith(".") ? path.substring(1) : path;
-            }
-        }
-        return "";
-    }
-
-    private static boolean isSpringBootMainClass(Class<?> beanType) {
-        return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
+                .map(entry -> JmsClientListener.builder()
+                        .type(JmsClientListener.Type.JmsListenerMethod)
+                        .name(entry.getKey().getName())
+                        .destination(entry.getValue().destination())
+                        .build()).collect(toList());
     }
 
     private static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
@@ -98,21 +59,25 @@ public class ConnectionsExtractor {
             }
             var handler = Proxy.getInvocationHandler(bean);
             var handlerClass = handler.getClass();
-            if (!isFeignHandler(handlerClass)) {
+            if (!"FeignInvocationHandler".equals(handlerClass.getSimpleName())) {
                 return null;
             }
 
-            var httpMethods = ((Collection<?>) ((Map) getFieldValue("dispatch", handler)).values()
+            var httpMethods = ((Collection<?>) ((Map) ConnectionsExtractorUtils.getFieldValue("dispatch", handler)).values()
             ).stream().map(value -> (MethodHandler) value).map(value -> {
-                var buildTemplateFromArgs = getFieldValue("buildTemplateFromArgs", value);
-                var metadata = (MethodMetadata) getFieldValue("metadata", buildTemplateFromArgs);
+                var buildTemplateFromArgs = ConnectionsExtractorUtils.getFieldValue("buildTemplateFromArgs", value);
+                var metadata = (MethodMetadata) ConnectionsExtractorUtils.getFieldValue("metadata", buildTemplateFromArgs);
                 var template = metadata.template();
                 var method = template.method();
                 var url = template.url();
                 return HttpMethod.builder().method(method).url(url).build();
             }).collect(toList());
 
-            var target = getFeignTarget(handlerClass, handler);
+            var target = (Target) ConnectionsExtractorUtils.getFieldValue("target", handler);
+            if (target == null) {
+                //log
+                return null;
+            }
             var type = target.type();
 
             return FeignClient.builder()
@@ -128,33 +93,24 @@ public class ConnectionsExtractor {
         }
     }
 
-    private static Object getFieldValue(String name, Object object) {
-        Field dispatch;
-        try {
-            dispatch = object.getClass().getDeclaredField(name);
-        } catch (NoSuchFieldException e) {
-            return null;
-        }
-        dispatch.setAccessible(true);
-        try {
-            return dispatch.get(object);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
 
-    private static String httpInterfaceName(String method, String url) {
-        return method == null || method.isEmpty() ? url : method + ":" + url;
+    private static String getComponentPath(Package rootPackage, Class<?> beanType) {
+        if (rootPackage != null) {
+            var rootPackageName = rootPackage.getName();
+            var typePackageName = beanType.getPackage().getName();
+            if (typePackageName.startsWith(rootPackageName)) {
+                var path = typePackageName.substring(rootPackageName.length());
+                return path.startsWith(".") ? path.substring(1) : path;
+            }
+        }
+        return "";
     }
 
     public Components getComponents() {
-//        var httpInterfaces = new LinkedHashMap<String, HttpInterface>();
-//        var httpClients = new LinkedHashMap<String, Components.HttpClient>();
-//        var jmsListeners = new HashMap<String, JmsListener>();
         var allBeans = asList(context.getBeanDefinitionNames());
 
         var componentCache = new HashMap<String, Component>();
-        var rootComponent = allBeans.stream().filter(beanName1 -> isSpringBootMainClass(context.getType(beanName1)))
+        var rootComponent = allBeans.stream().filter(beanName1 -> ConnectionsExtractorUtils.isSpringBootMainClass(context.getType(beanName1)))
                 .map(beanName -> newComponent(beanName, null, componentCache))
                 .filter(Objects::nonNull).findFirst().orElse(null);
         var rootPackage = rootComponent != null ? rootComponent.getType().getPackage() : null;
@@ -191,6 +147,11 @@ public class ConnectionsExtractor {
             return null;
         }
 
+        var jmsClientListeners = extractMethodJmsListeners(componentType);
+        var inJmsInterface = jmsClientListeners.stream().map(jmsClientListener -> {
+            return Interface.builder().direction(in).type(jms).group(componentName).name(jmsClientListener.destination).build();
+        });
+
         var dependencies = feignClient != null ? List.<Component>of() : stream(context.getBeanFactory()
                 .getDependenciesForBean(componentName))
                 .map(dep -> newComponent(dep, rootPackage, cache))
@@ -199,13 +160,13 @@ public class ConnectionsExtractor {
         var outHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                 .filter(Objects::nonNull)
                 .flatMap(Collection::stream)
-                .map(httpMethod -> httpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                .map(interfaceName -> Interface.builder().group(client.getUrl()).name(interfaceName).direction(out).type(http).build())
+                .map(httpMethod -> ConnectionsExtractorUtils.getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
+                .map(interfaceName -> Interface.builder().direction(out).type(http).group(client.getUrl()).name(interfaceName).build())
         );
 
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
-                .map(httpMethod -> httpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                .map(interfaceName -> Interface.builder().name(interfaceName).direction(in).type(http).build());
+                .map(httpMethod -> ConnectionsExtractorUtils.getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
+                .map(interfaceName -> Interface.builder().direction(in).type(http).name(interfaceName).build());
 
         var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
 
@@ -213,7 +174,7 @@ public class ConnectionsExtractor {
                 .name(name)
                 .path(getComponentPath(rootPackage, componentType))
                 .type(componentType)
-                .interfaces(Stream.of(inHttpInterfaces, outHttpInterface).flatMap(s -> s).collect(toList()))
+                .interfaces(Stream.of(inHttpInterfaces, inJmsInterface, outHttpInterface).flatMap(s -> s).collect(toList()))
                 .dependencies(dependencies)
                 .build();
 

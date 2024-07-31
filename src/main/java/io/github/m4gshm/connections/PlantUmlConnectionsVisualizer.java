@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 
@@ -15,6 +16,7 @@ import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.String.format;
@@ -201,7 +203,8 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                         byGroup.forEach((group, interfaceComponentLink) -> {
                             var wrap = group != null && !group.isEmpty();
                             var depthDelta = wrap ? 1 : 0;
-                            printPackage(wrap, out, depth + 1 + depthDelta, group, getElementId(directionName, group), cloud, () ->
+                            var packageType = type == Type.jms ? queue : cloud;
+                            printPackage(wrap, out, depth + 1 + depthDelta, group, getElementId(directionName, group), packageType, () ->
                                     interfaceComponentLink.forEach(entry -> {
                                         var anInterface = entry.getKey();
                                         var component = entry.getValue();
@@ -227,63 +230,11 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     public enum PackageOutType {
         rectangle("rectangle"),
         pack("package"),
-        cloud("cloud");
+        cloud("cloud"),
+        queue("queue"),
+        database("database"),
+        ;
 
         private final String code;
     }
-
-//    private void visualizeStructured(Components components, StringBuilder out) {
-//        var httpInterfaces = components.getHttpInterfaces();
-//        if (!httpInterfaces.isEmpty()) {
-//            out.append("cloud \"REST API\" {\n");
-//            httpInterfaces.forEach((beanName, httpInterface) -> {
-//                var name = getHttpInterfaceName(beanName, httpInterface);
-//                out.append(format("\tinterface \"%s\" as %s\n", name, pumlAlias(name)));
-//            });
-//            out.append("}\n");
-//
-//            httpInterfaces.forEach((beanName, httpInterface) -> {
-//                var name = getHttpInterfaceName(beanName, httpInterface);
-//                out.append(format("%s )..> %s\n", pumlAlias(name), pumlAlias(applicationName)));
-//            });
-//        }
-//
-//        var jmsListeners = components.getJmsListeners();
-//        if (!jmsListeners.isEmpty()) {
-//            out.append("queue \"Input queues\" {\n");
-//            for (var jmsQueue : jmsListeners.values()) {
-//                out.append(format("\tqueue \"%s\" as %s\n", jmsQueue.getDestination(), pumlAlias(jmsQueue.getName())));
-//            }
-//            out.append("}\n");
-//
-//            for (var jmsQueue : jmsListeners.values()) {
-//                out.append(format("%s ..> %s: jms\n", pumlAlias(jmsQueue.getName()), pumlAlias(applicationName)));
-//            }
-//        }
-//
-//        var httpClients = components.getHttpClients();
-//        if (!(httpClients.isEmpty())) {
-//            out.append("cloud \"H2H Services\" {\n");
-//            for (var target : httpClients.values()) {
-//                out.append(format("\tcomponent \"%s\" as %s\n",
-//                        target.getName(),
-//                        pumlAlias(target.getName()))
-//                );
-//            }
-//
-//            out.append("}\n");
-//
-//            for (var target : httpClients.values()) {
-//                out.append(format("%s ..> %s: http\n", pumlAlias(applicationName), pumlAlias(target.getName())));
-//            }
-//        }
-//
-//        //database postgres
-//        //
-//        //package "File storages" {
-//        //    component  "minio"
-//        //}
-//        //
-//    }
-
 }
