@@ -15,9 +15,9 @@ configurations.annotationProcessor {
 dependencies {
     val springBootVer = "2.7.18"
 
-    compileOnly("org.projectlombok:lombok:1.18.30")
+    compileOnly("org.projectlombok:lombok:1.18.34")
 
-    implementation(project(":"))
+    api(project(":"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
 //    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0")
@@ -30,6 +30,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVer")
+    testRuntimeOnly("org.apache.commons:commons-lang3:3.15.0")
 
 }
 

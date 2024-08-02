@@ -16,9 +16,11 @@ configurations.annotationProcessor {
 dependencies {
     compileOnly("org.projectlombok:lombok:1.18.34")
 
-    implementation("com.google.guava:guava:33.2.1-jre")
     implementation("org.slf4j:slf4j-api:2.0.9")
-    implementation("org.apache.bcel:bcel:6.10.0")
+
+    api("com.google.guava:guava:33.2.1-jre")
+    api("org.apache.bcel:bcel:6.10.0")
+    api("org.apache.commons:commons-lang3:3.15.0")
 
     val springBootVer = "2.7.18"
     implementation("org.springframework.boot:spring-boot:$springBootVer")

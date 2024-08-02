@@ -6,13 +6,19 @@ import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
-import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.*;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -20,7 +26,9 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
@@ -30,19 +38,19 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private final boolean simple;
 
     public static String pumlAlias(String name) {
-        var onRemove = List.of("*", "$", "{", "}", " ").stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
-        var onEscape = List.of("-", "/", ":").stream().reduce((l, r) -> l + "|" + r).orElse("");
+        var onRemove = regExp(List.of("*", "$", "{", "}", " ", "(", ")", "#"));
+        var onEscape = regExp(List.of("-", "/", ":"));
         String s = name.replaceAll(onRemove, "").replaceAll(onEscape, ".");
         return s;
+    }
+
+    private static String regExp(List<String> strings) {
+        return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
     }
 
     private static String getInterfaceId(Component component, Interface anInterface) {
         return getElementId(component.getName(), getElementId(anInterface.getDirection().name(),
                 anInterface.getType().name(), anInterface.getName()));
-    }
-
-    private static String getComponentId(Component component) {
-        return pumlAlias(component.getName());
     }
 
     private static void printPackage(StringBuilder out, int indent, Package pack) {
@@ -121,11 +129,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
     private static void printComponent(StringBuilder out, String prefix, Component component) {
         var componentName = component.getName();
-        printUniqueComponent(out, prefix, componentName, componentName);
-    }
-
-    private static void printUniqueComponent(StringBuilder out, String prefix, String name, String id) {
-        out.append(prefix + format("[%s] as %s\n", name, id));
+        out.append(prefix + format("[%s] as %s\n", componentName, pumlAlias(componentName)));
     }
 
     @Override
@@ -145,21 +149,21 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private void visualize(Collection<Component> components, StringBuilder out) {
         var depth = 0;
 
-        var packages = distinctPackages(INDENT.repeat(depth), components.stream().map(bean -> {
-            var beanPath = bean.getPath();
+        var packages = distinctPackages(INDENT.repeat(depth), components.stream().map(component -> {
+            var componentPath = component.getPath();
 
-            var reversePathBuilders = reverse(asList(beanPath.split("\\."))).stream()
+            var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
                     .map(packageName -> Package.builder().name(packageName))
                     .collect(toList());
 
-            reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(bean)));
+            reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(component)));
 
             var aPackage = reversePathBuilders.stream().reduce((l, r) -> {
                 var lPack = l.build();
                 r.packages(singletonList(lPack));
                 return r;
             }).map(Package.PackageBuilder::build).orElse(
-                    Package.builder().name(beanPath).components(singletonList(bean)).build()
+                    Package.builder().name(componentPath).components(singletonList(component)).build()
             );
             return aPackage;
 
@@ -171,7 +175,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
         components.forEach(component -> {
             component.getDependencies().stream().map(Component::getName).forEach(dependency -> {
-                out.append(format("%s ..> %s\n", getComponentId(component), pumlAlias(dependency)));
+                out.append(format("%s ..> %s\n", pumlAlias(component.getName()), pumlAlias(dependency)));
             });
         });
 
@@ -205,7 +209,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                     out.append(INDENT.repeat(depth + 2 + depthDelta));
                                     out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
                                     out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                    var componentId = getComponentId(component);
+                                    var componentId = pumlAlias(component.getName());
                                     if (direction == in) {
                                         out.append(format("%s )..> %s\n", interfaceId, componentId));
                                     } else {

@@ -21,6 +21,7 @@ package "service" as service {
     }
     package "ws" as service.external.ws {
       [service2StreamClientImpl] as service2StreamClientImpl
+      [service.stream.client-service1.service.external.ws.Service2StreamClientImpl$Properties] as service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties
     }
   }
 }
@@ -31,7 +32,10 @@ coreService ..> standaloneService2Api
 jmsQueue1Listener ..> coreService
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
-eventsHandler ..> webSocketConfig
+service2StreamClientImpl ..> service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties
+service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> org.springframework.boot.context.internalConfigurationPropertiesBinder
+service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> org.springframework.boot.context.properties.BoundConfigurationProperties
+service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> defaultsBindHandlerAdvisor
 rectangle "in" as in {
   cloud "http" as in.http {
     interface "GET:/api/v1/req" as mainController.in.http.GET..api.v1.req
@@ -62,6 +66,18 @@ rectangle "out" as out {
       interface "GET:/{id}" as service2FeignClient.out.http.GET..id
       service2FeignClient ..( service2FeignClient.out.http.GET..id
     }
+  }
+  cloud "web socket" as out.websocket {
+    interface "ws://service2" as service2StreamClientImpl.out.ws.ws...service2
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service2
+    interface "ws://service3" as service2StreamClientImpl.out.ws.ws...service3
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service3
+    interface "ws://service2-value-inject" as service2StreamClientImpl.out.ws.ws...service2.value.inject
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service2.value.inject
+    interface "ws://defaultURI-static" as service2StreamClientImpl.out.ws.ws...defaultURI.static
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...defaultURI.static
+    interface "ws://service-property-injected" as service2StreamClientImpl.out.ws.ws...service.property.injected
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service.property.injected
   }
 }
 @enduml

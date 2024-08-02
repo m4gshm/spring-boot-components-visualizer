@@ -2,7 +2,12 @@ package service1.service.external.ws;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.ConstructorBinding;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.CloseStatus;
@@ -13,6 +18,7 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
@@ -22,10 +28,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@EnableConfigurationProperties(Service2StreamClientImpl.Properties.class)
 public class Service2StreamClientImpl implements AutoCloseable {
 
     private final WebSocketClient webSocketClient;
-    private volatile Future<WebSocketSession> sessionCompletableFuture;
+    private final Properties properties;
+    @Value("${service2.url:ws://service2-value-inject}")
+    private String service2Url;
+    private volatile List<Future<WebSocketSession>> sessionCompletableFuture;
 
     private static void close(Future<WebSocketSession> subscribed) {
         if (subscribed == null) {
@@ -45,29 +55,60 @@ public class Service2StreamClientImpl implements AutoCloseable {
         }
     }
 
+    private static URI defaultURI() {
+        return URI.create("ws://defaultURI-static");
+    }
+
+    private static URI currentURI() {
+        return URI.create("ws://currentURI");
+    }
+
     @EventListener
     public void onEvent(ApplicationReadyEvent event) {
         sessionCompletableFuture = subscribe();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        Runtime.getRuntime().addShutdownHook(new Thread(this::closeAll));
+    }
+
+    private void closeAll() {
+        for (var webSocketSessionFuture : sessionCompletableFuture) {
             try {
-                close(sessionCompletableFuture);
+                close(webSocketSessionFuture);
             } catch (Exception e) {
                 log.error("close websocket session in shutdown hook", e);
             }
-        }));
+        }
     }
 
-    public Future<WebSocketSession> subscribe() {
-        return webSocketClient.doHandshake(new AbstractWebSocketHandler() {
+    public List<Future<WebSocketSession>> subscribe() {
+        var webSocketHandler = new AbstractWebSocketHandler() {
             @Override
             public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
                 log.error("service2 subscribe error, session {}", session.getId(), exception);
             }
-        }, new WebSocketHttpHeaders(), URI.create("ws://service2"));
+        };
+        var uri = URI.create(service2Url);
+        var servUrl = "ws://service3";
+        return List.of(
+                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create("ws://service2")),
+                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create(servUrl)),
+                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), uri),
+                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), defaultURI()),
+                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create(properties.serviceUrl))
+        );
     }
 
     @Override
     public void close() {
-        close(this.sessionCompletableFuture);
+        closeAll();
+    }
+
+    @ConstructorBinding
+    @ConfigurationProperties("service.stream.client")
+    public static class Properties {
+        private final String serviceUrl;
+
+        public Properties(@DefaultValue("ws://service-property-injected") String serviceUrl) {
+            this.serviceUrl = serviceUrl;
+        }
     }
 }

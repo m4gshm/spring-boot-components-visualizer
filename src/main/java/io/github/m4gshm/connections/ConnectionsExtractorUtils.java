@@ -21,7 +21,12 @@ import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -30,10 +35,12 @@ import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.toCollection;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
-import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedAnnotation;
+import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedRepeatableAnnotations;
 
 @Slf4j
@@ -77,7 +84,7 @@ public class ConnectionsExtractorUtils {
             return null;
         }
         T annotation;
-        while ((annotation = getMergedAnnotation(aClass, annotationClass)) == null) {
+        while ((annotation = findMergedAnnotation(aClass, annotationClass)) == null) {
             aClass = aClass.getSuperclass();
             if (aClass == null || Object.class.equals(aClass)) {
                 break;
@@ -169,7 +176,7 @@ public class ConnectionsExtractorUtils {
         return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
     }
 
-    static Object getFieldValue(String name, Object object) {
+    static Object getFieldValue(Object object, String name) {
         var aClass = object.getClass();
         var field = getField(name, aClass);
         if (field == null) {
@@ -219,17 +226,17 @@ public class ConnectionsExtractorUtils {
                 return null;
             }
 
-            var httpMethods = ((Collection<?>) ((Map) getFieldValue("dispatch", handler)).values()
+            var httpMethods = ((Collection<?>) ((Map) getFieldValue(handler, "dispatch")).values()
             ).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
-                var buildTemplateFromArgs = getFieldValue("buildTemplateFromArgs", value);
-                var metadata = (MethodMetadata) getFieldValue("metadata", buildTemplateFromArgs);
+                var buildTemplateFromArgs = getFieldValue(value, "buildTemplateFromArgs");
+                var metadata = (MethodMetadata) getFieldValue(buildTemplateFromArgs, "metadata");
                 var template = metadata.template();
                 var method = template.method();
                 var url = template.url();
                 return HttpMethod.builder().method(method).url(url).build();
             }).collect(toList());
 
-            var target = (Target) getFieldValue("target", handler);
+            var target = (Target) getFieldValue(handler, "target");
             if (target == null) {
                 //log
                 return null;
