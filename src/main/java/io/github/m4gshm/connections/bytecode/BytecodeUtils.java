@@ -12,8 +12,6 @@ import org.apache.bcel.classfile.ConstantMethodType;
 import org.apache.bcel.classfile.ConstantMethodref;
 import org.apache.bcel.classfile.ConstantNameAndType;
 import org.apache.bcel.classfile.ConstantPool;
-import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.ALOAD;
 import org.apache.bcel.generic.ASTORE;
 import org.apache.bcel.generic.CHECKCAST;
@@ -23,12 +21,9 @@ import org.apache.bcel.generic.INVOKEDYNAMIC;
 import org.apache.bcel.generic.INVOKEINTERFACE;
 import org.apache.bcel.generic.INVOKESTATIC;
 import org.apache.bcel.generic.INVOKEVIRTUAL;
-import org.apache.bcel.generic.Instruction;
 import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.InstructionList;
 import org.apache.bcel.generic.InvokeInstruction;
 import org.apache.bcel.generic.LDC;
-import org.apache.bcel.generic.ReturnInstruction;
 import org.apache.bcel.generic.Type;
 
 import java.lang.invoke.CallSite;
@@ -37,19 +32,17 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URI;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Set;
 import java.util.stream.IntStream;
 
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredMethod;
-import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.Status.notAccessible;
-import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.Status.notFound;
-import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.notAccessible;
-import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.notFound;
-import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.success;
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.Status.notAccessible;
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.Status.notFound;
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notAccessible;
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notFound;
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.success;
 import static io.github.m4gshm.connections.bytecode.UnsupportedEvalException.newUnsupportedEvalException;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.stream.Collectors.toList;
@@ -64,10 +57,10 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 
 @Slf4j
 @UtilityClass
-public class BcelUtils {
+public class BytecodeUtils {
 
-    public static CallResult<Object> eval(
-            Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
+    public static CallResult<Object> eval(Object object, InstructionHandle instructionHandle,
+                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof LDC) {
@@ -137,9 +130,9 @@ public class BcelUtils {
         throw new UnsupportedOperationException("invoke: " + instruction.toString(constantPoolGen.getConstantPool()));
     }
 
-    private static CallResult<Object> callBootstrapMethod(Object object,
-                                                          InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
+    static CallResult<Object> callBootstrapMethod(Object object,
+                                                  InstructionHandle instructionHandle, InvokeInstruction instruction,
+                                                  ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = cp.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
         var nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
@@ -169,7 +162,7 @@ public class BcelUtils {
                     } else if (constant instanceof ConstantMethodHandle) {
                         return newMethodHandle((ConstantMethodHandle) constant, cp, lookup);
                     } else {
-                        throw new BcelException("unsupported bootstrap method argument type " + constant);
+                        throw new BytecodeEvalException("unsupported bootstrap method argument type " + constant);
                     }
                 }
         ).collect(toList());
@@ -182,7 +175,7 @@ public class BcelUtils {
         try {
             metafactory = (CallSite) handler.invokeWithArguments(args);
         } catch (Throwable e) {
-            throw new BcelException(e);
+            throw new BytecodeEvalException(e);
         }
 
         var methodHandle = metafactory.dynamicInvoker();
@@ -190,7 +183,7 @@ public class BcelUtils {
         try {
             result = methodHandle.invoke(object);
         } catch (Throwable e) {
-            throw new BcelException(e);
+            throw new BytecodeEvalException(e);
         }
 
         return success(result, instructionHandle, instructionHandle);
@@ -216,7 +209,7 @@ public class BcelUtils {
         } else if (referenceKind == REF_invokeStatic) {
             return lookupStatic(lookup, targetClass, methodName, methodSignature);
         } else {
-            throw new BcelException("unsupported method handle referenceKind " + referenceKind);
+            throw new BytecodeEvalException("unsupported method handle referenceKind " + referenceKind);
         }
     }
 
@@ -224,17 +217,16 @@ public class BcelUtils {
         try {
             return lookup.findSpecial(targetClass, methodName, fromMethodDescriptorString(methodSignature, null), targetClass);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new BcelException(e);
+            throw new BytecodeEvalException(e);
         }
     }
-
 
     private static MethodHandle lookupStatic(Lookup lookup, Class<?> targetClass, String name, String signature) {
         MethodType methodType = fromMethodDescriptorString(signature, null);
         try {
             return lookup.findStatic(targetClass, name, methodType);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new BcelException(e);
+            throw new BytecodeEvalException(e);
         }
     }
 
@@ -252,7 +244,7 @@ public class BcelUtils {
         return privateLookup;
     }
 
-    private static Class[] getArgumentTypes(Type[] argumentTypes) {
+    static Class[] getArgumentTypes(Type[] argumentTypes) {
         var args = new Class[argumentTypes.length];
         for (int i = 0; i < argumentTypes.length; i++) {
             var argumentType = argumentTypes[i];
@@ -262,17 +254,17 @@ public class BcelUtils {
         return args;
     }
 
-    private static Class<?> getClassByName(String className) {
+    static Class<?> getClassByName(String className) {
         Class<?> forName;
         try {
             forName = Class.forName(className);
         } catch (ClassNotFoundException e) {
-            throw new BcelException(e);
+            throw new BytecodeEvalException(e);
         }
         return forName;
     }
 
-    private static EvalArgumentsResult evalArguments(
+    static EvalArgumentsResult evalArguments(
             Object object, InstructionHandle instructionHandle,
             int argumentsCount, ConstantPoolGen constantPoolGen,
             BootstrapMethods bootstrapMethods
@@ -286,18 +278,6 @@ public class BcelUtils {
             args[i - 1] = eval.getResult();
         }
         return new EvalArgumentsResult(args, current);
-    }
-
-    public static boolean isUriCreate(Instruction instruction, ConstantPoolGen constantPoolGen) {
-        return instruction instanceof INVOKESTATIC && isUriCreate((INVOKESTATIC) instruction, constantPoolGen);
-    }
-
-    public static boolean isUriCreate(INVOKESTATIC instruction, ConstantPoolGen constantPoolGen) {
-        return isUriCreate(instruction.getClassName(constantPoolGen), instruction.getMethodName(constantPoolGen));
-    }
-
-    public static boolean isUriCreate(String className, String methodName) {
-        return URI.class.getName().equals(className) && methodName.equals("create");
     }
 
     public static CallResult<Object> getFieldValue(Object object, String name,
@@ -337,7 +317,7 @@ public class BcelUtils {
     }
 
     @Data
-    private static class EvalArgumentsResult {
+    static class EvalArgumentsResult {
         private final Object[] result;
         private final InstructionHandle instructionHandle;
     }

@@ -1,6 +1,5 @@
-package io.github.m4gshm.connections;
+package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.bytecode.BcelUtils;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -19,6 +18,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.StreamSupport;
 
+import static io.github.m4gshm.connections.bytecode.BytecodeUtils.eval;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -77,7 +77,7 @@ public class WebsocketClientUtils {
         var uriFound = URI.class.getName().equals(argumentType.getClassName());
         if (uriFound) {
             var prev = instructionHandle.getPrev();
-            var value = BcelUtils.eval(object, prev, constantPoolGen, bootstrapMethods);
+            var value = eval(object, prev, constantPoolGen, bootstrapMethods);
             var result = value.getResult();
             if (result instanceof URI) {
                 var uri = (URI) result;
