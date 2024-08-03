@@ -31,6 +31,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
@@ -174,29 +175,6 @@ public class ConnectionsExtractorUtils {
 
     static boolean isSpringBootMainClass(Class<?> beanType) {
         return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
-    }
-
-    static Object getFieldValue(Object object, String name) {
-        var aClass = object.getClass();
-        var field = getField(name, aClass);
-        if (field == null) {
-            return null;
-        }
-        field.setAccessible(true);
-        try {
-            return field.get(object);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
-
-    private static Field getField(String name, Class<?> aClass) {
-        while (!(aClass == null || Object.class.equals(aClass))) try {
-            return aClass.getDeclaredField(name);
-        } catch (NoSuchFieldException e) {
-            aClass = aClass.getSuperclass();
-        }
-        return null;
     }
 
     static String getHttpInterfaceName(String method, String url) {

@@ -1,14 +1,13 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.bytecode.BcelUtils;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.Const;
 import org.apache.bcel.Repository;
-import org.apache.bcel.classfile.Attribute;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
@@ -41,10 +40,10 @@ import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractCont
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractFeignClient;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractMethodJmsListeners;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getComponentPath;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getFieldValue;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getHttpInterfaceName;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
