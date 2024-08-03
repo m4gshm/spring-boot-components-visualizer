@@ -158,14 +158,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
             reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(component)));
 
-            var aPackage = reversePathBuilders.stream().reduce((l, r) -> {
+            return reversePathBuilders.stream().reduce((l, r) -> {
                 var lPack = l.build();
                 r.packages(singletonList(lPack));
                 return r;
             }).map(Package.PackageBuilder::build).orElse(
                     Package.builder().name(componentPath).components(singletonList(component)).build()
             );
-            return aPackage;
 
         })).values();
 

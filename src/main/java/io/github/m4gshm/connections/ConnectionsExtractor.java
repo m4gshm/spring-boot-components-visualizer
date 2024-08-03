@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections;
 
-import io.github.m4gshm.connections.bytecode.BcelUtils;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.Builder;
@@ -45,6 +44,7 @@ import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
@@ -62,14 +62,6 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @RequiredArgsConstructor
 public class ConnectionsExtractor {
     private final ConfigurableApplicationContext context;
-
-    private static boolean isMethodOfClass(Class<?> expectedClass, String expectedMethodName, String className, String methodName) {
-        return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
-    }
-
-    private static <T> Function<T, T> replace(T onReplace, T replacer) {
-        return component -> component == onReplace ? replacer : component;
-    }
 
     public Components getComponents() {
         var allBeans = asList(context.getBeanDefinitionNames());
@@ -139,40 +131,7 @@ public class ConnectionsExtractor {
                     .filter(component -> WebSocketClient.class.isAssignableFrom(component.getType()))
                     .findFirst().orElse(null);
             if (wsClient != null) try {
-                var javaClass = Repository.lookupClass(componentType);
-                var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-                var methods = javaClass.getMethods();
-                var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-                var wsClientUris = stream(methods).flatMap(method -> {
-                    var code = method.getCode();
-                    var instructionList = new InstructionList(code.getCode());
-
-                    var values = StreamSupport.stream(instructionList.spliterator(), false).map(instructionHandle -> {
-                        var instruction = instructionHandle.getInstruction();
-                        if (instruction instanceof INVOKEINTERFACE) {
-                            var invoke = (InvokeInstruction) instruction;
-
-                            var referenceType = invoke.getReferenceType(constantPoolGen);
-                            var methodName = invoke.getMethodName(constantPoolGen);
-                            var className = referenceType.getClassName();
-
-                            if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) {
-                                try {
-                                    return BcelUtils.getDoHandshakeUri(context.getBean(componentName), instructionHandle, constantPoolGen, method, bootstrapMethods);
-                                } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
-                                         IllegalAccessException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }
-                        }
-                        return null;
-                    }).filter(Objects::nonNull).map(o -> {
-                        Object oResult = o.getResult();
-                        return String.valueOf(oResult);
-                    }).collect(toList());
-
-                    return values.stream();
-                }).filter(Objects::nonNull).collect(toList());
+                var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
 
                 outWsInterfaces = wsClientUris.stream()
                         .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())

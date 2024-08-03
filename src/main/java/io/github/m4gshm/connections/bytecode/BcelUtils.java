@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
-import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.ConstantInvokeDynamic;
 import org.apache.bcel.classfile.ConstantMethodHandle;
 import org.apache.bcel.classfile.ConstantMethodType;
@@ -33,19 +32,16 @@ import org.apache.bcel.generic.ReturnInstruction;
 import org.apache.bcel.generic.Type;
 
 import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaConversionException;
-import java.lang.invoke.LambdaMetafactory;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredMethod;
@@ -55,70 +51,20 @@ import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.notAcce
 import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.notFound;
 import static io.github.m4gshm.connections.bytecode.BcelUtils.CallResult.success;
 import static io.github.m4gshm.connections.bytecode.UnsupportedEvalException.newUnsupportedEvalException;
+import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Stream.concat;
+import static java.util.stream.Stream.of;
 import static org.apache.bcel.Const.CONSTANT_InvokeDynamic;
 import static org.apache.bcel.Const.CONSTANT_NameAndType;
 import static org.apache.bcel.Const.REF_invokeSpecial;
+import static org.apache.bcel.Const.REF_invokeStatic;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_MethodHandle;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 
 @Slf4j
 @UtilityClass
 public class BcelUtils {
-
-    public static CallResult getDoHandshakeUri(
-            Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, Method method,
-            BootstrapMethods bootstrapMethods
-    ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
-        Code code = method.getCode();
-        CallResult value;
-        InvokeInstruction instruction = (InvokeInstruction) instructionHandle.getInstruction();
-        Type[] argumentTypes = instruction.getArgumentTypes(constantPoolGen);
-        if (argumentTypes.length == 3) {
-            var argumentType = argumentTypes[2];
-            var uriFound = URI.class.getName().equals(argumentType.getClassName());
-            //trying to found uri push to stack
-
-            var prev = instructionHandle.getPrev();
-            var prevInstruction = prev.getInstruction();
-            String stringInstr = prevInstruction.toString(constantPoolGen.getConstantPool());
-            if (prevInstruction instanceof INVOKESTATIC) {
-                var prevInvoke = (INVOKESTATIC) prevInstruction;
-                if (isUriCreate(prevInvoke, constantPoolGen)) {
-                    value = eval(object, prev.getPrev(), constantPoolGen, bootstrapMethods);
-                } else {
-                    value = eval(object, prev, constantPoolGen, bootstrapMethods);
-                }
-            } else {
-                value = eval(object, prev, constantPoolGen, bootstrapMethods);
-                var result = value.getResult();
-                if (result instanceof URI) {
-                    var uri = (URI) result;
-                    value = success(uri.toString(), /*todo ???*/null, null);
-                } else {
-                    //log
-                    value = success(result.toString(), /*todo ???*/null, null);
-                }
-            }
-        } else {
-            //log
-            throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
-        }
-        return value;
-    }
-
-    public static InstructionHandle goToReturn(InstructionList instructionList) {
-        InstructionHandle end = instructionList.getEnd();
-        while (!(end.getInstruction() instanceof ReturnInstruction)) {
-            end = end.getPrev();
-        }
-        return end;
-    }
-
-    public static Method getMethod(JavaClass javaClass, String methodName) {
-        return Stream.of(javaClass.getMethods()).filter(method -> method.getName().equals(methodName)).findFirst()
-                .orElseThrow(() -> new RuntimeException("method not found, '" + methodName + "'"));
-    }
 
     public static CallResult<Object> eval(
             Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
@@ -163,7 +109,6 @@ public class BcelUtils {
         throw newUnsupportedEvalException(instruction, constantPoolGen);
     }
 
-
     public static CallResult<Object> getMethodResult(
             Object object, InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen,
             BootstrapMethods bootstrapMethods) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
@@ -184,56 +129,7 @@ public class BcelUtils {
             return callMethod(obj, getClassByName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments,
                     instructionHandle, objectCallResult.getLastInstruction(), constantPoolGen);
         } else if (instruction instanceof INVOKEDYNAMIC) {
-            var cp = constantPoolGen.getConstantPool();
-            var methodInfo = getBootstrapMethod(object, instruction, bootstrapMethods, cp);
-
-//            var methodName1 = methodInfo.getName();
-//            var argumentTypes1 = methodInfo.getArgumentTypes();
-
-
-//            java.lang.invoke.LambdaMetafactory.metafactory(
-//                    MethodHandles.lookup(),
-//                    "get",
-//                    MethodType.genericMethodType(0),
-//
-//            )
-
-            //1: invokeStatic java.lang.invoke.LambdaMetafactory.metafactory (
-            // Ljava.lang.invoke.MethodHandles$Lookup;
-            // Ljava.lang.String;
-            // Ljava.lang.invoke.MethodType;
-            // Ljava.lang.invoke.MethodType;
-            // Ljava.lang.invoke.MethodHandle;
-            // Ljava.lang.invoke.MethodType;
-            // )Ljava.lang.invoke.CallSite;
-            //     Method Arguments:
-            //       0: ()Ljava/lang/Object;
-            //       1: invokeSpecial service1.service.external.ws.Service2StreamClientImpl.lambda$subscribe$0 ()Ljava/net/URI;
-            //       2: ()Ljava/net/URI;
-
-//            MethodHandles.lookup()
-//            Function<String, Boolean> f = (Function<String, Boolean>) LambdaMetafactory.metafactory(
-//                            lookup,
-//                            "apply",
-//                            MethodType.methodType(Function.class),
-//                            methodType.generic(),
-//                            handle,
-//                            methodType)
-//                    .getTarget()
-//                    .invokeExact();
-
-
-//            var evalArgumentsResult1 = evalArguments(object, instructionHandle, argumentTypes1.length,
-//                    constantPoolGen, bootstrapMethods);
-////            var next = evalArgumentsResult.getNextOnEval();
-////            var objectCallResult = eval(object, next, constantPoolGen, bootstrapMethods);
-////            var obj = objectCallResult.getResult();
-//            var obj = evalArgumentsResult.result[0];
-//            InstructionHandle lastInstruction = evalArgumentsResult1.getInstructionHandle();
-//            return callMethod(obj, obj.getClass(), methodName1, argumentTypes1, evalArgumentsResult1.getResult(),
-//                    instructionHandle, lastInstruction, constantPoolGen);
-
-            return success(methodInfo, instructionHandle, instructionHandle);
+            return callBootstrapMethod(object, instructionHandle, instruction, constantPoolGen, bootstrapMethods);
         } else if (instruction instanceof INVOKESTATIC) {
             return callMethod(null, Class.forName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments,
                     instructionHandle, instructionHandle, constantPoolGen);
@@ -241,118 +137,113 @@ public class BcelUtils {
         throw new UnsupportedOperationException("invoke: " + instruction.toString(constantPoolGen.getConstantPool()));
     }
 
-    private static Object getBootstrapMethod(Object object, InvokeInstruction instruction, BootstrapMethods bootstrapMethods, ConstantPool cp) {
+    private static CallResult<Object> callBootstrapMethod(Object object,
+                                                          InstructionHandle instructionHandle, InvokeInstruction instruction,
+                                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
+        var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = cp.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
+        var nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
 
-        int nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
-        var constantNameAndType1 = cp.getConstant(nameAndTypeIndex, ConstantNameAndType.class);
-        String name1 = constantNameAndType1.getName(cp);
-        String signature1 = constantNameAndType1.getSignature(cp);
+        var constantNameAndType = cp.getConstant(nameAndTypeIndex, ConstantNameAndType.class);
+        var interfaceMethodName = constantNameAndType.getName(cp);
 
-        MethodType methodType1 = MethodType.fromMethodDescriptorString(signature1, null);
+        var factoryMethod = fromMethodDescriptorString(constantNameAndType.getSignature(cp), null);
 
         int bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
         var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
-        int bootstrapMethodRef = bootstrapMethod.getBootstrapMethodRef();
-        var constant1 = cp.getConstant(bootstrapMethodRef, CONSTANT_MethodHandle, ConstantMethodHandle.class);
-        int referenceKind1 = constant1.getReferenceKind();
-        var constant2 = cp.getConstant(constant1.getReferenceIndex(), CONSTANT_Methodref, ConstantMethodref.class);
+        var bootstrapMethodHandle = cp.getConstant(bootstrapMethod.getBootstrapMethodRef(), CONSTANT_MethodHandle, ConstantMethodHandle.class);
+        var bootstrapMethodref = cp.getConstant(bootstrapMethodHandle.getReferenceIndex(), CONSTANT_Methodref, ConstantMethodref.class);
 
-        var className = constant2.getClass(cp);
+        var nameAndType = cp.getConstant(bootstrapMethodref.getNameAndTypeIndex(), CONSTANT_NameAndType, ConstantNameAndType.class);
 
-        var nameAndType = cp.getConstant(constant2.getNameAndTypeIndex(), CONSTANT_NameAndType, ConstantNameAndType.class);
-        var name = nameAndType.getName(cp);
-        var signature = nameAndType.getSignature(cp);
-        var argumentTypes = getArgumentTypes(Type.getArgumentTypes(signature));
 
-        MethodType methodType = MethodType.fromMethodDescriptorString(signature, null);
+        var targetClass = getClassByName(bootstrapMethodref.getClass(cp));
+        var referenceKind = bootstrapMethodHandle.getReferenceKind();
 
-        MethodHandles.Lookup lookup = MethodHandles.lookup();
+        var lookup = MethodHandles.lookup();
+        var handler = lookupReference(lookup, referenceKind, targetClass, nameAndType.getName(cp), nameAndType.getSignature(cp));
 
-        //todo check referenceKind1
-        MethodHandle lookupStatic;
-        try {
-            lookupStatic = lookup.findStatic(getClassByName(className), name, methodType);
-        } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new BcelException(e);
-        }
-
-        List<Object> arguments = IntStream.of(bootstrapMethod.getBootstrapArguments()).mapToObj(cp::getConstant).map(c -> {
-                    if (c instanceof ConstantMethodType) {
-                        var constantMethodType = (ConstantMethodType) c;
-                        int descriptorIndex = constantMethodType.getDescriptorIndex();
-                        var constantUtf8 = cp.getConstantUtf8(descriptorIndex).getBytes();
-                        return MethodType.fromMethodDescriptorString(constantUtf8, null);
-                    } else if (c instanceof ConstantMethodHandle) {
-                        var constant = (ConstantMethodHandle) c;
-
-                        int referenceIndex = constant.getReferenceIndex();
-                        int referenceKind = constant.getReferenceKind();
-                        var invokeSpecial = referenceKind == REF_invokeSpecial;
-                        //      static final byte
-                        //            REF_NONE                    = 0,  // null value
-                        //            REF_getField                = 1,
-                        //            REF_getStatic               = 2,
-                        //            REF_putField                = 3,
-                        //            REF_putStatic               = 4,
-                        //            REF_invokeVirtual           = 5,
-                        //            REF_invokeStatic            = 6,
-                        //            REF_invokeSpecial           = 7,
-                        //            REF_newInvokeSpecial        = 8,
-                        //            REF_invokeInterface         = 9,
-                        //            REF_LIMIT                  = 10;
-//
-
-                        var constantMethodref = cp.getConstant(referenceIndex, ConstantMethodref.class);
-
-                        var type = constantMethodref.getClass(cp);
-                        var constantNameAndType = cp.getConstant(constantMethodref.getNameAndTypeIndex(), ConstantNameAndType.class);
-                        var methodName = constantNameAndType.getName(cp);
-                        var methodSignature = constantNameAndType.getSignature(cp);
-
-                        Class<?> targetClass = getClassByName(type);
-                        final MethodHandles.Lookup privateLookup = getPrivateLookup(targetClass, lookup);
-                        if (invokeSpecial) {
-                            MethodHandle special;
-                            try {
-                                special = privateLookup.findSpecial(targetClass, methodName,
-                                        MethodType.fromMethodDescriptorString(methodSignature, null), targetClass);
-                            } catch (NoSuchMethodException | IllegalAccessException e) {
-                                throw new BcelException(e);
-                            }
-                            return special;
-                        } else {
-                            throw new UnsupportedOperationException("getBootstrapMethod, method handle referenceKind " + referenceKind);
-                        }
+        var arguments = IntStream.of(bootstrapMethod.getBootstrapArguments()).mapToObj(cp::getConstant).map(constant -> {
+                    if (constant instanceof ConstantMethodType) {
+                        return newMethodType((ConstantMethodType) constant, cp);
+                    } else if (constant instanceof ConstantMethodHandle) {
+                        return newMethodHandle((ConstantMethodHandle) constant, cp, lookup);
                     } else {
-                        throw new UnsupportedOperationException("getBootstrapMethod, eval arg type of " + c);
+                        throw new BcelException("unsupported bootstrap method argument type " + constant);
                     }
                 }
         ).collect(toList());
 
-        MethodHandles.Lookup privateLookup = getPrivateLookup(methodType1.parameterArray()[0], lookup);
+        var factoryClass = factoryMethod.parameterArray()[0];
+        var privateLookup = getPrivateLookup(lookup, factoryClass);
+        var args = concat(of(privateLookup, interfaceMethodName, factoryMethod), arguments.stream()).collect(toList());
 
         CallSite metafactory;
         try {
-            metafactory = LambdaMetafactory.metafactory(privateLookup, name1, methodType1, (MethodType) arguments.get(0), (MethodHandle) arguments.get(1), (MethodType) arguments.get(2));
-        } catch (LambdaConversionException e) {
-            throw new RuntimeException(e);
-        }
-
-        MethodHandle methodHandle = metafactory.dynamicInvoker();
-        Object invoke;
-        try {
-            invoke = methodHandle.invoke(object);
+            metafactory = (CallSite) handler.invokeWithArguments(args);
         } catch (Throwable e) {
             throw new BcelException(e);
         }
 
-        return invoke;
+        var methodHandle = metafactory.dynamicInvoker();
+        Object result;
+        try {
+            result = methodHandle.invoke(object);
+        } catch (Throwable e) {
+            throw new BcelException(e);
+        }
 
+        return success(result, instructionHandle, instructionHandle);
     }
 
-    private static MethodHandles.Lookup getPrivateLookup(Class<?> targetClass, MethodHandles.Lookup lookup) {
-        final MethodHandles.Lookup privateLookup;
+    private static MethodHandle newMethodHandle(ConstantMethodHandle constant, ConstantPool cp, Lookup lookup) {
+        var constantMethodref = cp.getConstant(constant.getReferenceIndex(), ConstantMethodref.class);
+
+        var constantNameAndType = cp.getConstant(constantMethodref.getNameAndTypeIndex(), ConstantNameAndType.class);
+        var methodName = constantNameAndType.getName(cp);
+        var methodSignature = constantNameAndType.getSignature(cp);
+
+        var targetClass = getClassByName(constantMethodref.getClass(cp));
+        var privateLookup = getPrivateLookup(lookup, targetClass);
+        int referenceKind = constant.getReferenceKind();
+        return lookupReference(privateLookup, referenceKind, targetClass, methodName, methodSignature);
+    }
+
+    private static MethodHandle lookupReference(Lookup lookup, int referenceKind, Class<?> targetClass,
+                                                String methodName, String methodSignature) {
+        if (referenceKind == REF_invokeSpecial) {
+            return lookupSpecial(lookup, targetClass, methodName, methodSignature);
+        } else if (referenceKind == REF_invokeStatic) {
+            return lookupStatic(lookup, targetClass, methodName, methodSignature);
+        } else {
+            throw new BcelException("unsupported method handle referenceKind " + referenceKind);
+        }
+    }
+
+    private static MethodHandle lookupSpecial(Lookup lookup, Class<?> targetClass, String methodName, String methodSignature) {
+        try {
+            return lookup.findSpecial(targetClass, methodName, fromMethodDescriptorString(methodSignature, null), targetClass);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new BcelException(e);
+        }
+    }
+
+
+    private static MethodHandle lookupStatic(Lookup lookup, Class<?> targetClass, String name, String signature) {
+        MethodType methodType = fromMethodDescriptorString(signature, null);
+        try {
+            return lookup.findStatic(targetClass, name, methodType);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new BcelException(e);
+        }
+    }
+
+    private static MethodType newMethodType(ConstantMethodType constantMethodType, ConstantPool cp) {
+        return fromMethodDescriptorString(cp.getConstantUtf8(constantMethodType.getDescriptorIndex()).getBytes(), null);
+    }
+
+    private static Lookup getPrivateLookup(Lookup lookup, Class<?> targetClass) {
+        final Lookup privateLookup;
         try {
             privateLookup = MethodHandles.privateLookupIn(targetClass, lookup);
         } catch (IllegalAccessException e) {
