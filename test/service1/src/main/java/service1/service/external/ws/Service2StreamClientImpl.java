@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -55,12 +56,12 @@ public class Service2StreamClientImpl implements AutoCloseable {
         }
     }
 
-    private static URI defaultURI() {
-        return URI.create("ws://defaultURI-static");
+    private static URI defaultURI(String str) {
+        return URI.create(str);
     }
 
-    private static URI currentURI() {
-        return URI.create("ws://currentURI");
+    private URI currentURI(String str) {
+        return URI.create(str);
     }
 
     @EventListener
@@ -88,12 +89,16 @@ public class Service2StreamClientImpl implements AutoCloseable {
         };
         var uri = URI.create(service2Url);
         var servUrl = "ws://service3";
+        var headers = new WebSocketHttpHeaders();
+        Supplier<URI> s = () -> currentURI("ws://currentURI-supplier");
         return List.of(
-                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create("ws://service2")),
-                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create(servUrl)),
-                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), uri),
-                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), defaultURI()),
-                webSocketClient.doHandshake(webSocketHandler, new WebSocketHttpHeaders(), URI.create(properties.serviceUrl))
+                webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),
+                webSocketClient.doHandshake(webSocketHandler, headers, URI.create(servUrl)),
+                webSocketClient.doHandshake(webSocketHandler, headers, uri),
+                webSocketClient.doHandshake(webSocketHandler, headers, defaultURI("ws://defaultURI-static")),
+                webSocketClient.doHandshake(webSocketHandler, headers, currentURI("ws://currentURI-method")),
+                webSocketClient.doHandshake(webSocketHandler, headers, s.get()),
+                webSocketClient.doHandshake(webSocketHandler, headers, URI.create(properties.serviceUrl))
         );
     }
 

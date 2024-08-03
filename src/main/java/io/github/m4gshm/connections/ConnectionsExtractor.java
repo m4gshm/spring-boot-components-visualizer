@@ -6,7 +6,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bcel.Const;
 import org.apache.bcel.Repository;
+import org.apache.bcel.classfile.Attribute;
+import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
 import org.apache.bcel.generic.InstructionList;
@@ -54,6 +57,7 @@ import static java.util.Collections.unmodifiableSet;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
+import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -139,6 +143,7 @@ public class ConnectionsExtractor {
                 var javaClass = Repository.lookupClass(componentType);
                 var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
                 var methods = javaClass.getMethods();
+                var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
                 var wsClientUris = stream(methods).flatMap(method -> {
                     var code = method.getCode();
                     var instructionList = new InstructionList(code.getCode());
@@ -154,7 +159,7 @@ public class ConnectionsExtractor {
 
                             if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) {
                                 try {
-                                    return BcelUtils.getDoHandshakeUri(context.getBean(componentName), instructionHandle, constantPoolGen, method);
+                                    return BcelUtils.getDoHandshakeUri(context.getBean(componentName), instructionHandle, constantPoolGen, method, bootstrapMethods);
                                 } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                                          IllegalAccessException e) {
                                     throw new RuntimeException(e);
