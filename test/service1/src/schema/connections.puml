@@ -12,7 +12,8 @@ package "service" as service {
   [coreService] as coreService
   package "external" as service.external {
     package "jms" as service.external.jms {
-      [jmsQueue1Listener] as jmsQueue1Listener
+      [jmsQueueListener] as jmsQueueListener
+      [jmsQueueService] as jmsQueueService
     }
     package "rest" as service.external.rest {
       [service2LegacyImpl] as service2LegacyImpl
@@ -28,7 +29,8 @@ mainController ..> coreService
 coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
 coreService ..> standaloneService2Api
-jmsQueue1Listener ..> coreService
+jmsQueueListener ..> coreService
+jmsQueueService ..> jmsTemplate
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 rectangle "in" as in {
@@ -43,11 +45,11 @@ rectangle "in" as in {
     in.ws..events )..> eventsHandler
   }
   cloud "jms" as in.jms {
-    queue "jmsQueue1Listener" as in.jmsQueue1Listener {
-      interface "queue1" as jmsQueue1Listener.in.jms.queue1
-      jmsQueue1Listener.in.jms.queue1 )..> jmsQueue1Listener
-      interface "queue2" as jmsQueue1Listener.in.jms.queue2
-      jmsQueue1Listener.in.jms.queue2 )..> jmsQueue1Listener
+    queue "jmsQueueListener" as in.jmsQueueListener {
+      interface "queue1" as jmsQueueListener.in.jms.queue1
+      jmsQueueListener.in.jms.queue1 )..> jmsQueueListener
+      interface "queue2" as jmsQueueListener.in.jms.queue2
+      jmsQueueListener.in.jms.queue2 )..> jmsQueueListener
     }
   }
 }

@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 
@@ -49,9 +51,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
     }
 
-    private static String getInterfaceId(Component component, Interface anInterface) {
-        var elementId = getElementId(anInterface.getDirection().name(),
-                anInterface.getType().name(), anInterface.getName());
+    private static String getInterfaceId(Interface anInterface) {
+        var direction = getElementId(anInterface.getDirections().stream()
+                .filter(Objects::nonNull)
+                .map(Enum::name)
+                .toArray(String[]::new)
+        );
+        var elementId = getElementId(direction, anInterface.getType().name(), anInterface.getName());
         return getElementId(anInterface.getGroup(), elementId);
     }
 
@@ -192,15 +198,15 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
         var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
-                .collect(
-                        groupingBy(entry -> entry.getKey().getDirection(),
-                                groupingBy(entry -> entry.getKey().getType(),
-                                        groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""))))
+                        .flatMap(Collection::stream).flatMap(anInterface -> anInterface.getDirections()
+                                .stream().map(direction -> entry(direction, entry(anInterface, component))))
+                )
+                .collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
+                        groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse("")))))
                 );
 
         var renderedInterfaces = new HashSet<String>();
-        for (var direction : Interface.Direction.values()) {
+        for (var direction : Direction.values()) {
             var byType = groupedInterfaces.getOrDefault(direction, Map.of());
             if (!byType.isEmpty()) {
                 var directionName = direction.name();
@@ -217,7 +223,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                 printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> interfaceComponentLink.forEach(entry -> {
                                     var anInterface = entry.getKey();
                                     var component = entry.getValue();
-                                    var interfaceId = getInterfaceId(component, anInterface);
+                                    var interfaceId = getInterfaceId(anInterface);
                                     if (renderedInterfaces.add(interfaceId)) {
                                         out.append(INDENT.repeat(depth + 2 + depthDelta));
                                         out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));

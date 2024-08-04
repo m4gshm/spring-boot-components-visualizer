@@ -8,7 +8,7 @@ import service1.service.CoreService;
 
 @Service
 @RequiredArgsConstructor
-public class JmsQueue1Listener {
+public class JmsQueueListener {
 
     private final CoreService coreService;
 

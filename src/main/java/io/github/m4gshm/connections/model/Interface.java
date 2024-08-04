@@ -2,8 +2,11 @@ package io.github.m4gshm.connections.model;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
+import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
 
@@ -13,9 +16,11 @@ import static lombok.AccessLevel.PRIVATE;
 public class Interface {
     String name;
     String group;
-    Direction direction;
+    Set<Direction> directions;
     Type type;
 
+    @Getter
+    @RequiredArgsConstructor
     public enum Direction {
         in, out;
     }
@@ -23,10 +28,12 @@ public class Interface {
     @RequiredArgsConstructor
     public enum Type {
         http, ws("web socket"), grpc, jms, kafka;
+
+        public final String code;
+
         Type() {
             code = this.name();
         }
-        public final String code;
     }
 
 }

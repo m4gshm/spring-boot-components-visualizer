@@ -145,7 +145,7 @@ public class ConnectionsExtractor {
 
             var jmsClientListeners = extractMethodJmsListeners(componentType);
             var inJmsInterface = jmsClientListeners.stream().map(jmsClientListener -> Interface.builder()
-                    .direction(in).type(jms).group(beanName).name(jmsClientListener.destination).build()
+                    .directions(Set.of(in)).type(jms).group(beanName).name(jmsClientListener.destination).build()
             );
 
             var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(beanName, rootPackage, cache);
@@ -158,12 +158,12 @@ public class ConnectionsExtractor {
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().direction(out).type(http).group(client.getUrl()).name(interfaceName).build())
+                    .map(interfaceName -> Interface.builder().directions(Set.of(out)).type(http).group(client.getUrl()).name(interfaceName).build())
             );
 
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().direction(in).type(http).name(interfaceName).build());
+                    .map(interfaceName -> Interface.builder().directions(Set.of(in)).type(http).name(interfaceName).build());
 
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : beanName;
 
@@ -190,7 +190,7 @@ public class ConnectionsExtractor {
             var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
 
             return wsClientUris.stream()
-                    .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
+                    .map(uri -> Interface.builder().directions(Set.of(out)).type(ws).name(uri).build())
                     .collect(toLinkedHashSet());
 
         } catch (EvalException e) {
@@ -209,7 +209,7 @@ public class ConnectionsExtractor {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
             return httpMethods.stream().map(httpMethod -> {
                 var result = extractNameAndGroup(httpMethod);
-                return Interface.builder().direction(out).type(http).name(result.name).group(result.group).build();
+                return Interface.builder().directions(Set.of(out)).type(http).name(result.name).group(result.group).build();
             }).collect(toLinkedHashSet());
         } catch (EvalException e) {
             if (log.isDebugEnabled()) {
@@ -271,7 +271,7 @@ public class ConnectionsExtractor {
             var webSocketHandlerClass = webSocketHandler.getClass();
             var cached = cache.get(webSocketHandlerName);
             var anInterface = Interface.builder()
-                    .direction(in).type(ws).name(wsUrl)
+                    .directions(Set.of(in)).type(ws).name(wsUrl)
                     .build();
             if (cached != null) {
                 cached = cached.stream().map(component -> {
