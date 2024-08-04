@@ -69,6 +69,25 @@ public class ConnectionsExtractor {
         }
     }
 
+    private static HttpNameAndGroup extractNameAndGroup(HttpMethod httpMethod) {
+        var url = httpMethod.getUrl();
+        var uriComponents = getUriComponents(url);
+
+        var methodUrl = getMethodUrl(uriComponents, url);
+        var httpInterfaceName = getHttpInterfaceName(httpMethod.getMethod(), methodUrl);
+        var group = uriComponents != null ? uriComponents.getScheme() + "://" + uriComponents.getHost() : null;
+
+        return new HttpNameAndGroup(httpInterfaceName, group);
+    }
+
+    private static String getMethodUrl(UriComponents uriComponents, String url) {
+        var methodUrl = uriComponents != null ? uriComponents.getPath() : url;
+        if (methodUrl == null || methodUrl.isBlank()) {
+            methodUrl = "/";
+        }
+        return methodUrl;
+    }
+
     public Components getComponents() {
         var allBeans = asList(context.getBeanDefinitionNames());
 
@@ -94,21 +113,21 @@ public class ConnectionsExtractor {
                 .filter(component -> isIncluded(component.getType()));
     }
 
-    private Stream<Component> getComponents(String componentName, Package rootPackage, Map<String, Set<Component>> cache) {
-        var cached = cache.get(componentName);
+    private Stream<Component> getComponents(String beanName, Package rootPackage, Map<String, Set<Component>> cache) {
+        var cached = cache.get(beanName);
         if (cached != null) {
             //log
             return cached.stream();
         }
         Class<?> componentType;
         try {
-            componentType = context.getType(componentName);
+            componentType = context.getType(beanName);
         } catch (NoSuchBeanDefinitionException e) {
             //log
             componentType = null;
         }
 
-        var feignClient = extractFeignClient(componentName, context);
+        var feignClient = extractFeignClient(beanName, context);
         if (feignClient != null) {
             //log
             componentType = feignClient.getType();
@@ -118,7 +137,7 @@ public class ConnectionsExtractor {
             return Stream.empty();
         }
 
-        var websocketHandlers = extractInWebsocketHandlers(componentName, componentType, rootPackage, cache);
+        var websocketHandlers = extractInWebsocketHandlers(beanName, componentType, rootPackage, cache);
         if (!websocketHandlers.isEmpty()) {
             return websocketHandlers.stream();
         } else {
@@ -126,16 +145,14 @@ public class ConnectionsExtractor {
 
             var jmsClientListeners = extractMethodJmsListeners(componentType);
             var inJmsInterface = jmsClientListeners.stream().map(jmsClientListener -> Interface.builder()
-                    .direction(in).type(jms).group(componentName).name(jmsClientListener.destination).build()
+                    .direction(in).type(jms).group(beanName).name(jmsClientListener.destination).build()
             );
 
-            var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(componentName, rootPackage, cache);
+            var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(beanName, rootPackage, cache);
 
-            var outWsInterfaces = Set.<Interface>of();
+            var outWsInterfaces = getOutWsInterfaces(beanName, componentType, dependencies);
 
-            outWsInterfaces = getOutWsInterfaces(componentName, componentType, dependencies);
-
-            var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(componentName, componentType, dependencies);
+            var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(beanName, componentType, dependencies);
 
             var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                     .filter(Objects::nonNull)
@@ -148,19 +165,20 @@ public class ConnectionsExtractor {
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
                     .map(interfaceName -> Interface.builder().direction(in).type(http).name(interfaceName).build());
 
-            var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
+            var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : beanName;
 
             var component = Component.builder()
                     .name(name)
                     .path(getComponentPath(rootPackage, componentType))
                     .type(componentType)
-                    .interfaces(of(inHttpInterfaces, inJmsInterface, outFeignHttpInterface,
-                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream())
-                            .flatMap(s -> s).collect(toLinkedHashSet()))
+                    .interfaces(of(
+                            inHttpInterfaces, inJmsInterface, outFeignHttpInterface,
+                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream()
+                    ).flatMap(s -> s).collect(toLinkedHashSet()))
                     .dependencies(dependencies)
                     .build();
 
-            cache.put(componentName, Set.of(component));
+            cache.put(beanName, Set.of(component));
             result.add(component);
             return result.stream();
         }
@@ -175,8 +193,7 @@ public class ConnectionsExtractor {
                     .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
                     .collect(toLinkedHashSet());
 
-        } catch (/*todo check custom exception, NoClassDefFoundError | */EvalException e) {
-            //log
+        } catch (EvalException e) {
             if (log.isDebugEnabled()) {
                 log.debug("ws client getting error, component {}", componentName, e);
             } else {
@@ -191,21 +208,10 @@ public class ConnectionsExtractor {
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
             return httpMethods.stream().map(httpMethod -> {
-                        var url = httpMethod.getUrl();
-                        var uriComponents = getUriComponents(url);
-                        var method = httpMethod.getMethod();
-
-                        var methodUrl = uriComponents != null ? uriComponents.getPath() : url;
-                        if (methodUrl == null || methodUrl.isBlank()) {
-                            methodUrl = "/";
-                        }
-                        var httpInterfaceName = getHttpInterfaceName(method, methodUrl);
-                        var group = uriComponents != null ? uriComponents.getScheme() + "://" + uriComponents.getHost() : null;
-                        return Interface.builder().direction(out).type(http).name(httpInterfaceName).group(group).build();
-                    })
-                    .collect(toLinkedHashSet());
+                var result = extractNameAndGroup(httpMethod);
+                return Interface.builder().direction(out).type(http).name(result.name).group(result.group).build();
+            }).collect(toLinkedHashSet());
         } catch (EvalException e) {
-            //log
             if (log.isDebugEnabled()) {
                 log.debug("rest operations client getting error, component {}", componentName, e);
             } else {
@@ -246,7 +252,7 @@ public class ConnectionsExtractor {
                 }
             }
         } catch (NoClassDefFoundError e) {
-            //log
+            log.debug("undefined class", e);
         }
         return Set.of();
     }
@@ -315,6 +321,16 @@ public class ConnectionsExtractor {
             componentStream = componentStream.filter(bean -> bean.getType().getPackage().getName().startsWith(rootPackage.getName()));
         }
         return componentStream;
+    }
+
+    private static class HttpNameAndGroup {
+        public final String name;
+        public final String group;
+
+        public HttpNameAndGroup(String httpInterfaceName, String group) {
+            this.name = httpInterfaceName;
+            this.group = group;
+        }
     }
 
     @Data

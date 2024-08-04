@@ -21,7 +21,6 @@ package "service" as service {
     }
     package "ws" as service.external.ws {
       [service2StreamClientImpl] as service2StreamClientImpl
-      [service.stream.client-service1.service.external.ws.Service2StreamClientImpl$Properties] as service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties
     }
   }
 }
@@ -32,10 +31,6 @@ coreService ..> standaloneService2Api
 jmsQueue1Listener ..> coreService
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
-service2StreamClientImpl ..> service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties
-service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> org.springframework.boot.context.internalConfigurationPropertiesBinder
-service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> org.springframework.boot.context.properties.BoundConfigurationProperties
-service.stream.client.service1.service.external.ws.Service2StreamClientImplProperties ..> defaultsBindHandlerAdvisor
 rectangle "in" as in {
   cloud "http" as in.http {
     interface "GET:/api/v1/req" as in.http.GET..api.v1.req
@@ -49,24 +44,25 @@ rectangle "in" as in {
   }
   cloud "jms" as in.jms {
     queue "jmsQueue1Listener" as in.jmsQueue1Listener {
-      interface "queue1" as in.jms.queue1
-      in.jms.queue1 )..> jmsQueue1Listener
-      interface "queue2" as in.jms.queue2
-      in.jms.queue2 )..> jmsQueue1Listener
+      interface "queue1" as jmsQueue1Listener.in.jms.queue1
+      jmsQueue1Listener.in.jms.queue1 )..> jmsQueue1Listener
+      interface "queue2" as jmsQueue1Listener.in.jms.queue2
+      jmsQueue1Listener.in.jms.queue2 )..> jmsQueue1Listener
     }
   }
 }
 rectangle "out" as out {
   cloud "http" as out.http {
     cloud "standalone-service2" as out.standalone.service2 {
-      interface "GET:/{id}" as out.http.GET..id
-      standaloneService2Api ..( out.http.GET..id
+      interface "GET:/{id}" as standalone.service2.out.http.GET..id
+      standaloneService2Api ..( standalone.service2.out.http.GET..id
     }
     cloud "http://service2" as out.http...service2 {
-      service2LegacyImpl ..( out.http.GET..id
-      interface "GET:/" as out.http.GET..
-      service2LegacyImpl ..( out.http.GET..
-      service2FeignClient ..( out.http.GET..id
+      interface "GET:/{id}" as http...service2.out.http.GET..id
+      service2LegacyImpl ..( http...service2.out.http.GET..id
+      interface "GET:/" as http...service2.out.http.GET..
+      service2LegacyImpl ..( http...service2.out.http.GET..
+      service2FeignClient ..( http...service2.out.http.GET..id
     }
   }
   cloud "web socket" as out.websocket {

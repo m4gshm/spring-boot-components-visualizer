@@ -52,8 +52,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     private static String getInterfaceId(Component component, Interface anInterface) {
         var elementId = getElementId(anInterface.getDirection().name(),
                 anInterface.getType().name(), anInterface.getName());
-        return elementId;
-//        return getElementId(component.getName(), elementId);
+        return getElementId(anInterface.getGroup(), elementId);
     }
 
     private static void printPackage(StringBuilder out, int indent, Package pack) {
@@ -99,7 +98,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     }
 
     private static String getElementId(String... parts) {
-        return pumlAlias(Stream.of(parts).reduce("", (parent, id) -> (!parent.isEmpty() ? parent + "." : "") + id));
+        return pumlAlias(Stream.of(parts).filter(Objects::nonNull).reduce("", (parent, id) -> (!parent.isEmpty() ? parent + "." : "") + id));
     }
 
     private static Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
@@ -135,6 +134,14 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         out.append(prefix + format("[%s] as %s\n", componentName, pumlAlias(componentName)));
     }
 
+    private static Stream<Package> mergeSubPack(Package pack) {
+        var packComponents = pack.getComponents();
+        var subPackages = pack.getPackages();
+        return packComponents.isEmpty() && subPackages.size() == 1
+                ? subPackages.stream().map(subPack -> subPack.toBuilder().name(getElementId(pack.getName(), subPack.getName())).build()).flatMap(PlantUmlConnectionsVisualizer::mergeSubPack)
+                : Stream.of(pack);
+    }
+
     @Override
     public String visualize(Components components) {
         var out = new StringBuilder();
@@ -168,8 +175,10 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             }).map(Package.PackageBuilder::build).orElse(
                     Package.builder().name(componentPath).components(singletonList(component)).build()
             );
-
         })).values();
+
+
+        packages = packages.stream().flatMap(PlantUmlConnectionsVisualizer::mergeSubPack).collect(toList());
 
         for (var pack : packages) {
             printPackage(out, depth, pack);

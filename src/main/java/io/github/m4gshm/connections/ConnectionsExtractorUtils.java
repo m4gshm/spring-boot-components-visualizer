@@ -9,6 +9,7 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
@@ -61,7 +62,11 @@ public class ConnectionsExtractorUtils {
     }
 
     static boolean isIncluded(Class<?> type) {
-        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isVisualizeAPI(type));
+        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isVisualizeAPI(type) || isProperties(type));
+    }
+
+    private static boolean isProperties(Class<?> beanType) {
+        return hasAnnotation(beanType, () -> ConfigurationProperties.class);
     }
 
     static boolean isSpringBootTest(Class<?> beanType) {
