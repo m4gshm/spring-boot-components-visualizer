@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.Builder;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.generic.InvokeInstruction;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.client.WebSocketClient;
@@ -16,6 +18,8 @@ import org.springframework.web.socket.config.annotation.ServletWebSocketHandlerR
 import org.springframework.web.socket.config.annotation.WebSocketConfigurationSupport;
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,12 +34,14 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractFeignClient;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractMethodJmsListeners;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.findDependencyByType;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getComponentPath;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getHttpInterfaceName;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
@@ -53,6 +59,15 @@ import static java.util.stream.Stream.ofNullable;
 @RequiredArgsConstructor
 public class ConnectionsExtractor {
     private final ConfigurableApplicationContext context;
+
+    private static UriComponents getUriComponents(String url) {
+        try {
+            return UriComponentsBuilder.fromUriString(url).build();
+        } catch (Exception e) {
+            log.error(url, e);
+            return null;
+        }
+    }
 
     public Components getComponents() {
         var allBeans = asList(context.getBeanDefinitionNames());
@@ -118,26 +133,11 @@ public class ConnectionsExtractor {
 
             var outWsInterfaces = Set.<Interface>of();
 
-            var wsClient = dependencies.stream()
-                    .filter(component -> WebSocketClient.class.isAssignableFrom(component.getType()))
-                    .findFirst().orElse(null);
-            if (wsClient != null) try {
-                var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
+            outWsInterfaces = getOutWsInterfaces(componentName, componentType, dependencies);
 
-                outWsInterfaces = wsClientUris.stream()
-                        .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
-                        .collect(toLinkedHashSet());
+            var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(componentName, componentType, dependencies);
 
-            } catch (/*todo check custom exception, NoClassDefFoundError | */ClassNotFoundException e) {
-                //log
-                if (log.isDebugEnabled()) {
-                    log.debug("ws client getting error, component {}", componentName, e);
-                } else {
-                    log.info("ws client getting error, component {}, message '{}'", componentName, e.getLocalizedMessage());
-                }
-            }
-
-            var outHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
+            var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
@@ -154,7 +154,8 @@ public class ConnectionsExtractor {
                     .name(name)
                     .path(getComponentPath(rootPackage, componentType))
                     .type(componentType)
-                    .interfaces(of(inHttpInterfaces, inJmsInterface, outHttpInterface, outWsInterfaces.stream())
+                    .interfaces(of(inHttpInterfaces, inJmsInterface, outFeignHttpInterface,
+                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream())
                             .flatMap(s -> s).collect(toLinkedHashSet()))
                     .dependencies(dependencies)
                     .build();
@@ -163,6 +164,55 @@ public class ConnectionsExtractor {
             result.add(component);
             return result.stream();
         }
+    }
+
+    private Set<Interface> getOutWsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
+        var wsClient = findDependencyByType(dependencies, WebSocketClient.class);
+        if (wsClient != null) try {
+            var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
+
+            return wsClientUris.stream()
+                    .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
+                    .collect(toLinkedHashSet());
+
+        } catch (/*todo check custom exception, NoClassDefFoundError | */EvalException e) {
+            //log
+            if (log.isDebugEnabled()) {
+                log.debug("ws client getting error, component {}", componentName, e);
+            } else {
+                log.info("ws client getting error, component {}, message '{}'", componentName, e.getLocalizedMessage());
+            }
+        }
+        return Set.of();
+    }
+
+    private Set<Interface> getOutRestTemplateInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
+        var restTemplate = findDependencyByType(dependencies, RestOperations.class);
+        if (restTemplate != null) try {
+            var httpMethods = extractRestOperationsUris(componentName, componentType, context);
+            return httpMethods.stream().map(httpMethod -> {
+                        var url = httpMethod.getUrl();
+                        var uriComponents = getUriComponents(url);
+                        var method = httpMethod.getMethod();
+
+                        var methodUrl = uriComponents != null ? uriComponents.getPath() : url;
+                        if (methodUrl == null || methodUrl.isBlank()) {
+                            methodUrl = "/";
+                        }
+                        var httpInterfaceName = getHttpInterfaceName(method, methodUrl);
+                        var group = uriComponents != null ? uriComponents.getScheme() + "://" + uriComponents.getHost() : null;
+                        return Interface.builder().direction(out).type(http).name(httpInterfaceName).group(group).build();
+                    })
+                    .collect(toLinkedHashSet());
+        } catch (EvalException e) {
+            //log
+            if (log.isDebugEnabled()) {
+                log.debug("rest operations client getting error, component {}", componentName, e);
+            } else {
+                log.info("rest operations client getting error, component {}, message '{}'", componentName, e.getLocalizedMessage());
+            }
+        }
+        return Set.of();
     }
 
     private Set<Component> getDependencies(String componentName, Package rootPackage, Map<String, Set<Component>> cache) {

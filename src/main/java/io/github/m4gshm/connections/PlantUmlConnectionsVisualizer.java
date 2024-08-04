@@ -7,6 +7,7 @@ import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,8 +50,10 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     }
 
     private static String getInterfaceId(Component component, Interface anInterface) {
-        return getElementId(component.getName(), getElementId(anInterface.getDirection().name(),
-                anInterface.getType().name(), anInterface.getName()));
+        var elementId = getElementId(anInterface.getDirection().name(),
+                anInterface.getType().name(), anInterface.getName());
+        return elementId;
+//        return getElementId(component.getName(), elementId);
     }
 
     private static void printPackage(StringBuilder out, int indent, Package pack) {
@@ -99,7 +102,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return pumlAlias(Stream.of(parts).reduce("", (parent, id) -> (!parent.isEmpty() ? parent + "." : "") + id));
     }
 
-    private static LinkedHashMap<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
+    private static Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
         return packageStream.map(p -> populatePath(parentPath, p)).collect(toMap(Package::getName, p -> p, (l, r) -> {
             var lName = l.getName();
             var rName = r.getName();
@@ -187,6 +190,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                         groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""))))
                 );
 
+        var renderedInterfaces = new HashSet<String>();
         for (var direction : Interface.Direction.values()) {
             var byType = groupedInterfaces.getOrDefault(direction, Map.of());
             if (!byType.isEmpty()) {
@@ -205,10 +209,12 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                     var anInterface = entry.getKey();
                                     var component = entry.getValue();
                                     var interfaceId = getInterfaceId(component, anInterface);
-                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                    out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
-                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                    if (renderedInterfaces.add(interfaceId)) {
+                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
+                                        out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+                                    }
                                     var componentId = pumlAlias(component.getName());
+                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
                                     if (direction == in) {
                                         out.append(format("%s )..> %s\n", interfaceId, componentId));
                                     } else {

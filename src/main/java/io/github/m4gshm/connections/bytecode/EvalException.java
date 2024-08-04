@@ -8,6 +8,10 @@ public class EvalException extends RuntimeException {
         super(message);
     }
 
+    public EvalException(Throwable e) {
+        super(e);
+    }
+
     public static EvalException newUnsupportedEvalException(Instruction instruction, ConstantPoolGen constantPoolGen) {
         return newInvalidEvalException("unsupported instruction: ", instruction, constantPoolGen);
     }

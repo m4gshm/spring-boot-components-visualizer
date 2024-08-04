@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.bytecode.BytecodeUtils;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -19,7 +18,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.StreamSupport;
 
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.eval;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.eval;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.lookupClass;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -27,8 +27,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(String componentName, Class<?> componentType,
-                                                          ConfigurableApplicationContext context) throws ClassNotFoundException {
-        var javaClass = Repository.lookupClass(componentType);
+                                                          ConfigurableApplicationContext context)  {
+        var javaClass = lookupClass(componentType);
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = javaClass.getMethods();
         var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
@@ -89,6 +89,7 @@ public class WebsocketClientUtils {
             var utiTemplate = eval(object, uriTemplates.getLastInstruction().getPrev(), constantPoolGen, bootstrapMethods);
             return String.valueOf(utiTemplate.getResult());
         } else {
+            //log
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }

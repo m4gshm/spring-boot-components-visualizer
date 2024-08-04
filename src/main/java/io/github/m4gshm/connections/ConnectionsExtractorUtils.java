@@ -4,6 +4,7 @@ import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
+import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -244,5 +245,11 @@ public class ConnectionsExtractorUtils {
             }
         }
         return "";
+    }
+
+    static <T> Component findDependencyByType(Collection<Component> dependencies, Class<T> type) {
+        return dependencies.stream()
+                .filter(component -> type.isAssignableFrom(component.getType()))
+                .findFirst().orElse(null);
     }
 }

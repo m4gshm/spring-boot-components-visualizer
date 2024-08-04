@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.ConstantInvokeDynamic;
 import org.apache.bcel.classfile.ConstantMethodHandle;
@@ -12,6 +13,7 @@ import org.apache.bcel.classfile.ConstantMethodType;
 import org.apache.bcel.classfile.ConstantMethodref;
 import org.apache.bcel.classfile.ConstantNameAndType;
 import org.apache.bcel.classfile.ConstantPool;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.generic.AASTORE;
 import org.apache.bcel.generic.ALOAD;
 import org.apache.bcel.generic.ANEWARRAY;
@@ -36,6 +38,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.Set;
@@ -43,11 +46,11 @@ import java.util.stream.IntStream;
 
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredMethod;
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.Status.notAccessible;
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.Status.notFound;
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notAccessible;
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notFound;
-import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.success;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.Status.notAccessible;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.Status.notFound;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.notAccessible;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.notFound;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.success;
 import static io.github.m4gshm.connections.bytecode.EvalException.newInvalidEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalException.newUnsupportedEvalException;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
@@ -63,9 +66,18 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 
 @Slf4j
 @UtilityClass
-public class BytecodeUtils {
+public class EvalUtils {
 
-    public static CallResult<Object> eval(Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    public static JavaClass lookupClass(Class<?> componentType) {
+        try {
+            return Repository.lookupClass(componentType);
+        } catch (ClassNotFoundException e) {
+            throw new EvalException(e);
+        }
+    }
+
+    public static CallResult<Object> eval(Object object, InstructionHandle instructionHandle,
+                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof LDC) {
             var ldc = (LDC) instruction;
@@ -135,7 +147,10 @@ public class BytecodeUtils {
         throw newUnsupportedEvalException(instruction, constantPoolGen);
     }
 
-    public static CallResult<Object> getMethodResult(Object object, InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    public static CallResult<Object> getMethodResult(Object object,
+                                                     InstructionHandle instructionHandle, InvokeInstruction instruction,
+                                                     ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
+    )  {
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
         var evalArgumentsResult = evalArguments(object, instructionHandle, argumentTypes.length, constantPoolGen, bootstrapMethods);
@@ -153,7 +168,7 @@ public class BytecodeUtils {
         } else if (instruction instanceof INVOKEDYNAMIC) {
             return callBootstrapMethod(object, instructionHandle, instruction, constantPoolGen, bootstrapMethods);
         } else if (instruction instanceof INVOKESTATIC) {
-            return callMethod(null, Class.forName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments, instructionHandle, instructionHandle, constantPoolGen);
+            return callMethod(null, getClassByName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments, instructionHandle, instructionHandle, constantPoolGen);
         }
         throw new UnsupportedOperationException("invoke: " + instruction.toString(constantPoolGen.getConstantPool()));
     }
@@ -188,7 +203,8 @@ public class BytecodeUtils {
             } else if (constant instanceof ConstantMethodHandle) {
                 return newMethodHandle((ConstantMethodHandle) constant, cp, lookup);
             } else {
-                throw new BytecodeEvalException("unsupported bootstrap method argument type " + constant);
+                String message = "unsupported bootstrap method argument type " + constant;
+                throw new EvalException(message);
             }
         }).collect(toList());
 
@@ -200,7 +216,8 @@ public class BytecodeUtils {
         try {
             metafactory = (CallSite) handler.invokeWithArguments(args);
         } catch (Throwable e) {
-            throw new BytecodeEvalException(e);
+            Throwable e1 = e;
+            throw new EvalException(e1);
         }
 
         var methodHandle = metafactory.dynamicInvoker();
@@ -208,7 +225,8 @@ public class BytecodeUtils {
         try {
             result = methodHandle.invoke(object);
         } catch (Throwable e) {
-            throw new BytecodeEvalException(e);
+            Throwable e1 = e;
+            throw new EvalException(e1);
         }
 
         return success(result, instructionHandle, instructionHandle);
@@ -233,7 +251,8 @@ public class BytecodeUtils {
         } else if (referenceKind == REF_invokeStatic) {
             return lookupStatic(lookup, targetClass, methodName, methodSignature);
         } else {
-            throw new BytecodeEvalException("unsupported method handle referenceKind " + referenceKind);
+            String message = "unsupported method handle referenceKind " + referenceKind;
+            throw new EvalException(message);
         }
     }
 
@@ -241,7 +260,8 @@ public class BytecodeUtils {
         try {
             return lookup.findSpecial(targetClass, methodName, fromMethodDescriptorString(methodSignature, null), targetClass);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new BytecodeEvalException(e);
+            Throwable e1 = e;
+            throw new EvalException(e1);
         }
     }
 
@@ -250,7 +270,8 @@ public class BytecodeUtils {
         try {
             return lookup.findStatic(targetClass, name, methodType);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new BytecodeEvalException(e);
+            Throwable e1 = e;
+            throw new EvalException(e1);
         }
     }
 
@@ -283,12 +304,15 @@ public class BytecodeUtils {
         try {
             forName = Class.forName(className);
         } catch (ClassNotFoundException e) {
-            throw new BytecodeEvalException(e);
+            Throwable e1 = e;
+            throw new EvalException(e1);
         }
         return forName;
     }
 
-    static EvalArgumentsResult evalArguments(Object object, InstructionHandle instructionHandle, int argumentsCount, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    static EvalArgumentsResult evalArguments(Object object,
+                                             InstructionHandle instructionHandle, int argumentsCount,
+                                             ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var args = new Object[argumentsCount];
         var current = instructionHandle;
         for (int i = argumentsCount; i > 0; i--) {
@@ -300,19 +324,36 @@ public class BytecodeUtils {
         return new EvalArgumentsResult(args, current);
     }
 
-    public static CallResult<Object> getFieldValue(Object object, String name, InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) throws IllegalAccessException {
+    public static CallResult<Object> getFieldValue(Object object, String name, InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) {
         var field = getDeclaredField(name, object.getClass());
-        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible() ? success(field.get(object), getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
+        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible()
+                ? success(getValue(object, field), getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
     }
 
-    public static CallResult<Object> callMethod(Object object, Class<?> type, String methodName, Class[] argTypes, Object[] args, InstructionHandle invokeInstruction, InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen) throws IllegalAccessException, InvocationTargetException {
+    private static Object getValue(Object object, Field field) {
+        try {
+            return field.get(object);
+        } catch (IllegalAccessException e) {
+            throw new EvalException(e);
+        }
+    }
+
+    public static CallResult<Object> callMethod(Object object, Class<?> type,
+                                                String methodName, Class[] argTypes, Object[] args,
+                                                InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
+                                                ConstantPoolGen constantPoolGen) {
         var msg = "callMethod";
         var declaredMethod = getDeclaredMethod(methodName, type, argTypes);
         if (declaredMethod == null) {
             log.info("{}, method not found '{}.{}', instruction {}", msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
             return notFound(methodName, invokeInstruction);
         } else if (declaredMethod.trySetAccessible()) {
-            var result = declaredMethod.invoke(object, args);
+            Object result;
+            try {
+                result = declaredMethod.invoke(object, args);
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                throw new EvalException(e);
+            }
             if (log.isDebugEnabled()) {
                 log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName, result, toString(invokeInstruction, constantPoolGen));
             }
