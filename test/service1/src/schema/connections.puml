@@ -68,6 +68,10 @@ rectangle "out" as out {
     }
   }
   cloud "web socket" as out.websocket {
+    interface "ws://service-template" as service2StreamClientImpl.out.ws.ws...service.template
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service.template
+    interface "ws://service-template/{id}/" as service2StreamClientImpl.out.ws.ws...service.template.id.
+    service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service.template.id.
     interface "ws://service2" as service2StreamClientImpl.out.ws.ws...service2
     service2StreamClientImpl ..( service2StreamClientImpl.out.ws.ws...service2
     interface "ws://service3" as service2StreamClientImpl.out.ws.ws...service3

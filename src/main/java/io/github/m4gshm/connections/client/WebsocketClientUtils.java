@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections.client;
 
+import io.github.m4gshm.connections.bytecode.BytecodeUtils;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -73,11 +74,8 @@ public class WebsocketClientUtils {
             //log
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var argumentType = argumentTypes[2];
-        var uriFound = URI.class.getName().equals(argumentType.getClassName());
-        if (uriFound) {
-            var prev = instructionHandle.getPrev();
-            var value = eval(object, prev, constantPoolGen, bootstrapMethods);
+        if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
+            var value = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
             var result = value.getResult();
             if (result instanceof URI) {
                 var uri = (URI) result;
@@ -86,6 +84,10 @@ public class WebsocketClientUtils {
                 //log
                 return result.toString();
             }
+        } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
+            var uriTemplates = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
+            var utiTemplate = eval(object, uriTemplates.getLastInstruction().getPrev(), constantPoolGen, bootstrapMethods);
+            return String.valueOf(utiTemplate.getResult());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }

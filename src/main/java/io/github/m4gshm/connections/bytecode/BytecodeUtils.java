@@ -12,10 +12,14 @@ import org.apache.bcel.classfile.ConstantMethodType;
 import org.apache.bcel.classfile.ConstantMethodref;
 import org.apache.bcel.classfile.ConstantNameAndType;
 import org.apache.bcel.classfile.ConstantPool;
+import org.apache.bcel.generic.AASTORE;
 import org.apache.bcel.generic.ALOAD;
+import org.apache.bcel.generic.ANEWARRAY;
 import org.apache.bcel.generic.ASTORE;
 import org.apache.bcel.generic.CHECKCAST;
 import org.apache.bcel.generic.ConstantPoolGen;
+import org.apache.bcel.generic.ConstantPushInstruction;
+import org.apache.bcel.generic.DUP;
 import org.apache.bcel.generic.GETFIELD;
 import org.apache.bcel.generic.INVOKEDYNAMIC;
 import org.apache.bcel.generic.INVOKEINTERFACE;
@@ -31,6 +35,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.Set;
@@ -43,7 +48,8 @@ import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.Sta
 import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notAccessible;
 import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.notFound;
 import static io.github.m4gshm.connections.bytecode.BytecodeUtils.CallResult.success;
-import static io.github.m4gshm.connections.bytecode.UnsupportedEvalException.newUnsupportedEvalException;
+import static io.github.m4gshm.connections.bytecode.EvalException.newInvalidEvalException;
+import static io.github.m4gshm.connections.bytecode.EvalException.newUnsupportedEvalException;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
@@ -59,13 +65,12 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 @UtilityClass
 public class BytecodeUtils {
 
-    public static CallResult<Object> eval(Object object, InstructionHandle instructionHandle,
-                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
-    ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    public static CallResult<Object> eval(Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof LDC) {
             var ldc = (LDC) instruction;
-            return success(ldc.getValue(constantPoolGen), instructionHandle, instructionHandle);
+            var value = ldc.getValue(constantPoolGen);
+            return success(value, instructionHandle, instructionHandle);
         } else if (instruction instanceof ALOAD) {
             var aload = (ALOAD) instruction;
             var aloadIndex = aload.getIndex();
@@ -98,13 +103,39 @@ public class BytecodeUtils {
             return eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
         } else if (instruction instanceof InvokeInstruction) {
             return getMethodResult(object, instructionHandle, (InvokeInstruction) instruction, constantPoolGen, bootstrapMethods);
+        } else if (instruction instanceof ANEWARRAY) {
+            var anewarray = (ANEWARRAY) instruction;
+            var loadClassType = anewarray.getLoadClassType(constantPoolGen);
+            var size = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
+            var result = size.getResult();
+            var arrayElementType = getClassByName(loadClassType.getClassName());
+            return success(Array.newInstance(arrayElementType, (int) result), instructionHandle, size.getLastInstruction());
+        } else if (instruction instanceof ConstantPushInstruction) {
+            var cpi = (ConstantPushInstruction) instruction;
+            var value = cpi.getValue();
+            return success(value, instructionHandle, instructionHandle);
+        } else if (instruction instanceof AASTORE) {
+            var element = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
+            var index = eval(object, element.getLastInstruction().getPrev(), constantPoolGen, bootstrapMethods);
+
+            var array = eval(object, index.getLastInstruction().getPrev(), constantPoolGen, bootstrapMethods);
+
+            var result = array.getResult();
+            if (result instanceof Object[]) {
+                ((Object[]) result)[(int) index.getResult()] = element.getResult();
+            } else {
+                throw newInvalidEvalException("expected array but was " + result.getClass(), instruction, constantPoolGen);
+            }
+
+            return success(result, instructionHandle, array.getLastInstruction());
+        } else if (instruction instanceof DUP) {
+            var eval = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);
+            return success(eval.getResult(), instructionHandle, eval.getLastInstruction());
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen);
     }
 
-    public static CallResult<Object> getMethodResult(
-            Object object, InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    public static CallResult<Object> getMethodResult(Object object, InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
         var evalArgumentsResult = evalArguments(object, instructionHandle, argumentTypes.length, constantPoolGen, bootstrapMethods);
@@ -113,26 +144,21 @@ public class BytecodeUtils {
             var next = evalArgumentsResult.getInstructionHandle().getPrev();
             var objectCallResult = eval(object, next, constantPoolGen, bootstrapMethods);
             var obj = objectCallResult.getResult();
-            return callMethod(obj, obj.getClass(), methodName, argumentTypes, arguments,
-                    instructionHandle, objectCallResult.getLastInstruction(), constantPoolGen);
+            return callMethod(obj, obj.getClass(), methodName, argumentTypes, arguments, instructionHandle, objectCallResult.getLastInstruction(), constantPoolGen);
         } else if (instruction instanceof INVOKEINTERFACE) {
             var next = evalArgumentsResult.getInstructionHandle().getPrev();
             var objectCallResult = eval(object, next, constantPoolGen, bootstrapMethods);
             var obj = objectCallResult.getResult();
-            return callMethod(obj, getClassByName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments,
-                    instructionHandle, objectCallResult.getLastInstruction(), constantPoolGen);
+            return callMethod(obj, getClassByName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments, instructionHandle, objectCallResult.getLastInstruction(), constantPoolGen);
         } else if (instruction instanceof INVOKEDYNAMIC) {
             return callBootstrapMethod(object, instructionHandle, instruction, constantPoolGen, bootstrapMethods);
         } else if (instruction instanceof INVOKESTATIC) {
-            return callMethod(null, Class.forName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments,
-                    instructionHandle, instructionHandle, constantPoolGen);
+            return callMethod(null, Class.forName(instruction.getClassName(constantPoolGen)), methodName, argumentTypes, arguments, instructionHandle, instructionHandle, constantPoolGen);
         }
         throw new UnsupportedOperationException("invoke: " + instruction.toString(constantPoolGen.getConstantPool()));
     }
 
-    static CallResult<Object> callBootstrapMethod(Object object,
-                                                  InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                                  ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
+    static CallResult<Object> callBootstrapMethod(Object object, InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = cp.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
         var nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
@@ -157,15 +183,14 @@ public class BytecodeUtils {
         var handler = lookupReference(lookup, referenceKind, targetClass, nameAndType.getName(cp), nameAndType.getSignature(cp));
 
         var arguments = IntStream.of(bootstrapMethod.getBootstrapArguments()).mapToObj(cp::getConstant).map(constant -> {
-                    if (constant instanceof ConstantMethodType) {
-                        return newMethodType((ConstantMethodType) constant, cp);
-                    } else if (constant instanceof ConstantMethodHandle) {
-                        return newMethodHandle((ConstantMethodHandle) constant, cp, lookup);
-                    } else {
-                        throw new BytecodeEvalException("unsupported bootstrap method argument type " + constant);
-                    }
-                }
-        ).collect(toList());
+            if (constant instanceof ConstantMethodType) {
+                return newMethodType((ConstantMethodType) constant, cp);
+            } else if (constant instanceof ConstantMethodHandle) {
+                return newMethodHandle((ConstantMethodHandle) constant, cp, lookup);
+            } else {
+                throw new BytecodeEvalException("unsupported bootstrap method argument type " + constant);
+            }
+        }).collect(toList());
 
         var factoryClass = factoryMethod.parameterArray()[0];
         var privateLookup = getPrivateLookup(lookup, factoryClass);
@@ -202,8 +227,7 @@ public class BytecodeUtils {
         return lookupReference(privateLookup, referenceKind, targetClass, methodName, methodSignature);
     }
 
-    private static MethodHandle lookupReference(Lookup lookup, int referenceKind, Class<?> targetClass,
-                                                String methodName, String methodSignature) {
+    private static MethodHandle lookupReference(Lookup lookup, int referenceKind, Class<?> targetClass, String methodName, String methodSignature) {
         if (referenceKind == REF_invokeSpecial) {
             return lookupSpecial(lookup, targetClass, methodName, methodSignature);
         } else if (referenceKind == REF_invokeStatic) {
@@ -264,11 +288,7 @@ public class BytecodeUtils {
         return forName;
     }
 
-    static EvalArgumentsResult evalArguments(
-            Object object, InstructionHandle instructionHandle,
-            int argumentsCount, ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods
-    ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    static EvalArgumentsResult evalArguments(Object object, InstructionHandle instructionHandle, int argumentsCount, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         var args = new Object[argumentsCount];
         var current = instructionHandle;
         for (int i = argumentsCount; i > 0; i--) {
@@ -280,35 +300,25 @@ public class BytecodeUtils {
         return new EvalArgumentsResult(args, current);
     }
 
-    public static CallResult<Object> getFieldValue(Object object, String name,
-                                                   InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) throws IllegalAccessException {
+    public static CallResult<Object> getFieldValue(Object object, String name, InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) throws IllegalAccessException {
         var field = getDeclaredField(name, object.getClass());
-        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible() ? success(field.get(object),
-                getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
+        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible() ? success(field.get(object), getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
     }
 
-    public static CallResult<Object> callMethod(Object object, Class<?> type, String methodName,
-                                                Class[] argTypes, Object[] args,
-                                                InstructionHandle invokeInstruction,
-                                                InstructionHandle lastInstruction,
-                                                ConstantPoolGen constantPoolGen
-    ) throws IllegalAccessException, InvocationTargetException {
+    public static CallResult<Object> callMethod(Object object, Class<?> type, String methodName, Class[] argTypes, Object[] args, InstructionHandle invokeInstruction, InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen) throws IllegalAccessException, InvocationTargetException {
         var msg = "callMethod";
         var declaredMethod = getDeclaredMethod(methodName, type, argTypes);
         if (declaredMethod == null) {
-            log.info("{}, method not found '{}.{}', instruction {}",
-                    msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
+            log.info("{}, method not found '{}.{}', instruction {}", msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
             return notFound(methodName, invokeInstruction);
         } else if (declaredMethod.trySetAccessible()) {
             var result = declaredMethod.invoke(object, args);
             if (log.isDebugEnabled()) {
-                log.debug("{}, success, method '{}.{}', result: {}, instruction {}",
-                        msg, type.getName(), methodName, result, toString(invokeInstruction, constantPoolGen));
+                log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName, result, toString(invokeInstruction, constantPoolGen));
             }
             return success(result, invokeInstruction, lastInstruction);
         } else
-            log.warn("{}, method is not accessible, method '{}.{}', instruction {}",
-                    msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
+            log.warn("{}, method is not accessible, method '{}.{}', instruction {}", msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
         return notAccessible(declaredMethod, invokeInstruction);
     }
 
@@ -336,20 +346,27 @@ public class BytecodeUtils {
         }
 
         public static <T> CallResult<T> notAccessible(Object source, InstructionHandle callInstruction) {
-            return CallResult.<T>builder().status(Set.of(notAccessible)).source(source)
-                    .callInstruction(callInstruction).build();
+            return CallResult.<T>builder().status(Set.of(notAccessible)).source(source).callInstruction(callInstruction).build();
         }
 
         public static <T> CallResult<T> notFound(Object source, InstructionHandle callInstruction) {
-            return CallResult.<T>builder().status(Set.of(notFound)).source(source)
-                    .callInstruction(callInstruction).build();
+            return CallResult.<T>builder().status(Set.of(notFound)).source(source).callInstruction(callInstruction).build();
         }
 
         public T getResult() {
+            throwResultExceptionIfInvalidStatus();
+            return result;
+        }
+
+        public InstructionHandle getLastInstruction() {
+            throwResultExceptionIfInvalidStatus();
+            return lastInstruction;
+        }
+
+        private void throwResultExceptionIfInvalidStatus() {
             if (status != null && !status.isEmpty()) {
                 throw new CallResultException(status, source, callInstruction);
             }
-            return result;
         }
 
         public enum Status {

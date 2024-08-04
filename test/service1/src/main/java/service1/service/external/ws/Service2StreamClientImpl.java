@@ -92,6 +92,8 @@ public class Service2StreamClientImpl implements AutoCloseable {
         var headers = new WebSocketHttpHeaders();
         Supplier<URI> s = () -> currentURI("ws://currentURI-supplier");
         return List.of(
+                webSocketClient.doHandshake(webSocketHandler, "ws://service-template"),
+                webSocketClient.doHandshake(webSocketHandler, "ws://service-template/{id}/", "id", "1"),
                 webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),
                 webSocketClient.doHandshake(webSocketHandler, headers, URI.create(servUrl)),
                 webSocketClient.doHandshake(webSocketHandler, headers, uri),
