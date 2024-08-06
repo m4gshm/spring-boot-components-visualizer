@@ -21,7 +21,6 @@ import static com.google.common.collect.Streams.concat;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
-import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
@@ -52,11 +51,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
     }
 
     private static String getInterfaceId(Interface anInterface) {
-        var direction = getElementId(anInterface.getDirections().stream()
-                .filter(Objects::nonNull)
-                .map(Enum::name)
-                .toArray(String[]::new)
-        );
+        var direction = getElementId(anInterface.getDirection().name());
         var elementId = getElementId(direction, anInterface.getType().name(), anInterface.getName());
         return getElementId(anInterface.getGroup(), elementId);
     }
@@ -198,9 +193,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
         var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream).flatMap(anInterface -> anInterface.getDirections()
-                                .stream().map(direction -> entry(direction, entry(anInterface, component))))
-                )
+                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component))))
                 .collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
                         groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse("")))))
                 );
@@ -230,10 +223,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                     }
                                     var componentId = pumlAlias(component.getName());
                                     out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                    if (direction == in) {
+                                    if (direction == Direction.in) {
                                         out.append(format("%s )..> %s\n", interfaceId, componentId));
-                                    } else {
+                                    } else if (direction == Direction.out) {
                                         out.append(format("%s ..( %s\n", componentId, interfaceId));
+                                    } else if (direction == Direction.outIn) {
+                                        out.append(format("%s )..> %s\n", interfaceId, componentId));
+                                        out.append(format("%s <.. %s\n", componentId, interfaceId));
                                     }
                                 }));
                             }));

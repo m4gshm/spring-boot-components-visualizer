@@ -55,7 +55,6 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toSet;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 
@@ -93,8 +92,7 @@ public class ConnectionsExtractor {
     }
 
     private static Interface newInterface(JmsClient jmsClient, String group) {
-        var directions = jmsClient.types.stream().map(type -> type.direction).collect(toSet());
-        return Interface.builder().directions(directions).type(jms).group(group).name(jmsClient.destination).build();
+        return Interface.builder().direction(jmsClient.direction).type(jms).group(group).name(jmsClient.destination).build();
     }
 
     public Components getComponents() {
@@ -164,12 +162,12 @@ public class ConnectionsExtractor {
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().directions(Set.of(out)).type(http).group(client.getUrl()).name(interfaceName).build())
+                    .map(interfaceName -> Interface.builder().direction(out).type(http).group(client.getUrl()).name(interfaceName).build())
             );
 
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                     .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().directions(Set.of(in)).type(http).name(interfaceName).build());
+                    .map(interfaceName -> Interface.builder().direction(in).type(http).name(interfaceName).build());
 
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : beanName;
 
@@ -215,7 +213,7 @@ public class ConnectionsExtractor {
             var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
 
             return wsClientUris.stream()
-                    .map(uri -> Interface.builder().directions(Set.of(out)).type(ws).name(uri).build())
+                    .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
                     .collect(toLinkedHashSet());
 
         } catch (EvalException | NoClassDefFoundError e) {
@@ -234,7 +232,7 @@ public class ConnectionsExtractor {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
             return httpMethods.stream().map(httpMethod -> {
                 var result = extractNameAndGroup(httpMethod);
-                return Interface.builder().directions(Set.of(out)).type(http).name(result.name).group(result.group).build();
+                return Interface.builder().direction(out).type(http).name(result.name).group(result.group).build();
             }).collect(toLinkedHashSet());
         } catch (EvalException | NoClassDefFoundError e) {
             if (log.isDebugEnabled()) {
@@ -296,14 +294,14 @@ public class ConnectionsExtractor {
             var webSocketHandlerClass = webSocketHandler.getClass();
             var cached = cache.get(webSocketHandlerName);
             var anInterface = Interface.builder()
-                    .directions(Set.of(in)).type(ws).name(wsUrl)
+                    .direction(in).type(ws).name(wsUrl)
                     .build();
             if (cached != null) {
                 cached = cached.stream().map(component -> {
                     var interfaces = component.getInterfaces();
                     if (!interfaces.contains(anInterface)) {
                         //log
-                        var newInterfaces = new LinkedHashSet<Interface>(interfaces);
+                        var newInterfaces = new LinkedHashSet<>(interfaces);
                         newInterfaces.add(anInterface);
                         return component.toBuilder().interfaces(unmodifiableSet(newInterfaces)).build();
                     } else
@@ -385,13 +383,7 @@ public class ConnectionsExtractor {
     public static class JmsClient {
         private String name;
         private String destination;
-        private Set<Type> types;
+        private Direction direction;
 
-        @RequiredArgsConstructor
-        public enum Type {
-            listener(in), sender(out);
-
-            public final Direction direction;
-        }
     }
 }

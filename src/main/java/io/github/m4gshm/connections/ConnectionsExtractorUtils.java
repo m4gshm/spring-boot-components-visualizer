@@ -34,8 +34,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ConnectionsExtractor.JmsClient.Type.listener;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
+import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
@@ -195,7 +195,7 @@ public class ConnectionsExtractorUtils {
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
                 .map(entry -> JmsClient.builder()
-                        .types(Set.of(listener))
+                        .direction(in)
                         .name(entry.getKey().getName())
                         .destination(entry.getValue().destination())
                         .build())

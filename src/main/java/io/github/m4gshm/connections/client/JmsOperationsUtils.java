@@ -1,8 +1,8 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient;
-import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient.Type;
 import io.github.m4gshm.connections.bytecode.EvalUtils;
+import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -19,15 +19,17 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.StreamSupport;
 
 import static io.github.m4gshm.connections.bytecode.EvalUtils.eval;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.lookupClass;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
+import static io.github.m4gshm.connections.model.Interface.Direction.in;
+import static io.github.m4gshm.connections.model.Interface.Direction.out;
+import static io.github.m4gshm.connections.model.Interface.Direction.outIn;
+import static io.github.m4gshm.connections.model.Interface.Direction.undefined;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -36,8 +38,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class JmsOperationsUtils {
 
-    public static final String UNRECOGNIZED_DESTINATION = "???";
-    public static final String UNDEFINED_DESTINATION = "???";
+    public static final String UNRECOGNIZED_DESTINATION = "unrecognized";
+    public static final String UNDEFINED_DESTINATION = "undefined";
     public static final String DEFAULT_DESTINATION = "default";
 
     public static List<JmsClient> extractJmsClients(
@@ -76,8 +78,8 @@ public class JmsOperationsUtils {
 
         var onEval = instructionHandle.getPrev();
 
-        var jmsClientType = getJmsClientType(methodName);
-        if (jmsClientType.isEmpty()) {
+        var direction = getJmsDirection(methodName);
+        if (direction == undefined) {
             return null;
         } else {
             var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
@@ -92,7 +94,7 @@ public class JmsOperationsUtils {
 
             return JmsClient.builder()
                     .destination(destination)
-                    .types(jmsClientType)
+                    .direction(direction)
                     .name(methodName)
                     .build();
         }
@@ -111,15 +113,11 @@ public class JmsOperationsUtils {
         return destination;
     }
 
-    private static Set<Type> getJmsClientType(String methodName) {
-        var result = new HashSet<Type>();
+     static Direction getJmsDirection(String methodName) {
         var methodNameLowerCase = methodName.toLowerCase();
-        if (methodNameLowerCase.contains("send")) {
-            result.add(Type.sender);
-        }
-        if (methodNameLowerCase.contains("receive")) {
-            result.add(Type.listener);
-        }
-        return result;
+        int sendIndex = methodNameLowerCase.indexOf("send");
+        int receiveIndex = methodNameLowerCase.indexOf("receive");
+        return sendIndex >= 0 && receiveIndex > sendIndex ? outIn : sendIndex >= 0
+                ? out : receiveIndex >= 0 ? in : undefined;
     }
 }

@@ -16,13 +16,23 @@ import static lombok.AccessLevel.PRIVATE;
 public class Interface {
     String name;
     String group;
-    Set<Direction> directions;
+    Direction direction;
     Type type;
 
     @Getter
     @RequiredArgsConstructor
     public enum Direction {
-        in, out;
+        undefined, in, out, outIn(out, in);
+
+        private final Set<Direction> directions;
+
+        Direction(Direction... directions) {
+            this.directions = directions.length > 0 ? Set.of(directions) : Set.of(this);
+        }
+
+        public boolean is(Direction direction) {
+            return directions.contains(direction);
+        }
     }
 
     @RequiredArgsConstructor
