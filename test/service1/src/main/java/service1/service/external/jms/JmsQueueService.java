@@ -10,12 +10,12 @@ import javax.jms.TextMessage;
 
 @Service
 @RequiredArgsConstructor
-public class JmsQueueService {
+public class JmsQueueService extends AbstractJmsQueueService {
     private final JmsTemplate jmsTemplate;
     private final JmsOperations jmsOperations;
 
-    public void sendMessage(String message) {
-        jmsTemplate.sendAndReceive("jmsQueue", session -> session.createTextMessage(message));
+    public void sendMessage(String message, String message2, String message3) {
+        jmsTemplate.sendAndReceive(wrap("jmsQueue"), session -> session.createTextMessage(message3));
     }
 
     public String receive() {

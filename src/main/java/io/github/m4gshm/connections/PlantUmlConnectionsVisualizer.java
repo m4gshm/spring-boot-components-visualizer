@@ -42,8 +42,8 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
     public static String pumlAlias(String name) {
         var onRemove = regExp(List.of("*", "$", "{", "}", " ", "(", ")", "#"));
-        var onEscape = regExp(List.of("-", "/", ":"));
-        String s = name.replaceAll(onRemove, "").replaceAll(onEscape, ".");
+        var onReplace = regExp(List.of("-", "/", ":", "?"));
+        String s = name.replaceAll(onRemove, "").replaceAll(onReplace, ".");
         return s;
     }
 

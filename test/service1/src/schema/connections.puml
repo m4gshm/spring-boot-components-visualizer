@@ -5,7 +5,6 @@ package "api" as api {
   }
   package "ws" as api.ws {
     [eventsHandler] as eventsHandler
-    [eventsHandler] as eventsHandler
   }
 }
 package "service" as service {
@@ -17,8 +16,6 @@ package "service" as service {
     }
     package "rest" as service.external.rest {
       [service2LegacyImpl] as service2LegacyImpl
-      [standaloneService2Api] as standaloneService2Api
-      [service2FeignClient] as service2FeignClient
     }
     package "ws" as service.external.ws {
       [service2StreamClientImpl] as service2StreamClientImpl
@@ -40,11 +37,13 @@ rectangle "in" as in {
     interface "*:/api/v1/" as in.http...api.v1.
     in.http...api.v1. )..> mainController
   }
-  cloud "web socket" as in.websocket {
-    interface "/events" as in.ws..events
-    in.ws..events )..> eventsHandler
-  }
   cloud "jms" as in.jms {
+    queue "jmsQueueService" as in.jmsQueueService {
+      interface "jmsQueue" as jmsQueueService.in.out.jms.jmsQueue
+      jmsQueueService.in.out.jms.jmsQueue )..> jmsQueueService
+      interface "default" as jmsQueueService.in.jms.default
+      jmsQueueService.in.jms.default )..> jmsQueueService
+    }
     queue "jmsQueueListener" as in.jmsQueueListener {
       interface "queue1" as jmsQueueListener.in.jms.queue1
       jmsQueueListener.in.jms.queue1 )..> jmsQueueListener
@@ -55,16 +54,11 @@ rectangle "in" as in {
 }
 rectangle "out" as out {
   cloud "http" as out.http {
-    cloud "standalone-service2" as out.standalone.service2 {
-      interface "GET:/{id}" as standalone.service2.out.http.GET..id
-      standaloneService2Api ..( standalone.service2.out.http.GET..id
-    }
     cloud "http://service2" as out.http...service2 {
       interface "GET:/{id}" as http...service2.out.http.GET..id
       service2LegacyImpl ..( http...service2.out.http.GET..id
       interface "GET:/" as http...service2.out.http.GET..
       service2LegacyImpl ..( http...service2.out.http.GET..
-      service2FeignClient ..( http...service2.out.http.GET..id
     }
   }
   cloud "web socket" as out.websocket {
@@ -86,6 +80,11 @@ rectangle "out" as out {
     service2StreamClientImpl ..( out.ws.ws...currentURI.supplier
     interface "ws://service-property-injected" as out.ws.ws...service.property.injected
     service2StreamClientImpl ..( out.ws.ws...service.property.injected
+  }
+  cloud "jms" as out.jms {
+    queue "jmsQueueService" as out.jmsQueueService {
+      jmsQueueService ..( jmsQueueService.in.out.jms.jmsQueue
+    }
   }
 }
 @enduml

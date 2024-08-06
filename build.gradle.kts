@@ -36,6 +36,7 @@ dependencies {
     compileOnly("org.springframework.cloud:spring-cloud-openfeign-core:3.1.9")
     compileOnly("org.springframework.cloud:spring-cloud-context:3.1.8")
     compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
+    compileOnly("jakarta.jms:jakarta.jms-api:2.0.3")
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")

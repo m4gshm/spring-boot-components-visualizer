@@ -3,7 +3,9 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
+import io.github.m4gshm.connections.ConnectionsExtractor.FeignClient;
 import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
+import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
@@ -33,11 +34,13 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.ConnectionsExtractor.JmsClient.Type.listener;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -187,18 +190,19 @@ public class ConnectionsExtractorUtils {
         return method == null || method.isEmpty() ? url : method + ":" + url;
     }
 
-    static List<ConnectionsExtractor.JmsClientListener> extractMethodJmsListeners(Class<?> beanType) {
+    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
         return annotationMap.entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream().map(annotation -> Map.entry(entry.getKey(), annotation)))
-                .map(entry -> ConnectionsExtractor.JmsClientListener.builder()
-                        .type(ConnectionsExtractor.JmsClientListener.Type.JmsListenerMethod)
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
+                .map(entry -> JmsClient.builder()
+                        .types(Set.of(listener))
                         .name(entry.getKey().getName())
                         .destination(entry.getValue().destination())
-                        .build()).collect(toList());
+                        .build())
+                .collect(toList());
     }
 
-    static ConnectionsExtractor.FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
+    static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
         try {
             var bean = context.getBean(name);
             if (!isProxyClass(bean.getClass())) {
@@ -226,14 +230,12 @@ public class ConnectionsExtractorUtils {
                 return null;
             }
             var type = target.type();
-
-            return ConnectionsExtractor.FeignClient.builder()
+            return FeignClient.builder()
                     .type(type)
                     .name(target.name())
                     .url(target.url())
                     .httpMethods(httpMethods)
                     .build();
-
         } catch (NoClassDefFoundError | NoSuchBeanDefinitionException e) {
             log.debug("extractFeignClient bean {}", name, e);
             return null;

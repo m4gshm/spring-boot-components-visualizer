@@ -3,13 +3,14 @@ package io.github.m4gshm.connections;
 import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.generic.InvokeInstruction;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.jms.core.JmsOperations;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
@@ -28,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -41,6 +43,7 @@ import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
@@ -52,6 +55,7 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toSet;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 
@@ -88,6 +92,11 @@ public class ConnectionsExtractor {
         return methodUrl;
     }
 
+    private static Interface newInterface(JmsClient jmsClient, String group) {
+        var directions = jmsClient.types.stream().map(type -> type.direction).collect(toSet());
+        return Interface.builder().directions(directions).type(jms).group(group).name(jmsClient.destination).build();
+    }
+
     public Components getComponents() {
         var allBeans = asList(context.getBeanDefinitionNames());
 
@@ -98,8 +107,8 @@ public class ConnectionsExtractor {
                 .filter(Objects::nonNull).findFirst().orElse(null);
         var rootPackage = rootComponent != null ? rootComponent.getType().getPackage() : null;
 
-        var components = filterByRootPackage(rootComponent, allBeans.stream()
-                .flatMap(beanName -> getFilteredComponents(beanName, rootPackage, componentCache)))
+        var components = filterByRootPackage(getRootPackage(rootComponent), allBeans.stream())
+                .flatMap(beanName -> getFilteredComponents(beanName, rootPackage, componentCache))
                 .collect(toList());
 
         return Components.builder().components(components).build();
@@ -143,15 +152,12 @@ public class ConnectionsExtractor {
         } else {
             var result = new ArrayList<Component>();
 
-            var jmsClientListeners = extractMethodJmsListeners(componentType);
-            var inJmsInterface = jmsClientListeners.stream().map(jmsClientListener -> Interface.builder()
-                    .directions(Set.of(in)).type(jms).group(beanName).name(jmsClientListener.destination).build()
-            );
+            var inJmsInterface = extractMethodJmsListeners(componentType).stream().map(jmsClient -> newInterface(jmsClient, beanName));
 
             var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(beanName, rootPackage, cache);
 
+            var outJmsInterfaces = getOutJmsInterfaces(beanName, componentType, dependencies);
             var outWsInterfaces = getOutWsInterfaces(beanName, componentType, dependencies);
-
             var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(beanName, componentType, dependencies);
 
             var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
@@ -173,7 +179,7 @@ public class ConnectionsExtractor {
                     .type(componentType)
                     .interfaces(of(
                             inHttpInterfaces, inJmsInterface, outFeignHttpInterface,
-                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream()
+                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream()
                     ).flatMap(s -> s).collect(toLinkedHashSet()))
                     .dependencies(dependencies)
                     .build();
@@ -182,6 +188,25 @@ public class ConnectionsExtractor {
             result.add(component);
             return result.stream();
         }
+    }
+
+    private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
+        var jmsTemplate = findDependencyByType(dependencies, JmsOperations.class);
+        if (jmsTemplate != null) try {
+            var jmsClients = extractJmsClients(componentName, componentType, context);
+
+            return jmsClients.stream()
+                    .map(jmsClient -> newInterface(jmsClient, componentName))
+                    .collect(toLinkedHashSet());
+
+        } catch (EvalException | NoClassDefFoundError e) {
+            if (log.isDebugEnabled()) {
+                log.debug("jms client getting error, component {}", componentName, e);
+            } else {
+                log.info("jms client getting error, component {}, message '{}'", componentName, e.getLocalizedMessage());
+            }
+        }
+        return Set.of();
     }
 
     private Set<Interface> getOutWsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
@@ -193,7 +218,7 @@ public class ConnectionsExtractor {
                     .map(uri -> Interface.builder().directions(Set.of(out)).type(ws).name(uri).build())
                     .collect(toLinkedHashSet());
 
-        } catch (EvalException e) {
+        } catch (EvalException | NoClassDefFoundError e) {
             if (log.isDebugEnabled()) {
                 log.debug("ws client getting error, component {}", componentName, e);
             } else {
@@ -211,7 +236,7 @@ public class ConnectionsExtractor {
                 var result = extractNameAndGroup(httpMethod);
                 return Interface.builder().directions(Set.of(out)).type(http).name(result.name).group(result.group).build();
             }).collect(toLinkedHashSet());
-        } catch (EvalException e) {
+        } catch (EvalException | NoClassDefFoundError e) {
             if (log.isDebugEnabled()) {
                 log.debug("rest operations client getting error, component {}", componentName, e);
             } else {
@@ -315,12 +340,18 @@ public class ConnectionsExtractor {
         }).findFirst().orElse(null);
     }
 
-    private Stream<Component> filterByRootPackage(Component rootComponent, Stream<Component> componentStream) {
-        var rootPackage = rootComponent != null ? rootComponent.getType().getPackage() : null;
+    private Stream<String> filterByRootPackage(Package rootPackage, Stream<String> benaNamesStream) {
         if (rootPackage != null) {
-            componentStream = componentStream.filter(bean -> bean.getType().getPackage().getName().startsWith(rootPackage.getName()));
+            var rootPackageName = rootPackage.getName();
+            benaNamesStream = benaNamesStream.filter(beanName -> Optional.ofNullable(context.getType(beanName))
+                    .map(Class::getPackage).map(Package::getName).orElse("")
+                    .startsWith(rootPackageName));
         }
-        return componentStream;
+        return benaNamesStream;
+    }
+
+    private static Package getRootPackage(Component rootComponent) {
+        return rootComponent != null ? rootComponent.getType().getPackage() : null;
     }
 
     private static class HttpNameAndGroup {
@@ -335,22 +366,12 @@ public class ConnectionsExtractor {
 
     @Data
     @Builder
-    private static class MethodRef {
-        private final InvokeInstruction instruction;
-        private final String className;
-        private final String methodName;
-        private final String methodSignature;
-    }
-
-    @Data
-    @Builder
     public static class FeignClient {
         private final Class<?> type;
         private final String name;
         private final String url;
         private final List<HttpMethod> httpMethods;
     }
-
 
     @Data
     @Builder(toBuilder = true)
@@ -361,13 +382,16 @@ public class ConnectionsExtractor {
 
     @Data
     @Builder
-    public static class JmsClientListener {
+    public static class JmsClient {
         private String name;
         private String destination;
-        private Type type;
+        private Set<Type> types;
 
+        @RequiredArgsConstructor
         public enum Type {
-            JmsListenerMethod
+            listener(in), sender(out);
+
+            public final Direction direction;
         }
     }
 }

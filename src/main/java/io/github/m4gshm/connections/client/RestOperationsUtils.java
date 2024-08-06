@@ -52,7 +52,7 @@ public class RestOperationsUtils {
         }).filter(Objects::nonNull).collect(toList());
     }
 
-    private static boolean isClass(Class<?> expectedClass, InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
+    static boolean isClass(Class<?> expectedClass, InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
         var className = instruction.getClassName(constantPoolGen);
         return expectedClass.getName().equals(className);
     }
