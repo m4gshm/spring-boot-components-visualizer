@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
+import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.bytecode.EvalUtils.CallResult;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.classfile.BootstrapMethods;

@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
+import java.util.Map;
 import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -14,10 +15,15 @@ import static lombok.AccessLevel.PRIVATE;
 @Builder
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
+    Object core;
     String name;
     String group;
     Direction direction;
     Type type;
+
+    public String getName() {
+        return name != null ? name : core != null ? core.toString() : null;
+    }
 
     @Getter
     @RequiredArgsConstructor
@@ -33,6 +39,14 @@ public class Interface {
         public boolean is(Direction direction) {
             return directions.contains(direction);
         }
+    }
+
+    @Data
+    @Builder(toBuilder = true)
+    public static class Group {
+        private String path;
+        private Set<Interface> interfaces;
+        private Map<String, Group> groups;
     }
 
     @RequiredArgsConstructor

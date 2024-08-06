@@ -1,5 +1,8 @@
 plugins {
     `java-library`
+    `maven-publish`
+//    signing
+//    id("com.gradleup.nmcp").version("0.0.4")
 }
 
 group = "github.m4gshm"
@@ -50,7 +53,45 @@ tasks.test {
 
 java {
     withSourcesJar()
+    withJavadocJar()
     targetCompatibility = JavaVersion.VERSION_11
     sourceCompatibility = JavaVersion.VERSION_11
     modularity.inferModulePath.set(true)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("java") {
+            pom {
+                description.set("todo")
+                url.set("https://github.com/m4gshm/spring-connections-visualizer")
+                properties.put("maven.compiler.target", "${java.targetCompatibility}")
+                properties.put("maven.compiler.source", "${java.sourceCompatibility}")
+                developers {
+                    developer {
+                        id.set("m4gshm")
+                        name.set("Bulgakov Alexander")
+                        email.set("mfourgeneralsherman@gmail.com")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/m4gshm/spring-connections-visualizer.git")
+                    developerConnection.set("scm:git:https://github.com/m4gshm/spring-connections-visualizer.git")
+                    url.set("https://github.com/m4gshm/spring-connections-visualizer")
+                }
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://github.com/m4gshm/spring-connections-visualizer?tab=MIT-1-ov-file#readme")
+                    }
+                }
+            }
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven("file://$rootDir/../m4gshm.github.io/maven2") {
+            name = "GithubMavenRepo"
+        }
+    }
 }

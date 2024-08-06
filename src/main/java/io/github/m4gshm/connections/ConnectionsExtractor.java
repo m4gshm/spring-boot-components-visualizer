@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -99,7 +100,7 @@ public class ConnectionsExtractor {
     }
 
     private static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
-        return Optional.ofNullable(type)
+        return rootPackageName != null && Optional.ofNullable(type)
                 .map(Class::getPackage).map(Package::getName).orElse("")
                 .startsWith(rootPackageName);
     }
@@ -141,7 +142,8 @@ public class ConnectionsExtractor {
         var rootPackage = getPackage(rootComponent);
         var rootPackageName = rootPackage != null ? rootPackage.getName() : null;
 
-        var rootGroupedBeans = allBeans.stream().collect(groupingBy(beanName -> isRootRelatedBean(context.getType(beanName), rootPackageName)));
+        var rootGroupedBeans = allBeans.stream()
+                .collect(groupingBy(beanName -> isRootRelatedBean(context.getType(beanName), rootPackageName)));
 
         var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
                 .flatMap(beanName -> getComponents(beanName, rootPackage, componentCache)
@@ -192,13 +194,11 @@ public class ConnectionsExtractor {
             var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
-                    .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().direction(out).type(http).group(client.getUrl()).name(interfaceName).build())
+                    .map(httpMethod -> Interface.builder().direction(out).type(http).core(httpMethod).build())
             );
 
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
-                    .map(httpMethod -> getHttpInterfaceName(httpMethod.getMethod(), httpMethod.getUrl()))
-                    .map(interfaceName -> Interface.builder().direction(in).type(http).name(interfaceName).build());
+                    .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build());
 
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : beanName;
 
@@ -272,10 +272,9 @@ public class ConnectionsExtractor {
         var restTemplate = findDependencyByType(dependencies, RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
-            return httpMethods.stream().map(httpMethod -> {
-                var result = extractNameAndGroup(httpMethod);
-                return Interface.builder().direction(out).type(http).name(result.name).group(result.group).build();
-            }).collect(toLinkedHashSet());
+            return httpMethods.stream().map(httpMethod -> Interface.builder().direction(out).type(http)
+                    .core(httpMethod).build())
+                    .collect(toLinkedHashSet());
         } catch (EvalException | NoClassDefFoundError e) {
             if (log.isDebugEnabled()) {
                 log.debug("rest operations client getting error, component {}", componentName, e);
@@ -404,13 +403,6 @@ public class ConnectionsExtractor {
         private final String name;
         private final String url;
         private final List<HttpMethod> httpMethods;
-    }
-
-    @Data
-    @Builder(toBuilder = true)
-    public static class HttpMethod {
-        private String url;
-        private String method;
     }
 
     @Data

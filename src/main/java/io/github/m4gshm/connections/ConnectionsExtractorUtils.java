@@ -4,9 +4,9 @@ import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.ConnectionsExtractor.FeignClient;
-import io.github.m4gshm.connections.ConnectionsExtractor.HttpMethod;
 import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient;
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -19,7 +19,6 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
@@ -185,7 +184,7 @@ public class ConnectionsExtractorUtils {
     }
 
     static boolean isSpringBootMainClass(Class<?> beanType) {
-        return hasAnnotation(beanType, () -> SpringBootApplication.class) && hasMainMethod(beanType);
+        return hasAnnotation(beanType, () -> SpringBootApplication.class) ;//&& hasMainMethod(beanType);
     }
 
     static String getHttpInterfaceName(String method, String url) {

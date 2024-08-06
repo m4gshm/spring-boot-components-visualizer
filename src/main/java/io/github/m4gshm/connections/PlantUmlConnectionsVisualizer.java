@@ -1,19 +1,26 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.HttpMethod;
+import io.github.m4gshm.connections.model.HttpMethod.Group;
 import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.util.DefaultUriBuilderFactory;
 
-import java.util.Arrays;
+import java.net.URI;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
@@ -22,6 +29,7 @@ import static com.google.common.collect.Streams.concat;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
+import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -156,6 +164,71 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                 : Stream.of(pack);
     }
 
+    private static PackageOutType getPackageOutType(Type type) {
+        return type == Type.jms ? queue : cloud;
+    }
+
+    private static URI toUri(String uriTemplate) {
+        return new DefaultUriBuilderFactory().uriString(uriTemplate).build();
+    }
+
+    private static String notNull(String host) {
+        return Optional.ofNullable(host).orElse("");
+    }
+
+    private static Group newEmptyGroup(String part) {
+        return Group.builder()
+                .path(part).groups(new LinkedHashMap<>())
+                .build();
+    }
+
+    private static Group reduce(Group group) {
+        var nextGroups = group.getGroups();
+        while (nextGroups.size() == 1 && group.getMethods() == null) {
+            var nextGroupPath = nextGroups.keySet().iterator().next();
+            var nextGroup = nextGroups.get(nextGroupPath);
+            var path = group.getPath();
+            group.setPath(path.isBlank() ? nextGroupPath : path + "/" + nextGroupPath);
+            group.setMethods(nextGroup.getMethods());
+            group.setGroups(nextGroups = nextGroup.getGroups());
+        }
+
+        group.setGroups(reduceNext(group.getGroups()));
+
+        return group;
+    }
+
+    private static LinkedHashMap<String, Group> reduceNext(Map<String, Group> groups) {
+        return groups.entrySet().stream()
+                .map(e -> entry(e.getKey(), reduce(e.getValue())))
+                .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                    return l;
+                }, LinkedHashMap::new));
+    }
+
+    private static void printInterface(StringBuilder out, int depth, Interface anInterface, Component component, Set<String> renderedInterfaces) {
+        var interfaceId = getInterfaceId(anInterface);
+        if (renderedInterfaces.add(interfaceId)) {
+            out.append(INDENT.repeat(depth));
+            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+        }
+        var componentId = pumlAlias(component.getName());
+        out.append(INDENT.repeat(depth));
+        var direction = anInterface.getDirection();
+        switch (direction) {
+            case in:
+                out.append(format("%s )..> %s\n", interfaceId, componentId));
+                break;
+            case out:
+                out.append(format("%s ..( %s\n", componentId, interfaceId));
+                break;
+            case outIn:
+                out.append(format("%s ).. %s\n", interfaceId, componentId));
+                out.append(format("%s <.. %s\n", componentId, interfaceId));
+                break;
+        }
+    }
+
     @Override
     public String visualize(Components components) {
         var out = new StringBuilder();
@@ -191,7 +264,6 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             );
         })).values();
 
-
         packages = packages.stream().flatMap(PlantUmlConnectionsVisualizer::mergeSubPack).collect(toList());
 
         for (var pack : packages) {
@@ -204,12 +276,25 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             });
         });
 
-        var groupedInterfaces = components.stream()
+        Stream<Entry<Direction, Entry<Interface, Component>>> entryStream = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component))))
-                .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()), mapping(Map.Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
-                        groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse("")))))
+                        .flatMap(Collection::stream)
+                        .map(anInterface -> {
+                            Entry<Direction, Entry<Interface, Component>> entry1 = entry(anInterface.getDirection(), entry(anInterface, component));
+                            return entry1;
+                        })
                 );
+        var groupedInterfaces = entryStream
+                .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()),
+                        mapping(directionEntryEntry1 -> {
+                            Entry<Interface, Component> value = directionEntryEntry1.getValue();
+                            return value;
+                        }, groupingBy(entry -> {
+                                    var key1 = entry.getKey();
+                                    return key1.getType();
+                                },
+                                groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""), toMap(e -> e.getKey(), e -> e.getValue()))))
+                ));
 
         var renderedInterfaces = new HashSet<String>();
         var directionGroups = stream(Direction.values()).map(PlantUmlConnectionsVisualizer::directionGroup).distinct().collect(toList());
@@ -218,39 +303,80 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             if (!byType.isEmpty()) {
                 printPackage(out, depth, directionGroup, directionGroup, rectangle, () -> {
                     for (var type : Type.values()) {
-                        var byGroup = byType.getOrDefault(type, Map.of());
+                        Map<String, Map<Interface, Component>> byGroup = Optional.ofNullable(byType.get(type)).orElse(Map.of());
                         if (!byGroup.isEmpty()) {
                             var typeName = type.code;
-                            printPackage(out, depth + 1, typeName, getElementId(directionGroup, typeName), cloud, () -> byGroup.forEach((group, interfaceComponentLink) -> {
-                                var wrap = group != null && !group.isEmpty();
-                                var depthDelta = wrap ? 1 : 0;
-                                var packageType = type == Type.jms ? queue : cloud;
-                                var groupId = getElementId(directionGroup, group);
-                                printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> interfaceComponentLink.forEach(entry -> {
-                                    var anInterface = entry.getKey();
-                                    var component = entry.getValue();
-                                    var interfaceId = getInterfaceId(anInterface);
-                                    if (renderedInterfaces.add(interfaceId)) {
-                                        out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                        out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+                            printPackage(out, depth + 1, typeName, getElementId(directionGroup, typeName), cloud, () -> {
+                                byGroup.forEach((group, interfaceComponentLink) -> {
+                                    var wrap = group != null && !group.isEmpty();
+                                    var depthDelta = wrap ? 1 : 0;
+                                    var packageType = getPackageOutType(type);
+                                    var groupId = getElementId(directionGroup, group);
+
+                                    if (type == http) {
+                                        //merge by url parts
+                                        var httpMethods = interfaceComponentLink.keySet().stream().map(anInterface -> {
+                                            var core = anInterface.getCore();
+                                            if (core instanceof HttpMethod) {
+                                                return Map.entry((HttpMethod) core, anInterface);
+                                            } else {
+                                                //log
+                                                return null;
+                                            }
+                                        }).filter(Objects::nonNull).collect(toMap(e -> e.getKey(), e -> e.getValue()));
+
+                                        var rootGroup = newEmptyGroup("");
+                                        //create groups
+                                        for (var httpMethod : httpMethods.keySet()) {
+                                            var url = httpMethod.getUrl();
+                                            url = url.startsWith("/") ? url.substring(1) : url;
+                                            var parts = url.isBlank() ? new String[0] : url.split("/");
+
+                                            var nexGroupsLevel = rootGroup.getGroups();
+                                            var currentGroup = rootGroup;
+                                            for (var part : parts) {
+                                                currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
+                                                nexGroupsLevel = currentGroup.getGroups();
+                                            }
+                                            var oldMethods = currentGroup.getMethods();
+                                            Set<HttpMethod> methods;
+                                            if (oldMethods != null) {
+                                                methods = new LinkedHashSet<>(oldMethods);
+                                                methods.add(httpMethod);
+                                            } else {
+                                                methods = new LinkedHashSet<>();
+                                                methods.add(httpMethod);
+                                            }
+                                            currentGroup.setMethods(methods);
+                                        }
+                                        //reduce groups
+                                        var finalGroup = reduce(rootGroup);
+                                        printPackage(wrap, out, depth + depthDelta + 1, group, groupId, packageType, () -> {
+
+                                            var path = finalGroup.getPath();
+
+                                            printPackage(wrap, out, depth + depthDelta + 2, path, getElementId(groupId, path), packageType, () -> {
+                                                var methods = finalGroup.getMethods();
+                                                if (methods != null) {
+                                                    for (HttpMethod method : methods) {
+                                                        var anInterface = httpMethods.get(method);
+                                                        printInterface(out, depth + depthDelta + 3, anInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
+                                                    }
+                                                }
+
+                                            });
+
+//                                            interfaceComponentLink.forEach(entry -> printInterface(out, depth + depthDelta + 2, entry.getKey(), entry.getValue(), renderedInterfaces));
+                                        });
+                                    } else {
+                                        printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> {
+                                            interfaceComponentLink.forEach((anInterface, component) -> printInterface(
+                                                    out, depth + depthDelta + 2, anInterface, component, renderedInterfaces)
+                                            );
+                                        });
                                     }
-                                    var componentId = pumlAlias(component.getName());
-                                    out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                    var direction = anInterface.getDirection();
-                                    switch (direction) {
-                                        case in:
-                                            out.append(format("%s )..> %s\n", interfaceId, componentId));
-                                            break;
-                                        case out:
-                                            out.append(format("%s ..( %s\n", componentId, interfaceId));
-                                            break;
-                                        case outIn:
-                                            out.append(format("%s ).. %s\n", interfaceId, componentId));
-                                            out.append(format("%s <.. %s\n", componentId, interfaceId));
-                                            break;
-                                    }
-                                }));
-                            }));
+                                });
+                            });
                         }
                     }
                 });
