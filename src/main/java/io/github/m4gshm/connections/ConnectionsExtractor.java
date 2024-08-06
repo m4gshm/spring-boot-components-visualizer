@@ -25,12 +25,14 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
@@ -54,6 +56,7 @@ import static io.github.m4gshm.connections.model.Interface.Type.ws;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
+import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
@@ -92,7 +95,38 @@ public class ConnectionsExtractor {
     }
 
     private static Interface newInterface(JmsClient jmsClient, String group) {
-        return Interface.builder().direction(jmsClient.direction).type(jms).group(group).name(jmsClient.destination).build();
+        return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).build();
+    }
+
+    private static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
+        return Optional.ofNullable(type)
+                .map(Class::getPackage).map(Package::getName).orElse("")
+                .startsWith(rootPackageName);
+    }
+
+    private static Package getPackage(Component component) {
+        return component != null ? component.getType().getPackage() : null;
+    }
+
+    @SafeVarargs
+    private static Collection<Component> mergeComponents(Collection<Component>... components) {
+        return of(components).flatMap(Collection::stream).collect(Collectors.toMap(Component::getName, c -> c, (l, r) -> {
+            var lInterfaces = l.getInterfaces();
+            var lDependencies = l.getDependencies();
+            var rInterfaces = r.getInterfaces();
+            var rDependencies = r.getDependencies();
+            var dependencies = mergeComponents(lDependencies, rDependencies);
+            var interfaces = mergeInterfaces(lInterfaces, rInterfaces);
+            return l.toBuilder()
+                    .dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies)))
+                    .interfaces(unmodifiableSet(interfaces))
+                    .build();
+        }, LinkedHashMap::new)).values();
+    }
+
+    @SafeVarargs
+    private static LinkedHashSet<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
+        return of(interfaces).flatMap(Collection::stream).collect(toLinkedHashSet());
     }
 
     public Components getComponents() {
@@ -103,21 +137,24 @@ public class ConnectionsExtractor {
                 .filter(beanName -> isSpringBootMainClass(context.getType(beanName)))
                 .flatMap(beanName -> getComponents(beanName, null, componentCache))
                 .filter(Objects::nonNull).findFirst().orElse(null);
-        var rootPackage = rootComponent != null ? rootComponent.getType().getPackage() : null;
 
-        var components = filterByRootPackage(getRootPackage(rootComponent), allBeans.stream())
-                .flatMap(beanName -> getFilteredComponents(beanName, rootPackage, componentCache))
+        var rootPackage = getPackage(rootComponent);
+        var rootPackageName = rootPackage != null ? rootPackage.getName() : null;
+
+        var rootGroupedBeans = allBeans.stream().collect(groupingBy(beanName -> isRootRelatedBean(context.getType(beanName), rootPackageName)));
+
+        var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
+                .flatMap(beanName -> getComponents(beanName, rootPackage, componentCache)
+                        .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())))
                 .collect(toList());
 
-        return Components.builder().components(components).build();
-    }
+        var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream()
+                .flatMap(beanName -> extractInWebsocketHandlers(beanName, getComponentType(beanName),
+                        rootPackage, componentCache).stream()).collect(toList());
 
-    private Stream<Component> getFilteredComponents(
-            String beanName, Package rootPackage, Map<String, Set<Component>> componentCache
-    ) {
-        return getComponents(beanName, rootPackage, componentCache)
-                .filter(Objects::nonNull)
-                .filter(component -> isIncluded(component.getType()));
+        var components = mergeComponents(rootComponents, additionalComponents);
+
+        return Components.builder().components(components).build();
     }
 
     private Stream<Component> getComponents(String beanName, Package rootPackage, Map<String, Set<Component>> cache) {
@@ -126,13 +163,7 @@ public class ConnectionsExtractor {
             //log
             return cached.stream();
         }
-        Class<?> componentType;
-        try {
-            componentType = context.getType(beanName);
-        } catch (NoSuchBeanDefinitionException e) {
-            //log
-            componentType = null;
-        }
+        var componentType = getComponentType(beanName);
 
         var feignClient = extractFeignClient(beanName, context);
         if (feignClient != null) {
@@ -186,6 +217,17 @@ public class ConnectionsExtractor {
             result.add(component);
             return result.stream();
         }
+    }
+
+    private Class<?> getComponentType(String beanName) {
+        Class<?> componentType;
+        try {
+            componentType = context.getType(beanName);
+        } catch (NoSuchBeanDefinitionException e) {
+            //log
+            componentType = null;
+        }
+        return componentType;
     }
 
     private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
@@ -246,32 +288,31 @@ public class ConnectionsExtractor {
 
     private Set<Component> getDependencies(String componentName, Package rootPackage, Map<String, Set<Component>> cache) {
         return stream(context.getBeanFactory().getDependenciesForBean(componentName))
-                .flatMap(dep -> getFilteredComponents(dep, rootPackage, cache))
+                .flatMap(dep -> getComponents(dep, rootPackage, cache)
+                        .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())))
                 .collect(toLinkedHashSet());
     }
 
     private Collection<Component> extractInWebsocketHandlers(
             String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache) {
-        var cachedComponents = cache.get(componentName);
-        if (cachedComponents != null) {
-            return cachedComponents;
-        }
-        try {
-            if (WebSocketConfigurationSupport.class.isAssignableFrom(componentType)) {
-                var bean = (WebSocketConfigurationSupport) context.getBean(componentName);
-                var handlerRegistry = getFieldValue(bean, "handlerRegistry");
-                if (handlerRegistry instanceof ServletWebSocketHandlerRegistry) {
-                    var handlerMapping = ((ServletWebSocketHandlerRegistry) handlerRegistry).getHandlerMapping();
-                    if (handlerMapping instanceof SimpleUrlHandlerMapping) {
-                        var simpleUrlHandlerMapping = (SimpleUrlHandlerMapping) handlerMapping;
-                        var components = simpleUrlHandlerMapping.getUrlMap().entrySet().stream().flatMap(entry -> {
-                            var wsHandlerPath = entry.getValue();
-                            var wsUrl = entry.getKey();
-                            return getComponentStream(wsUrl, wsHandlerPath, rootPackage, cache);
-                        }).filter(Objects::nonNull).collect(toLinkedHashSet());
-                        cache.put(componentName, components);
-                        return components;
-                    }
+        if (WebSocketConfigurationSupport.class.isAssignableFrom(componentType)) try {
+            var cachedComponents = cache.get(componentName);
+            if (cachedComponents != null) {
+                return cachedComponents;
+            }
+            var bean = (WebSocketConfigurationSupport) context.getBean(componentName);
+            var handlerRegistry = getFieldValue(bean, "handlerRegistry");
+            if (handlerRegistry instanceof ServletWebSocketHandlerRegistry) {
+                var handlerMapping = ((ServletWebSocketHandlerRegistry) handlerRegistry).getHandlerMapping();
+                if (handlerMapping instanceof SimpleUrlHandlerMapping) {
+                    var simpleUrlHandlerMapping = (SimpleUrlHandlerMapping) handlerMapping;
+                    var components = simpleUrlHandlerMapping.getUrlMap().entrySet().stream().flatMap(entry -> {
+                        var wsHandlerPath = entry.getValue();
+                        var wsUrl = entry.getKey();
+                        return getComponentStream(wsUrl, wsHandlerPath, rootPackage, cache);
+                    }).filter(Objects::nonNull).collect(toLinkedHashSet());
+                    cache.put(componentName, components);
+                    return components;
                 }
             }
         } catch (NoClassDefFoundError e) {
@@ -341,15 +382,9 @@ public class ConnectionsExtractor {
     private Stream<String> filterByRootPackage(Package rootPackage, Stream<String> benaNamesStream) {
         if (rootPackage != null) {
             var rootPackageName = rootPackage.getName();
-            benaNamesStream = benaNamesStream.filter(beanName -> Optional.ofNullable(context.getType(beanName))
-                    .map(Class::getPackage).map(Package::getName).orElse("")
-                    .startsWith(rootPackageName));
+            benaNamesStream = benaNamesStream.filter(beanName -> isRootRelatedBean(context.getType(beanName), rootPackageName));
         }
         return benaNamesStream;
-    }
-
-    private static Package getRootPackage(Component rootComponent) {
-        return rootComponent != null ? rootComponent.getType().getPackage() : null;
     }
 
     private static class HttpNameAndGroup {

@@ -7,6 +7,7 @@ import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -23,6 +24,7 @@ import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.Package
 import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
+import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
@@ -37,13 +39,24 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
 
     public static final String INDENT = "  ";
     private final String applicationName;
-    private final boolean simple;
 
     public static String pumlAlias(String name) {
         var onRemove = regExp(List.of("*", "$", "{", "}", " ", "(", ")", "#"));
         var onReplace = regExp(List.of("-", "/", ":", "?"));
         String s = name.replaceAll(onRemove, "").replaceAll(onReplace, ".");
         return s;
+    }
+
+    public static String directionGroup(Direction direction) {
+        switch (direction) {
+            case in:
+                return "input";
+            case out:
+            case outIn:
+                return "output";
+            default:
+                return String.valueOf(direction);
+        }
     }
 
     private static String regExp(List<String> strings) {
@@ -194,25 +207,25 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
                         .flatMap(Collection::stream).map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component))))
-                .collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
+                .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()), mapping(Map.Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
                         groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse("")))))
                 );
 
         var renderedInterfaces = new HashSet<String>();
-        for (var direction : Direction.values()) {
-            var byType = groupedInterfaces.getOrDefault(direction, Map.of());
+        var directionGroups = stream(Direction.values()).map(PlantUmlConnectionsVisualizer::directionGroup).distinct().collect(toList());
+        for (var directionGroup : directionGroups) {
+            var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                var directionName = direction.name();
-                printPackage(out, depth, directionName, directionName, rectangle, () -> {
+                printPackage(out, depth, directionGroup, directionGroup, rectangle, () -> {
                     for (var type : Type.values()) {
                         var byGroup = byType.getOrDefault(type, Map.of());
                         if (!byGroup.isEmpty()) {
                             var typeName = type.code;
-                            printPackage(out, depth + 1, typeName, getElementId(directionName, typeName), cloud, () -> byGroup.forEach((group, interfaceComponentLink) -> {
+                            printPackage(out, depth + 1, typeName, getElementId(directionGroup, typeName), cloud, () -> byGroup.forEach((group, interfaceComponentLink) -> {
                                 var wrap = group != null && !group.isEmpty();
                                 var depthDelta = wrap ? 1 : 0;
                                 var packageType = type == Type.jms ? queue : cloud;
-                                var groupId = getElementId(directionName, group);
+                                var groupId = getElementId(directionGroup, group);
                                 printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> interfaceComponentLink.forEach(entry -> {
                                     var anInterface = entry.getKey();
                                     var component = entry.getValue();
@@ -223,13 +236,18 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                     }
                                     var componentId = pumlAlias(component.getName());
                                     out.append(INDENT.repeat(depth + 2 + depthDelta));
-                                    if (direction == Direction.in) {
-                                        out.append(format("%s )..> %s\n", interfaceId, componentId));
-                                    } else if (direction == Direction.out) {
-                                        out.append(format("%s ..( %s\n", componentId, interfaceId));
-                                    } else if (direction == Direction.outIn) {
-                                        out.append(format("%s )..> %s\n", interfaceId, componentId));
-                                        out.append(format("%s <.. %s\n", componentId, interfaceId));
+                                    var direction = anInterface.getDirection();
+                                    switch (direction) {
+                                        case in:
+                                            out.append(format("%s )..> %s\n", interfaceId, componentId));
+                                            break;
+                                        case out:
+                                            out.append(format("%s ..( %s\n", componentId, interfaceId));
+                                            break;
+                                        case outIn:
+                                            out.append(format("%s ).. %s\n", interfaceId, componentId));
+                                            out.append(format("%s <.. %s\n", componentId, interfaceId));
+                                            break;
                                     }
                                 }));
                             }));

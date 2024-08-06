@@ -19,6 +19,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
@@ -65,7 +66,8 @@ public class ConnectionsExtractorUtils {
     }
 
     static boolean isIncluded(Class<?> type) {
-        return !(isSpringBootTest(type) || isSpringConfiguration(type) || isVisualizeAPI(type) || isProperties(type));
+        return !(isSpringBootTest(type) || (isSpringConfiguration(type))
+                || isVisualizeAPI(type) || isProperties(type));
     }
 
     private static boolean isProperties(Class<?> beanType) {

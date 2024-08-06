@@ -30,36 +30,36 @@ jmsQueueListener ..> coreService
 jmsQueueService ..> jmsTemplate
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
-rectangle "in" as in {
-  cloud "http" as in.http {
+rectangle "input" as input {
+  cloud "http" as input.http {
     interface "GET:/api/v1/req" as in.http.GET..api.v1.req
     in.http.GET..api.v1.req )..> mainController
     interface "*:/api/v1/" as in.http...api.v1.
     in.http...api.v1. )..> mainController
   }
-  cloud "jms" as in.jms {
-    queue "jmsQueueService" as in.jmsQueueService {
-      interface "default" as jmsQueueService.in.jms.default
-      jmsQueueService.in.jms.default )..> jmsQueueService
-    }
-    queue "jmsQueueListener" as in.jmsQueueListener {
-      interface "queue1" as jmsQueueListener.in.jms.queue1
-      jmsQueueListener.in.jms.queue1 )..> jmsQueueListener
-      interface "queue2" as jmsQueueListener.in.jms.queue2
-      jmsQueueListener.in.jms.queue2 )..> jmsQueueListener
-    }
+  cloud "web socket" as input.websocket {
+    interface "/events" as in.ws..events
+    in.ws..events )..> eventsHandler
+  }
+  cloud "jms" as input.jms {
+    interface "queue1" as in.jms.queue1
+    in.jms.queue1 )..> jmsQueueListener
+    interface "queue2" as in.jms.queue2
+    in.jms.queue2 )..> jmsQueueListener
+    interface "default" as in.jms.default
+    in.jms.default )..> jmsQueueService
   }
 }
-rectangle "out" as out {
-  cloud "http" as out.http {
-    cloud "http://service2" as out.http...service2 {
+rectangle "output" as output {
+  cloud "http" as output.http {
+    cloud "http://service2" as output.http...service2 {
       interface "GET:/{id}" as http...service2.out.http.GET..id
       service2LegacyImpl ..( http...service2.out.http.GET..id
       interface "GET:/" as http...service2.out.http.GET..
       service2LegacyImpl ..( http...service2.out.http.GET..
     }
   }
-  cloud "web socket" as out.websocket {
+  cloud "web socket" as output.websocket {
     interface "ws://service-template" as out.ws.ws...service.template
     service2StreamClientImpl ..( out.ws.ws...service.template
     interface "ws://service-template/{id}/" as out.ws.ws...service.template.id.
@@ -77,16 +77,12 @@ rectangle "out" as out {
     interface "ws://currentURI-supplier" as out.ws.ws...currentURI.supplier
     service2StreamClientImpl ..( out.ws.ws...currentURI.supplier
     interface "ws://service-property-injected" as out.ws.ws...service.property.injected
-    service2StreamClientImpl -.( out.ws.ws...service.property.injected
+    service2StreamClientImpl ..( out.ws.ws...service.property.injected
   }
-}
-rectangle "outIn" as outIn {
-  cloud "jms" as outIn.jms {
-    queue "jmsQueueService" as outIn.jmsQueueService {
-      interface "jmsQueue" as jmsQueueService.outIn.jms.jmsQueue
-      jmsQueueService.outIn.jms.jmsQueue )..> jmsQueueService
-jmsQueueService <.. jmsQueueService.outIn.jms.jmsQueue
-    }
+  cloud "jms" as output.jms {
+    interface "jmsQueue" as outIn.jms.jmsQueue
+    outIn.jms.jmsQueue ).. jmsQueueService
+jmsQueueService <.. outIn.jms.jmsQueue
   }
 }
 @enduml
