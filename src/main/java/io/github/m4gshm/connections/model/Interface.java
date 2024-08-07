@@ -12,7 +12,7 @@ import java.util.Set;
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
     Object core;

@@ -20,30 +20,12 @@ import org.springframework.web.socket.config.annotation.ServletWebSocketHandlerR
 import org.springframework.web.socket.config.annotation.WebSocketConfigurationSupport;
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
-import org.springframework.web.util.UriComponents;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractFeignClient;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractMethodJmsListeners;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.findDependencyByType;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getComponentPath;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getHttpInterfaceName;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.*;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -51,9 +33,7 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRes
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
-import static io.github.m4gshm.connections.model.Interface.Type.http;
-import static io.github.m4gshm.connections.model.Interface.Type.jms;
-import static io.github.m4gshm.connections.model.Interface.Type.ws;
+import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
@@ -66,34 +46,6 @@ import static java.util.stream.Stream.ofNullable;
 @RequiredArgsConstructor
 public class ConnectionsExtractor {
     private final ConfigurableApplicationContext context;
-
-    private static UriComponents getUriComponents(String url) {
-        try {
-            return UriComponentsBuilder.fromUriString(url).build();
-        } catch (Exception e) {
-            log.error(url, e);
-            return null;
-        }
-    }
-
-    private static HttpNameAndGroup extractNameAndGroup(HttpMethod httpMethod) {
-        var url = httpMethod.getUrl();
-        var uriComponents = getUriComponents(url);
-
-        var methodUrl = getMethodUrl(uriComponents, url);
-        var httpInterfaceName = getHttpInterfaceName(httpMethod.getMethod(), methodUrl);
-        var group = uriComponents != null ? uriComponents.getScheme() + "://" + uriComponents.getHost() : null;
-
-        return new HttpNameAndGroup(httpInterfaceName, group);
-    }
-
-    private static String getMethodUrl(UriComponents uriComponents, String url) {
-        var methodUrl = uriComponents != null ? uriComponents.getPath() : url;
-        if (methodUrl == null || methodUrl.isBlank()) {
-            methodUrl = "/";
-        }
-        return methodUrl;
-    }
 
     private static Interface newInterface(JmsClient jmsClient, String group) {
         return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).build();
@@ -273,7 +225,7 @@ public class ConnectionsExtractor {
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
             return httpMethods.stream().map(httpMethod -> Interface.builder().direction(out).type(http)
-                    .core(httpMethod).build())
+                            .core(httpMethod).build())
                     .collect(toLinkedHashSet());
         } catch (EvalException | NoClassDefFoundError e) {
             if (log.isDebugEnabled()) {
