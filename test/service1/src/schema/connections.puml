@@ -32,13 +32,11 @@ service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 rectangle "input" as input {
   cloud "http" as input.http {
-    cloud "api/v1" {
-      interface "*:" as in.http..
-      in.http.. )..> mainController
-        cloud "req" {
-          interface "GET:" as in.http.GET.
-          in.http.GET. )..> mainController
-        }
+    cloud "/api/v1" {
+      interface "*:/" as in.http...
+      in.http... )..> mainController
+        interface "GET:/req" as in.http.GET..req
+        in.http.GET..req )..> mainController
     }
   }
   cloud "web socket" as input.websocket {
@@ -57,32 +55,31 @@ rectangle "input" as input {
 rectangle "output" as output {
   cloud "http" as output.http {
     cloud "http://service2" {
-      interface "GET:" as out.http.GET.
-      service2LegacyImpl ..( out.http.GET.
-        cloud "{id}" {
-          service2LegacyImpl ..( out.http.GET.
-        }
+      interface "GET:/" as out.http.GET..
+      service2LegacyImpl ..( out.http.GET..
+        interface "GET:/{id}" as out.http.GET..id
+        service2LegacyImpl ..( out.http.GET..id
     }
   }
   cloud "web socket" as output.websocket {
     interface "ws://service-template/{id}/" as out.ws.ws...service.template.id.
     service2StreamClientImpl ..( out.ws.ws...service.template.id.
-    interface "ws://defaultURI-static" as out.ws.ws...defaultURI.static
-    service2StreamClientImpl ..( out.ws.ws...defaultURI.static
-    interface "ws://service-property-injected" as out.ws.ws...service.property.injected
-    service2StreamClientImpl ..( out.ws.ws...service.property.injected
     interface "ws://service2" as out.ws.ws...service2
     service2StreamClientImpl ..( out.ws.ws...service2
-    interface "ws://service-template" as out.ws.ws...service.template
-    service2StreamClientImpl ..( out.ws.ws...service.template
-    interface "ws://currentURI-supplier" as out.ws.ws...currentURI.supplier
-    service2StreamClientImpl ..( out.ws.ws...currentURI.supplier
-    interface "ws://service3" as out.ws.ws...service3
-    service2StreamClientImpl ..( out.ws.ws...service3
     interface "ws://service2-value-inject" as out.ws.ws...service2.value.inject
     service2StreamClientImpl ..( out.ws.ws...service2.value.inject
     interface "ws://currentURI-method" as out.ws.ws...currentURI.method
     service2StreamClientImpl ..( out.ws.ws...currentURI.method
+    interface "ws://service3" as out.ws.ws...service3
+    service2StreamClientImpl ..( out.ws.ws...service3
+    interface "ws://defaultURI-static" as out.ws.ws...defaultURI.static
+    service2StreamClientImpl ..( out.ws.ws...defaultURI.static
+    interface "ws://service-property-injected" as out.ws.ws...service.property.injected
+    service2StreamClientImpl ..( out.ws.ws...service.property.injected
+    interface "ws://service-template" as out.ws.ws...service.template
+    service2StreamClientImpl ..( out.ws.ws...service.template
+    interface "ws://currentURI-supplier" as out.ws.ws...currentURI.supplier
+    service2StreamClientImpl ..( out.ws.ws...currentURI.supplier
   }
   cloud "jms" as output.jms {
     interface "jmsQueue" as outIn.jms.jmsQueue
