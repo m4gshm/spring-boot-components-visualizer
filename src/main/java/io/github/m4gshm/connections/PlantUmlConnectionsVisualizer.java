@@ -8,15 +8,28 @@ import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
-import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.*;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.cloud;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.queue;
+import static io.github.m4gshm.connections.PlantUmlConnectionsVisualizer.PackageOutType.rectangle;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -25,8 +38,12 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
+@Slf4j
 @RequiredArgsConstructor
 public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<String> {
 
@@ -84,25 +101,24 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         };
 
         if (wrapByPack) {
-            printPackage(out, indent, packageName, pack.getPath(), packageType, printInternal);
+            printPackage(out, packageName, indent, pack.getPath(), packageType, printInternal);
         } else {
             printInternal.run();
         }
     }
 
-    private static void printPackage(StringBuilder out, int indent, String name, String id,
+    private static void printPackage(StringBuilder out, String name, int indent, String id,
                                      PackageOutType packageType, Runnable internal) {
-        printPackage(true, out, indent, name, id, packageType, internal);
-    }
-
-    private static void printPackage(boolean wrap, StringBuilder out, int indent, String name, String id,
-                                     PackageOutType packageType, Runnable internal) {
+        var wrap = name != null;
         if (wrap) {
-            if (id != null) {
-                out.append(format(INDENT.repeat(indent) + "%s \"%s\" as %s {\n", packageType.code, name, id));
-            } else {
-                out.append(format(INDENT.repeat(indent) + "%s \"%s\" {\n", packageType.code, name));
+            out.append(format(INDENT.repeat(indent) + "%s", packageType.code));
+            if (!name.isBlank()) {
+                out.append(format(" \"%s\"", name));
+                if (id != null) {
+                    out.append(format(" as %s", id));
+                }
             }
+            out.append(" {\n");
         }
         internal.run();
         if (wrap) {
@@ -174,7 +190,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         while (nextGroups.size() == 1 && group.getMethods() == null) {
             var nextGroupPath = nextGroups.keySet().iterator().next();
             var nextGroup = nextGroups.get(nextGroupPath);
-            var path = group.getPath();
+            var path = Optional.ofNullable(group.getPath()).orElse("");
             var newPath = path.endsWith(PATH_DELIMITER) || nextGroupPath.startsWith(PATH_DELIMITER) || nextGroupPath.contains(SCHEME_DELIMETER)
                     ? path + nextGroupPath
                     : path + PATH_DELIMITER + nextGroupPath;
@@ -192,31 +208,142 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return groups.entrySet().stream()
                 .map(e -> entry(e.getKey(), reduce(e.getValue())))
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                    log.debug("merge http method groups {} and {}", l, r);
                     return l;
                 }, LinkedHashMap::new));
     }
 
-    private static void printInterface(StringBuilder out, int depth, Interface anInterface, Component component, Set<String> renderedInterfaces) {
+    private static void printInterface(StringBuilder out, int depth, Interface anInterface,
+                                       Collection<Component> components, Set<String> renderedInterfaces) {
         var interfaceId = getInterfaceId(anInterface);
         if (renderedInterfaces.add(interfaceId)) {
             out.append(INDENT.repeat(depth));
             out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
         }
-        var componentId = pumlAlias(component.getName());
-        out.append(INDENT.repeat(depth));
-        var direction = anInterface.getDirection();
-        switch (direction) {
-            case in:
-                out.append(format("%s )..> %s\n", interfaceId, componentId));
-                break;
-            case out:
-                out.append(format("%s ..( %s\n", componentId, interfaceId));
-                break;
-            case outIn:
-                out.append(format("%s ).. %s\n", interfaceId, componentId));
-                out.append(format("%s <.. %s\n", componentId, interfaceId));
-                break;
+        for (var component : components) {
+            var componentId = pumlAlias(component.getName());
+            out.append(INDENT.repeat(depth));
+            var direction = anInterface.getDirection();
+            switch (direction) {
+                case in:
+                    out.append(format("%s )..> %s\n", interfaceId, componentId));
+                    break;
+                case out:
+                    out.append(format("%s ..( %s\n", componentId, interfaceId));
+                    break;
+                case outIn:
+                    out.append(format("%s ).. %s\n", interfaceId, componentId));
+                    out.append(format("%s <.. %s\n", componentId, interfaceId));
+                    break;
+            }
         }
+    }
+
+    private static Group getLastGroup(Group group, HttpMethod httpMethod) {
+        var url = httpMethod.getUrl();
+        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
+
+
+        final String scheme, path;
+        int schemeEnd = url.indexOf(SCHEME_DELIMETER);
+        if (schemeEnd >= 0) {
+            scheme = url.substring(0, schemeEnd);
+            path = url.substring(schemeEnd + SCHEME_DELIMETER.length());
+        } else {
+            scheme = null;
+            path = url;
+        }
+
+        var parts = new ArrayList<String>();
+
+        if (!path.isBlank()) {
+            var first = true;
+            var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
+            while (tokenizer.hasMoreTokens()) {
+                var part = tokenizer.nextToken();
+                if (first && scheme != null) {
+                    part = scheme + SCHEME_DELIMETER + part;
+                } else {
+                    part = PATH_DELIMITER + part;
+                }
+                parts.add(part);
+                first = false;
+            }
+        }
+
+        var nexGroupsLevel = group.getGroups();
+        var currentGroup = group;
+        for (var part : parts) {
+            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
+            nexGroupsLevel = currentGroup.getGroups();
+        }
+        return currentGroup;
+    }
+
+    private static void printHttpMethodGroup(StringBuilder out, int depth, Group group,
+                                             PackageOutType packageType,
+                                             Map<Interface, List<Component>> interfaceComponentLink,
+                                             Map<HttpMethod, Interface> httpMethods,
+                                             Set<String> renderedInterfaces) {
+        var methods = group.getMethods();
+        var subGroups = group.getGroups();
+        if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
+            printInterfaceAndSubgroups(out, depth, group, group.getPath(), packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+        } else {
+            printPackage(out, group.getPath(), depth, null, packageType,
+                    () -> printInterfaceAndSubgroups(out, depth + 1, group, PATH_DELIMITER, packageType,
+                            interfaceComponentLink, httpMethods, renderedInterfaces)
+            );
+        }
+    }
+
+    private static void printInterfaceAndSubgroups(StringBuilder out, int depth,
+                                                   Group group, String replaceMethodUrl, PackageOutType packageType,
+                                                   Map<Interface, List<Component>> interfaceComponentLink,
+                                                   Map<HttpMethod, Interface> httpMethods,
+                                                   Set<String> renderedInterfaces) {
+        var groupMethods = group.getMethods();
+        if (groupMethods != null) for (var method : groupMethods) {
+            var anInterface = httpMethods.get(method);
+            var groupedInterface = anInterface.toBuilder().core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build()).build();
+            printInterface(out, depth, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
+        }
+        for (var subGroup : group.getGroups().values()) {
+            printHttpMethodGroup(out, depth + 1, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+        }
+    }
+
+    private static Map<HttpMethod, Interface> extractHttpMethodsFromInterfaces(Collection<Interface> interfaces) {
+        return interfaces.stream().map(anInterface -> {
+            var core = anInterface.getCore();
+            if (core instanceof HttpMethod) {
+                return entry((HttpMethod) core, anInterface);
+            } else {
+                //log
+                return null;
+            }
+        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
+    }
+
+    private static Group groupByUrlParts(Map<HttpMethod, Interface> httpMethods) {
+        var rootGroup = newEmptyGroup(null);
+        //create groups
+        for (var httpMethod : httpMethods.keySet()) {
+            var currentGroup = getLastGroup(rootGroup, httpMethod);
+            var oldMethods = currentGroup.getMethods();
+            Set<HttpMethod> methods;
+            if (oldMethods != null) {
+                methods = new LinkedHashSet<>(oldMethods);
+                methods.add(httpMethod);
+            } else {
+                methods = new LinkedHashSet<>();
+                methods.add(httpMethod);
+            }
+            currentGroup.setMethods(methods);
+        }
+        //reduce groups
+        var finalGroup = reduce(rootGroup);
+        return finalGroup;
     }
 
     @Override
@@ -277,61 +404,40 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         var groupedInterfaces = entryStream
                 .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()),
                         mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
-                                groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""), toMap(e -> e.getKey(), e -> e.getValue()))))
-                ));
+                                groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""),
+                                        groupingBy(e -> e.getKey(), LinkedHashMap::new, mapping(e -> e.getValue(), toList()))))
+                        )));
 
         var renderedInterfaces = new HashSet<String>();
         var directionGroups = stream(Direction.values()).map(PlantUmlConnectionsVisualizer::directionGroup).distinct().collect(toList());
         for (var directionGroup : directionGroups) {
             var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                printPackage(out, depth, directionGroup, directionGroup, rectangle, () -> {
+                printPackage(out, directionGroup, depth, directionGroup, rectangle, () -> {
                     for (var type : Type.values()) {
                         var byGroup = ofNullable(byType.get(type)).orElse(Map.of());
                         if (!byGroup.isEmpty()) {
                             var typeName = type.code;
-                            printPackage(out, depth + 1, typeName, getElementId(directionGroup, typeName), cloud, () -> {
+                            printPackage(out, typeName, depth + 1, getElementId(directionGroup, typeName), cloud, () -> {
                                 byGroup.forEach((group, interfaceComponentLink) -> {
                                     var wrap = group != null && !group.isEmpty();
                                     var depthDelta = wrap ? 1 : 0;
                                     var packageType = getPackageOutType(type);
                                     var groupId = getElementId(directionGroup, group);
 
+                                    var packageName = group != null && group.isBlank() ? null : group;
                                     if (type == http) {
                                         //merge by url parts
-                                        var httpMethods = interfaceComponentLink.keySet().stream().map(anInterface -> {
-                                            var core = anInterface.getCore();
-                                            if (core instanceof HttpMethod) {
-                                                return entry((HttpMethod) core, anInterface);
-                                            } else {
-                                                //log
-                                                return null;
-                                            }
-                                        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
-
-                                        var rootGroup = newEmptyGroup("");
-                                        //create groups
-                                        for (var httpMethod : httpMethods.keySet()) {
-                                            var currentGroup = getLastGroup(rootGroup, httpMethod);
-                                            var oldMethods = currentGroup.getMethods();
-                                            Set<HttpMethod> methods;
-                                            if (oldMethods != null) {
-                                                methods = new LinkedHashSet<>(oldMethods);
-                                                methods.add(httpMethod);
-                                            } else {
-                                                methods = new LinkedHashSet<>();
-                                                methods.add(httpMethod);
-                                            }
-                                            currentGroup.setMethods(methods);
-                                        }
-                                        //reduce groups
-                                        var finalGroup = reduce(rootGroup);
-                                        printPackage(wrap, out, depth + depthDelta + 1, group, groupId, packageType, () -> {
+                                        var httpMethods = extractHttpMethodsFromInterfaces(
+                                                interfaceComponentLink.keySet());
+                                        var finalGroup = groupByUrlParts(httpMethods);
+                                        printPackage(out, packageName,
+                                                depth + depthDelta + 1, groupId, packageType, () -> {
                                             printHttpMethodGroup(out, depth + depthDelta + 2, finalGroup, packageType,
                                                     interfaceComponentLink, httpMethods, renderedInterfaces);
                                         });
                                     } else {
-                                        printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> {
+                                        printPackage(out, packageName, depth + 1 + depthDelta, groupId, packageType, () -> {
                                             interfaceComponentLink.forEach((anInterface, component) -> printInterface(
                                                     out, depth + depthDelta + 2, anInterface, component, renderedInterfaces)
                                             );
@@ -343,80 +449,6 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                     }
                 });
             }
-        }
-    }
-
-    private static Group getLastGroup(Group group, HttpMethod httpMethod) {
-        var url = httpMethod.getUrl();
-        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
-
-
-        final String scheme, path;
-        int schemeEnd = url.indexOf(SCHEME_DELIMETER);
-        if (schemeEnd >= 0) {
-            scheme = url.substring(0, schemeEnd);
-            path = url.substring(schemeEnd + SCHEME_DELIMETER.length());
-        } else {
-            scheme = null;
-            path = url;
-        }
-
-        var parts = new ArrayList<String>();
-
-        if (!path.isBlank()) {
-            var first = true;
-            var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
-            while (tokenizer.hasMoreTokens()) {
-                var part = tokenizer.nextToken();
-                if (first && scheme != null) {
-                    part = scheme + SCHEME_DELIMETER + part;
-                } else {
-                    part = PATH_DELIMITER + part;
-                }
-                parts.add(part);
-                first = false;
-            }
-        }
-
-        var nexGroupsLevel = group.getGroups();
-        var currentGroup = group;
-        for (var part : parts) {
-            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
-            nexGroupsLevel = currentGroup.getGroups();
-        }
-        return currentGroup;
-    }
-
-    private static void printHttpMethodGroup(StringBuilder out, int depth, Group group,
-                                             PackageOutType packageType,
-                                             Map<Interface, Component> interfaceComponentLink,
-                                             Map<HttpMethod, Interface> httpMethods,
-                                             Set<String> renderedInterfaces) {
-        var methods = group.getMethods();
-        var subGroups = group.getGroups();
-        if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
-            printInterfaceAndSubgroups(out, depth, group, group.getPath(), packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
-        } else {
-            printPackage(true, out, depth, group.getPath(), null, packageType,
-                    () -> printInterfaceAndSubgroups(out, depth + 1, group, PATH_DELIMITER, packageType,
-                            interfaceComponentLink, httpMethods, renderedInterfaces)
-            );
-        }
-    }
-
-    private static void printInterfaceAndSubgroups(StringBuilder out, int depth,
-                                                   Group group, String replaceMethodUrl, PackageOutType packageType,
-                                                   Map<Interface, Component> interfaceComponentLink,
-                                                   Map<HttpMethod, Interface> httpMethods,
-                                                   Set<String> renderedInterfaces) {
-        var groupMethods = group.getMethods();
-        if (groupMethods != null) for (var method : groupMethods) {
-            var anInterface = httpMethods.get(method);
-            var groupedInterface = anInterface.toBuilder().core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build()).build();
-            printInterface(out, depth, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
-        }
-        for (var subGroup : group.getGroups().values()) {
-            printHttpMethodGroup(out, depth + 1, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
         }
     }
 

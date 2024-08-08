@@ -21,11 +21,25 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.*;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractFeignClient;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractMethodJmsListeners;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.findDependencyByType;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getComponentPath;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
+import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -33,10 +47,13 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRes
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
-import static io.github.m4gshm.connections.model.Interface.Type.*;
+import static io.github.m4gshm.connections.model.Interface.Type.http;
+import static io.github.m4gshm.connections.model.Interface.Type.jms;
+import static io.github.m4gshm.connections.model.Interface.Type.ws;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
@@ -52,9 +69,24 @@ public class ConnectionsExtractor {
     }
 
     private static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
-        return rootPackageName != null && Optional.ofNullable(type)
-                .map(Class::getPackage).map(Package::getName).orElse("")
-                .startsWith(rootPackageName);
+        if (rootPackageName != null) {
+            var relatedType = Stream.ofNullable(type)
+                    .flatMap(aClass -> Stream.concat(Stream.of(
+                                    entry(aClass, aClass.getPackage())),
+                            getInterfaces(aClass).map(c -> entry(c, c.getPackage())))
+                    )
+                    .filter(e -> e.getValue().getName().startsWith(rootPackageName))
+                    .findFirst().orElse(null);
+            if (relatedType != null) {
+                log.debug("type is related to root package. type: {}, related by {}", type, relatedType.getKey());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Stream<Class<?>> getInterfaces(Class<?> aClass) {
+        return stream(aClass.getInterfaces()).flatMap(i -> Stream.concat(Stream.of(i), getInterfaces(i))).distinct();
     }
 
     private static Package getPackage(Component component) {
@@ -135,31 +167,38 @@ public class ConnectionsExtractor {
         } else {
             var result = new ArrayList<Component>();
 
-            var inJmsInterface = extractMethodJmsListeners(componentType).stream().map(jmsClient -> newInterface(jmsClient, beanName));
+            //log
+            var inJmsInterface = extractMethodJmsListeners(componentType).stream().map(jmsClient -> newInterface(jmsClient, beanName)).collect(toList());
 
             var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(beanName, rootPackage, cache);
 
+            //log
             var outJmsInterfaces = getOutJmsInterfaces(beanName, componentType, dependencies);
+            //log
             var outWsInterfaces = getOutWsInterfaces(beanName, componentType, dependencies);
+            //log
             var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(beanName, componentType, dependencies);
 
+            //log
             var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
                     .map(httpMethod -> Interface.builder().direction(out).type(http).core(httpMethod).build())
-            );
+            ).collect(toList());
 
+            //log
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
-                    .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build());
+                    .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build()).collect(toList());
 
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : beanName;
 
+            //log
             var component = Component.builder()
                     .name(name)
                     .path(getComponentPath(rootPackage, componentType))
                     .type(componentType)
                     .interfaces(of(
-                            inHttpInterfaces, inJmsInterface, outFeignHttpInterface,
+                            inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(),
                             outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream()
                     ).flatMap(s -> s).collect(toLinkedHashSet()))
                     .dependencies(dependencies)
