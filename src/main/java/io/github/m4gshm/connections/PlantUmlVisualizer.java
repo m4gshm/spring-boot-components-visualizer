@@ -10,14 +10,26 @@ import io.github.m4gshm.connections.model.Package;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static com.google.common.collect.Streams.concat;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.*;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.cloud;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.queue;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.rectangle;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -26,7 +38,10 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -35,13 +50,15 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     public static final String INDENT = "  ";
     public static final String SCHEME_DELIMETER = "://";
     public static final String PATH_DELIMITER = "/";
+    public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
+            "", List.of("*", "$", "{", "}", " ", "(", ")", "#"),
+            ".", List.of("-", PATH_DELIMITER, ":", "?", "=")
+    );
     private final String applicationName;
+    private final Map<String, List<String>> plantUmlAliasEscapes;
 
-    public static String plantUmlAlias(String name) {
-        var onRemove = regExp(List.of("*", "$", "{", "}", " ", "(", ")", "#"));
-        var onReplace = regExp(List.of("-", PATH_DELIMITER, ":", "?"));
-        String s = name.replaceAll(onRemove, "").replaceAll(onReplace, ".");
-        return s;
+    public PlantUmlVisualizer(String applicationName) {
+        this(applicationName, DEFAULT_ESCAPES);
     }
 
     public static String directionGroup(Direction direction) {
@@ -58,29 +75,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     private static String regExp(List<String> strings) {
         return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
-    }
-
-    private static String getInterfaceId(Interface anInterface) {
-        var direction = getElementId(anInterface.getDirection().name());
-        var elementId = getElementId(direction, anInterface.getType().name(), anInterface.getName());
-        return getElementId(anInterface.getGroup(), elementId);
-    }
-
-    private static void printPackage(IndentStringAppender out, Package pack) {
-        printPackage(out, pack, PackageOutType.pack);
-    }
-
-    private static void printPackage(IndentStringAppender out, Package pack, PackageOutType packageType) {
-        printPackage(out, pack.getName(), pack.getPath(), packageType, () -> {
-            var beans = pack.getComponents();
-            if (beans != null) {
-                beans.forEach(bean -> printComponent(out, bean));
-            }
-            var packages = pack.getPackages();
-            if (packages != null) {
-                packages.forEach(subPack -> printPackage(out, subPack));
-            }
-        });
     }
 
     private static void printPackage(IndentStringAppender out, String name, String id,
@@ -103,51 +97,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             out.removeIndent();
             out.append("}\n");
         }
-    }
-
-    private static String getElementId(String... parts) {
-        return plantUmlAlias(Stream.of(parts).filter(Objects::nonNull).reduce("", (parent, id) -> (!parent.isEmpty() ? parent + "." : "") + id));
-    }
-
-    private static Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
-        return packageStream.map(p -> populatePath(parentPath, p)).collect(toMap(Package::getName, p -> p, (l, r) -> {
-            var lName = l.getName();
-            var rName = r.getName();
-            var validPackages = lName != null && lName.equals(rName) || rName == null;
-            if (!validPackages) {
-                throw new IllegalArgumentException("cannot merge packages with different names '" + lName + "', '" + rName + "'");
-            }
-
-            var components = Stream.of(l.getComponents(), r.getComponents())
-                    .filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
-
-            var distinctPackages = distinctPackages(getElementId(parentPath, l.getName()), concat(
-                    ofNullable(l.getPackages()).orElse(emptyList()).stream(),
-                    ofNullable(r.getPackages()).orElse(emptyList()).stream())
-            );
-            var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
-            return pack;
-        }, LinkedHashMap::new));
-    }
-
-    private static Package populatePath(String parentPath, Package pack) {
-        var elementId = getElementId(parentPath, pack.getName());
-        return pack.toBuilder().path(elementId)
-                .packages(ofNullable(pack.getPackages()).orElse(emptyList()).stream().map(p -> populatePath(elementId, p)).collect(toList()))
-                .build();
-    }
-
-    private static void printComponent(IndentStringAppender out, Component component) {
-        var componentName = component.getName();
-        out.append(format("[%s] as %s\n", componentName, plantUmlAlias(componentName)));
-    }
-
-    private static Stream<Package> mergeSubPack(Package pack) {
-        var packComponents = pack.getComponents();
-        var subPackages = pack.getPackages();
-        return packComponents.isEmpty() && subPackages.size() == 1
-                ? subPackages.stream().map(subPack -> subPack.toBuilder().name(getElementId(pack.getName(), subPack.getName())).build()).flatMap(PlantUmlVisualizer::mergeSubPack)
-                : Stream.of(pack);
     }
 
     private static PackageOutType getPackageOutType(Type type) {
@@ -193,30 +142,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                 }, LinkedHashMap::new));
     }
 
-    private static void printInterface(IndentStringAppender out, Interface anInterface,
-                                       Collection<Component> components, Set<String> renderedInterfaces) {
-        var interfaceId = getInterfaceId(anInterface);
-        if (renderedInterfaces.add(interfaceId)) {
-            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
-        }
-        for (var component : components) {
-            var componentId = plantUmlAlias(component.getName());
-            var direction = anInterface.getDirection();
-            switch (direction) {
-                case in:
-                    out.append(format("%s )..> %s\n", interfaceId, componentId));
-                    break;
-                case out:
-                    out.append(format("%s ..( %s\n", componentId, interfaceId));
-                    break;
-                case outIn:
-                    out.append(format("%s ).. %s\n", interfaceId, componentId));
-                    out.append(format("%s <.. %s\n", componentId, interfaceId));
-                    break;
-            }
-        }
-    }
-
     private static Group getLastGroup(Group group, HttpMethod httpMethod) {
         var url = httpMethod.getUrl();
         url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
@@ -258,39 +183,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         return currentGroup;
     }
 
-    private static void printHttpMethodGroup(IndentStringAppender out, Group group,
-                                             PackageOutType packageType,
-                                             Map<Interface, List<Component>> interfaceComponentLink,
-                                             Map<HttpMethod, Interface> httpMethods,
-                                             Set<String> renderedInterfaces) {
-        var methods = group.getMethods();
-        var subGroups = group.getGroups();
-        if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
-            printInterfaceAndSubgroups(out, group, group.getPath(), packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
-        } else {
-            printPackage(out, group.getPath(), null, packageType,
-                    () -> printInterfaceAndSubgroups(out, group, PATH_DELIMITER, packageType,
-                            interfaceComponentLink, httpMethods, renderedInterfaces)
-            );
-        }
-    }
-
-    private static void printInterfaceAndSubgroups(IndentStringAppender out,
-                                                   Group group, String replaceMethodUrl, PackageOutType packageType,
-                                                   Map<Interface, List<Component>> interfaceComponentLink,
-                                                   Map<HttpMethod, Interface> httpMethods,
-                                                   Set<String> renderedInterfaces) {
-        var groupMethods = group.getMethods();
-        if (groupMethods != null) for (var method : groupMethods) {
-            var anInterface = httpMethods.get(method);
-            var groupedInterface = anInterface.toBuilder().core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build()).build();
-            printInterface(out, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
-        }
-        for (var subGroup : group.getGroups().values()) {
-            printHttpMethodGroup(out, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
-        }
-    }
-
     private static Map<HttpMethod, Interface> extractHttpMethodsFromInterfaces(Collection<Interface> interfaces) {
         return interfaces.stream().map(anInterface -> {
             var core = anInterface.getCore();
@@ -322,6 +214,140 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         //reduce groups
         var finalGroup = reduce(rootGroup);
         return finalGroup;
+    }
+
+    private String getInterfaceId(Interface anInterface) {
+        var direction = getElementId(anInterface.getDirection().name());
+        var elementId = getElementId(direction, anInterface.getType().name(), anInterface.getName());
+        return getElementId(anInterface.getGroup(), elementId);
+    }
+
+    private void printPackage(IndentStringAppender out, Package pack) {
+        printPackage(out, pack, PackageOutType.pack);
+    }
+
+    private void printPackage(IndentStringAppender out, Package pack, PackageOutType packageType) {
+        printPackage(out, pack.getName(), pack.getPath(), packageType, () -> {
+            var beans = pack.getComponents();
+            if (beans != null) {
+                beans.forEach(bean -> printComponent(out, bean));
+            }
+            var packages = pack.getPackages();
+            if (packages != null) {
+                packages.forEach(subPack -> printPackage(out, subPack));
+            }
+        });
+    }
+
+    private Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
+        return packageStream.map(p -> populatePath(parentPath, p)).collect(toMap(Package::getName, p -> p, (l, r) -> {
+            var lName = l.getName();
+            var rName = r.getName();
+            var validPackages = lName != null && lName.equals(rName) || rName == null;
+            if (!validPackages) {
+                throw new IllegalArgumentException("cannot merge packages with different names '" + lName + "', '" + rName + "'");
+            }
+
+            var components = Stream.of(l.getComponents(), r.getComponents())
+                    .filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
+
+            var distinctPackages = distinctPackages(getElementId(parentPath, l.getName()), concat(
+                    ofNullable(l.getPackages()).orElse(emptyList()).stream(),
+                    ofNullable(r.getPackages()).orElse(emptyList()).stream())
+            );
+            var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
+            return pack;
+        }, LinkedHashMap::new));
+    }
+
+    private void printHttpMethodGroup(IndentStringAppender out, Group group,
+                                      PackageOutType packageType,
+                                      Map<Interface, List<Component>> interfaceComponentLink,
+                                      Map<HttpMethod, Interface> httpMethods,
+                                      Set<String> renderedInterfaces) {
+        var methods = group.getMethods();
+        var subGroups = group.getGroups();
+        if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
+            printInterfaceAndSubgroups(out, group, group.getPath(), packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+        } else {
+            printPackage(out, group.getPath(), null, packageType,
+                    () -> printInterfaceAndSubgroups(out, group, PATH_DELIMITER, packageType,
+                            interfaceComponentLink, httpMethods, renderedInterfaces)
+            );
+        }
+    }
+
+    private void printInterfaceAndSubgroups(IndentStringAppender out,
+                                            Group group, String replaceMethodUrl, PackageOutType packageType,
+                                            Map<Interface, List<Component>> interfaceComponentLink,
+                                            Map<HttpMethod, Interface> httpMethods,
+                                            Set<String> renderedInterfaces) {
+        var groupMethods = group.getMethods();
+        if (groupMethods != null) for (var method : groupMethods) {
+            var anInterface = httpMethods.get(method);
+            var groupedInterface = anInterface.toBuilder().core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build()).build();
+            printInterface(out, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
+        }
+        for (var subGroup : group.getGroups().values()) {
+            printHttpMethodGroup(out, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+        }
+    }
+
+    private void printInterface(IndentStringAppender out, Interface anInterface,
+                                Collection<Component> components, Set<String> renderedInterfaces) {
+        var interfaceId = getInterfaceId(anInterface);
+        if (renderedInterfaces.add(interfaceId)) {
+            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+        }
+        for (var component : components) {
+            var componentId = plantUmlAlias(component.getName());
+            var direction = anInterface.getDirection();
+            switch (direction) {
+                case in:
+                    out.append(format("%s )..> %s\n", interfaceId, componentId));
+                    break;
+                case out:
+                    out.append(format("%s ..( %s\n", componentId, interfaceId));
+                    break;
+                case outIn:
+                    out.append(format("%s ).. %s\n", interfaceId, componentId));
+                    out.append(format("%s <.. %s\n", componentId, interfaceId));
+                    break;
+            }
+        }
+    }
+
+    private Package populatePath(String parentPath, Package pack) {
+        var elementId = getElementId(parentPath, pack.getName());
+        return pack.toBuilder().path(elementId)
+                .packages(ofNullable(pack.getPackages()).orElse(emptyList()).stream().map(p -> populatePath(elementId, p)).collect(toList()))
+                .build();
+    }
+
+    private void printComponent(IndentStringAppender out, Component component) {
+        var componentName = component.getName();
+        out.append(format("[%s] as %s\n", componentName, plantUmlAlias(componentName)));
+    }
+
+    private Stream<Package> mergeSubPack(Package pack) {
+        var packComponents = pack.getComponents();
+        var subPackages = pack.getPackages();
+        return packComponents.isEmpty() && subPackages.size() == 1
+                ? subPackages.stream().map(subPack -> subPack.toBuilder().name(getElementId(pack.getName(), subPack.getName())).build()).flatMap(this::mergeSubPack)
+                : Stream.of(pack);
+    }
+
+    private String getElementId(String... parts) {
+        return plantUmlAlias(Stream.of(parts).filter(Objects::nonNull)
+                .reduce("", (parent, id) -> (!parent.isEmpty() ? parent + "." : "") + id));
+    }
+
+    private String plantUmlAlias(String name) {
+        var escaped = name;
+        for (var replacer : plantUmlAliasEscapes.keySet()) {
+            escaped = escaped.replaceAll(regExp(plantUmlAliasEscapes.get(replacer)), replacer);
+        }
+        return escaped;
     }
 
     @Override
@@ -359,7 +385,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             );
         })).values();
 
-        packages = packages.stream().flatMap(PlantUmlVisualizer::mergeSubPack).collect(toList());
+        packages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
 
         for (var pack : packages) {
             printPackage(out, pack);

@@ -52,7 +52,7 @@ import static org.springframework.core.annotation.AnnotatedElementUtils.getMerge
 
 @Slf4j
 @UtilityClass
-public class ComponentExtractorUtils {
+public class ComponentsExtractorUtils {
     static boolean hasMainMethod(Class<?> beanType) {
         return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
                 && isOnlyOneArgStringArray(method)
@@ -91,7 +91,7 @@ public class ComponentExtractorUtils {
     }
 
     static <T extends Annotation> T getAnnotation(Class<?> aClass, Supplier<Class<T>> supplier) {
-        var annotationClass = getAnnotationClass(supplier);
+        var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return null;
         }
@@ -115,7 +115,7 @@ public class ComponentExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
             Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
     ) {
-        var annotationClass = getAnnotationClass(supplier);
+        var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return Set.of();
         } else {
@@ -128,21 +128,10 @@ public class ComponentExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
-        var annotationClass = getAnnotationClass(supplier);
+        var annotationClass = loadedClass(supplier);
         return annotationClass == null ? Map.of() : elements.stream()
                 .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
 
-    }
-
-    private static <T extends Annotation> Class<T> getAnnotationClass(Supplier<Class<T>> supplier) {
-        final Class<T> annotationClass;
-        try {
-            annotationClass = supplier.get();
-        } catch (NoClassDefFoundError e) {
-            log.error("getAnnotatedMethods error", e);
-            return null;
-        }
-        return annotationClass;
     }
 
     public static Collection<Method> getMethods(Class<?> type) {
@@ -260,7 +249,7 @@ public class ComponentExtractorUtils {
                     .url(target.url())
                     .httpMethods(httpMethods)
                     .build();
-        } catch (NoClassDefFoundError | NoSuchBeanDefinitionException e) {
+        } catch (NoSuchBeanDefinitionException e) {
             log.debug("extractFeignClient bean {}", name, e);
             return null;
         }
@@ -278,9 +267,23 @@ public class ComponentExtractorUtils {
         return "";
     }
 
-    static <T> Component findDependencyByType(Collection<Component> dependencies, Class<T> type) {
-        return dependencies.stream()
+    static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
+        var type = loadedClass(classSupplier);
+        return type != null ? dependencies.stream()
                 .filter(component -> type.isAssignableFrom(component.getType()))
-                .findFirst().orElse(null);
+                .findFirst().orElse(null) : null;
+    }
+
+    static <T> Class<T> loadedClass(Supplier<Class<T>> classSupplier) {
+        try {
+            return classSupplier.get();
+        } catch (NoClassDefFoundError e) {
+            if (log.isDebugEnabled()) {
+                log.info("Class is not supported", e);
+            } else {
+                log.info("Class is not supported, {}", e.getLocalizedMessage());
+            }
+            return null;
+        }
     }
 }

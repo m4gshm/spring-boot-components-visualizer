@@ -33,13 +33,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ComponentExtractorUtils.extractControllerHttpMethods;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.extractFeignClient;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.extractMethodJmsListeners;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.findDependencyByType;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.getComponentPath;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.isIncluded;
-import static io.github.m4gshm.connections.ComponentExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractControllerHttpMethods;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractFeignClient;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractMethodJmsListeners;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.findDependencyByType;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.getComponentPath;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.isIncluded;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.loadedClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -222,7 +223,7 @@ public class ComponentsExtractor {
     }
 
     private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
-        var jmsTemplate = findDependencyByType(dependencies, JmsOperations.class);
+        var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(componentName, componentType, context);
 
@@ -230,7 +231,7 @@ public class ComponentsExtractor {
                     .map(jmsClient -> newInterface(jmsClient, componentName))
                     .collect(toLinkedHashSet());
 
-        } catch (EvalException | NoClassDefFoundError e) {
+        } catch (EvalException e) {
             if (log.isDebugEnabled()) {
                 log.debug("jms client getting error, component {}", componentName, e);
             } else {
@@ -241,7 +242,7 @@ public class ComponentsExtractor {
     }
 
     private Set<Interface> getOutWsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
-        var wsClient = findDependencyByType(dependencies, WebSocketClient.class);
+        var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
             var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
 
@@ -249,7 +250,7 @@ public class ComponentsExtractor {
                     .map(uri -> Interface.builder().direction(out).type(ws).name(uri).build())
                     .collect(toLinkedHashSet());
 
-        } catch (EvalException | NoClassDefFoundError e) {
+        } catch (EvalException e) {
             if (log.isDebugEnabled()) {
                 log.debug("ws client getting error, component {}", componentName, e);
             } else {
@@ -260,13 +261,13 @@ public class ComponentsExtractor {
     }
 
     private Set<Interface> getOutRestTemplateInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies) {
-        var restTemplate = findDependencyByType(dependencies, RestOperations.class);
+        var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
             return httpMethods.stream().map(httpMethod -> Interface.builder().direction(out).type(http)
                             .core(httpMethod).build())
                     .collect(toLinkedHashSet());
-        } catch (EvalException | NoClassDefFoundError e) {
+        } catch (EvalException e) {
             if (log.isDebugEnabled()) {
                 log.debug("rest operations client getting error, component {}", componentName, e);
             } else {
@@ -285,7 +286,8 @@ public class ComponentsExtractor {
 
     private Collection<Component> extractInWebsocketHandlers(
             String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache) {
-        if (WebSocketConfigurationSupport.class.isAssignableFrom(componentType)) try {
+        var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
+        if (webSocketConfigClass != null && webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {
                 return cachedComponents;
@@ -305,8 +307,6 @@ public class ComponentsExtractor {
                     return components;
                 }
             }
-        } catch (NoClassDefFoundError e) {
-            log.debug("undefined class", e);
         }
         return Set.of();
     }
