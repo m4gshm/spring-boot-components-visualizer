@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient;
+import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalUtils;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;

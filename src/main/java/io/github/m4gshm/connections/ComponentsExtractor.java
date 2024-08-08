@@ -33,13 +33,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractControllerHttpMethods;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractFeignClient;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.extractMethodJmsListeners;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.findDependencyByType;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.getComponentPath;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isIncluded;
-import static io.github.m4gshm.connections.ConnectionsExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.extractControllerHttpMethods;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.extractFeignClient;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.extractMethodJmsListeners;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.findDependencyByType;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.getComponentPath;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.isIncluded;
+import static io.github.m4gshm.connections.ComponentExtractorUtils.isSpringBootMainClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -61,7 +61,7 @@ import static java.util.stream.Stream.ofNullable;
 
 @Slf4j
 @RequiredArgsConstructor
-public class ConnectionsExtractor {
+public class ComponentsExtractor {
     private final ConfigurableApplicationContext context;
 
     private static Interface newInterface(JmsClient jmsClient, String group) {

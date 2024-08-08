@@ -3,8 +3,8 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
-import io.github.m4gshm.connections.ConnectionsExtractor.FeignClient;
-import io.github.m4gshm.connections.ConnectionsExtractor.JmsClient;
+import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
+import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
@@ -52,7 +52,7 @@ import static org.springframework.core.annotation.AnnotatedElementUtils.getMerge
 
 @Slf4j
 @UtilityClass
-public class ConnectionsExtractorUtils {
+public class ComponentExtractorUtils {
     static boolean hasMainMethod(Class<?> beanType) {
         return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
                 && isOnlyOneArgStringArray(method)

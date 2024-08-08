@@ -13,8 +13,8 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class OnApplicationReadyEventConnectionsVisualizeGenerator<T> implements ApplicationListener<ApplicationReadyEvent> {
 
-    private final ConnectionsExtractor extractor;
-    private final ConnectionsVisualizer<T> visualizer;
+    private final ComponentsExtractor extractor;
+    private final Visualizer<T> visualizer;
     private final Storage<T> storage;
 
     @Override

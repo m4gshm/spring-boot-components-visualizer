@@ -37,8 +37,8 @@ rectangle "input" as input {
     cloud "/api/v1" {
       interface "*:/" as in.http...
       in.http... )..> mainController
-        interface "GET:/req" as in.http.GET..req
-        in.http.GET..req )..> mainController
+      interface "GET:/req" as in.http.GET..req
+      in.http.GET..req )..> mainController
     }
   }
   cloud "web socket" as input.websocket {
@@ -56,14 +56,14 @@ rectangle "input" as input {
 }
 rectangle "output" as output {
   cloud "http" as output.http {
-        interface "GET:/{id}" as out.http.GET..id
-        standaloneService2Api ..( out.http.GET..id
-        service2FeignClient ..( out.http.GET..id
-        cloud "http://service2" {
-          interface "GET:/" as out.http.GET..
-          service2LegacyImpl ..( out.http.GET..
-            service2LegacyImpl ..( out.http.GET..id
-        }
+    interface "GET:/{id}" as out.http.GET..id
+    standaloneService2Api ..( out.http.GET..id
+    service2FeignClient ..( out.http.GET..id
+    cloud "http://service2" {
+      interface "GET:/" as out.http.GET..
+      service2LegacyImpl ..( out.http.GET..
+      service2LegacyImpl ..( out.http.GET..id
+    }
   }
   cloud "web socket" as output.websocket {
     interface "ws://service-template" as out.ws.ws...service.template
@@ -88,7 +88,7 @@ rectangle "output" as output {
   cloud "jms" as output.jms {
     interface "jmsQueue" as outIn.jms.jmsQueue
     outIn.jms.jmsQueue ).. jmsQueueService
-jmsQueueService <.. outIn.jms.jmsQueue
+    jmsQueueService <.. outIn.jms.jmsQueue
   }
 }
 @enduml
