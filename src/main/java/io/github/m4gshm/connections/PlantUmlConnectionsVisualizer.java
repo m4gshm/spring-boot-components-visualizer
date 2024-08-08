@@ -64,49 +64,40 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return getElementId(anInterface.getGroup(), elementId);
     }
 
-    private static void printPackage(StringBuilder out, int indent, Package pack) {
-        printPackage(out, indent, pack, PackageOutType.pack);
-    }
-
-    private static void printPackage(StringBuilder out, int indent, Package pack, PackageOutType packageType) {
+    private static void printPackage(IndentStringAppender out, Package pack, PackageOutType packageType) {
         var packageName = pack.getName();
-        var wrapByPack = !packageName.isEmpty();
 
-        Runnable printInternal = () -> {
+        printPackage(out, packageName, pack.getPath(), packageType, () -> {
             var beans = pack.getComponents();
             if (beans != null) {
-                beans.forEach(bean -> printComponent(out, INDENT.repeat(indent + 1), bean));
+                beans.forEach(bean -> printComponent(out, bean));
             }
             var packages = pack.getPackages();
             if (packages != null) {
-                packages.forEach(subPack -> printPackage(out, indent + (wrapByPack ? 1 : 0), subPack));
+                packages.forEach(subPack -> printPackage(out, subPack, PackageOutType.pack));
             }
-        };
-
-        if (wrapByPack) {
-            printPackage(out, indent, packageName, pack.getPath(), packageType, printInternal);
-        } else {
-            printInternal.run();
-        }
+        });
     }
 
-    private static void printPackage(StringBuilder out, int indent, String name, String id,
+    private static void printPackage(IndentStringAppender out, String name, String id,
                                      PackageOutType packageType, Runnable internal) {
-        printPackage(true, out, indent, name, id, packageType, internal);
+        printPackage(true, out, name, id, packageType, internal);
     }
 
-    private static void printPackage(boolean wrap, StringBuilder out, int indent, String name, String id,
+    private static void printPackage(boolean wrap, IndentStringAppender out, String name, String id,
                                      PackageOutType packageType, Runnable internal) {
         if (wrap) {
             if (id != null) {
-                out.append(format(INDENT.repeat(indent) + "%s \"%s\" as %s {\n", packageType.code, name, id));
+                out.append(format("%s \"%s\" as %s {\n", packageType.code, name, id));
             } else {
-                out.append(format(INDENT.repeat(indent) + "%s \"%s\" {\n", packageType.code, name));
+                out.append(format("%s \"%s\" {\n", packageType.code, name));
             }
+            out.addIndent();
         }
         internal.run();
         if (wrap) {
-            out.append(INDENT.repeat(indent)).append("}\n");
+            out.removeIndent();
+            out.append("}\n");
         }
     }
 
@@ -130,8 +121,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                     ofNullable(l.getPackages()).orElse(emptyList()).stream(),
                     ofNullable(r.getPackages()).orElse(emptyList()).stream())
             );
-            var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
-            return pack;
+            return l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
         }, LinkedHashMap::new));
     }
 
@@ -142,9 +132,9 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                 .build();
     }
 
-    private static void printComponent(StringBuilder out, String prefix, Component component) {
+    private static void printComponent(IndentStringAppender out, Component component) {
         var componentName = component.getName();
-        out.append(prefix + format("[%s] as %s\n", componentName, pumlAlias(componentName)));
+        out.append(format("[%s] as %s\n", componentName, pumlAlias(componentName)));
     }
 
     private static Stream<Package> mergeSubPack(Package pack) {
@@ -196,14 +186,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                 }, LinkedHashMap::new));
     }
 
-    private static void printInterface(StringBuilder out, int depth, Interface anInterface, Component component, Set<String> renderedInterfaces) {
+    private static void printInterface(IndentStringAppender out, Interface anInterface,
+                                       Component component, Set<String> renderedInterfaces) {
         var interfaceId = getInterfaceId(anInterface);
         if (renderedInterfaces.add(interfaceId)) {
-            out.append(INDENT.repeat(depth));
             out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
         }
         var componentId = pumlAlias(component.getName());
-        out.append(INDENT.repeat(depth));
         var direction = anInterface.getDirection();
         switch (direction) {
             case in:
@@ -233,10 +222,10 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return out.toString();
     }
 
-    private void visualize(Collection<Component> components, StringBuilder out) {
-        var depth = 0;
+    private void visualize(Collection<Component> components, StringBuilder dest) {
+        var out = new IndentStringAppender(dest, INDENT);
 
-        var packages = distinctPackages(INDENT.repeat(depth), components.stream().map(component -> {
+        var packages = distinctPackages("", components.stream().map(component -> {
             var componentPath = component.getPath();
 
             var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
@@ -257,7 +246,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         packages = packages.stream().flatMap(PlantUmlConnectionsVisualizer::mergeSubPack).collect(toList());
 
         for (var pack : packages) {
-            printPackage(out, depth, pack);
+            printPackage(out, pack, PackageOutType.pack);
         }
 
         components.forEach(component -> {
@@ -266,18 +255,16 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
             });
         });
 
-        Stream<Entry<Direction, Entry<Interface, Component>>> entryStream = components.stream()
+        var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
                         .flatMap(Collection::stream)
-                        .map(anInterface -> {
-                            Entry<Direction, Entry<Interface, Component>> entry1 = entry(anInterface.getDirection(), entry(anInterface, component));
-                            return entry1;
-                        })
-                );
-        var groupedInterfaces = entryStream
+                        .map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component))))
                 .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()),
                         mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
-                                groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""), toMap(e -> e.getKey(), e -> e.getValue()))))
+                                groupingBy(
+                                        entry -> ofNullable(entry.getKey().getGroup()).orElse(""),
+                                        toMap(e -> e.getKey(), e -> e.getValue())))
+                        )
                 ));
 
         var renderedInterfaces = new HashSet<String>();
@@ -285,12 +272,12 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         for (var directionGroup : directionGroups) {
             var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                printPackage(out, depth, directionGroup, directionGroup, rectangle, () -> {
+                printPackage(out, directionGroup, directionGroup, rectangle, () -> {
                     for (var type : Type.values()) {
                         var byGroup = ofNullable(byType.get(type)).orElse(Map.of());
                         if (!byGroup.isEmpty()) {
                             var typeName = type.code;
-                            printPackage(out, depth + 1, typeName, getElementId(directionGroup, typeName), cloud, () -> {
+                            printPackage(out, typeName, getElementId(directionGroup, typeName), cloud, () -> {
                                 byGroup.forEach((group, interfaceComponentLink) -> {
                                     var wrap = group != null && !group.isEmpty();
                                     var depthDelta = wrap ? 1 : 0;
@@ -326,14 +313,14 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
                                         }
                                         //reduce groups
                                         var finalGroup = reduce(rootGroup);
-                                        printPackage(wrap, out, depth + depthDelta + 1, group, groupId, packageType, () -> {
-                                            printHttpMethodGroup(out, depth + depthDelta + 2, finalGroup, packageType,
+                                        printPackage(wrap, out, group, groupId, packageType, () -> {
+                                            printHttpMethodGroup(out, finalGroup, packageType,
                                                     interfaceComponentLink, httpMethods, renderedInterfaces);
                                         });
                                     } else {
-                                        printPackage(wrap, out, depth + 1 + depthDelta, group, groupId, packageType, () -> {
+                                        printPackage(wrap, out, group, groupId, packageType, () -> {
                                             interfaceComponentLink.forEach((anInterface, component) -> printInterface(
-                                                    out, depth + depthDelta + 2, anInterface, component, renderedInterfaces)
+                                                    out, anInterface, component, renderedInterfaces)
                                             );
                                         });
                                     }
@@ -387,7 +374,7 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         return currentGroup;
     }
 
-    private static void printHttpMethodGroup(StringBuilder out, int depth, Group group,
+    private static void printHttpMethodGroup(IndentStringAppender out, Group group,
                                              PackageOutType packageType,
                                              Map<Interface, Component> interfaceComponentLink,
                                              Map<HttpMethod, Interface> httpMethods,
@@ -395,16 +382,17 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         var methods = group.getMethods();
         var subGroups = group.getGroups();
         if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
-            printInterfaceAndSubgroups(out, depth, group, group.getPath(), packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+            printInterfaceAndSubgroups(out, group, group.getPath(), packageType,
+                    interfaceComponentLink, httpMethods, renderedInterfaces);
         } else {
-            printPackage(true, out, depth, group.getPath(), null, packageType,
-                    () -> printInterfaceAndSubgroups(out, depth + 1, group, PATH_DELIMITER, packageType,
+            printPackage(true, out, group.getPath(), null, packageType,
+                    () -> printInterfaceAndSubgroups(out, group, PATH_DELIMITER, packageType,
                             interfaceComponentLink, httpMethods, renderedInterfaces)
             );
         }
     }
 
-    private static void printInterfaceAndSubgroups(StringBuilder out, int depth,
+    private static void printInterfaceAndSubgroups(IndentStringAppender out,
                                                    Group group, String replaceMethodUrl, PackageOutType packageType,
                                                    Map<Interface, Component> interfaceComponentLink,
                                                    Map<HttpMethod, Interface> httpMethods,
@@ -412,11 +400,13 @@ public class PlantUmlConnectionsVisualizer implements ConnectionsVisualizer<Stri
         var groupMethods = group.getMethods();
         if (groupMethods != null) for (var method : groupMethods) {
             var anInterface = httpMethods.get(method);
-            var groupedInterface = anInterface.toBuilder().core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build()).build();
-            printInterface(out, depth, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
+            var groupedInterface = anInterface.toBuilder()
+                    .core(HttpMethod.builder().method(method.getMethod()).url(replaceMethodUrl).build())
+                    .build();
+            printInterface(out, groupedInterface, interfaceComponentLink.get(anInterface), renderedInterfaces);
         }
         for (var subGroup : group.getGroups().values()) {
-            printHttpMethodGroup(out, depth + 1, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
+            printHttpMethodGroup(out, subGroup, packageType, interfaceComponentLink, httpMethods, renderedInterfaces);
         }
     }
 
