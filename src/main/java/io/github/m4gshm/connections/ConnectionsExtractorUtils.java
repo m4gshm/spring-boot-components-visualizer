@@ -9,6 +9,7 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -184,7 +185,7 @@ public class ConnectionsExtractorUtils {
     }
 
     static boolean isSpringBootMainClass(Class<?> beanType) {
-        return hasAnnotation(beanType, () -> SpringBootApplication.class) ;//&& hasMainMethod(beanType);
+        return hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
     }
 
     static String getHttpInterfaceName(String method, String url) {
@@ -211,6 +212,28 @@ public class ConnectionsExtractorUtils {
             }
             var handler = Proxy.getInvocationHandler(bean);
             var handlerClass = handler.getClass();
+            if ("org.springframework.aop.framework.JdkDynamicAopProxy".equals(handlerClass.getName())) {
+                var advised = getFieldValue(handler, "advised");
+                if (advised instanceof ProxyFactory) {
+                    var pf = (ProxyFactory) advised;
+                    var targetSource = pf.getTargetSource();
+                    Object target;
+                    try {
+                        target = targetSource.getTarget();
+                    } catch (Exception e) {
+                        log.debug("extractFeignClient bean, getTarget, {}", name, e);
+                        return null;
+                    }
+                    if (!isProxyClass(target.getClass())) {
+                        return null;
+                    }
+
+                    handler = Proxy.getInvocationHandler(target);
+                    handlerClass = handler.getClass();
+                } else {
+                    //log
+                }
+            }
             if (!"FeignInvocationHandler".equals(handlerClass.getSimpleName())) {
                 return null;
             }
