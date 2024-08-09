@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class ConnectionsExtractorAutoConfiguration {
     @Bean
     public ComponentsExtractor connectionsExtractor(ConfigurableApplicationContext context) {
-        return new ComponentsExtractor(context);
+        return new ComponentsExtractor(context, null);
     }
 
 }

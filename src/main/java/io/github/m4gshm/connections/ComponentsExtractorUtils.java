@@ -174,7 +174,7 @@ public class ComponentsExtractorUtils {
     }
 
     static boolean isSpringBootMainClass(Class<?> beanType) {
-        return hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
+        return beanType != null && hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
     }
 
     static String getHttpInterfaceName(String method, String url) {
