@@ -32,7 +32,6 @@ public class ConnectionsVisualizeGeneratorTest {
 
     @Configuration
     public static class TestConfig {
-
         @Bean
         OnApplicationReadyEventConnectionsVisualizeGenerator.Storage<String> storage() {
             return content -> {

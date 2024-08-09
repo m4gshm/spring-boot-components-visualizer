@@ -1,7 +1,6 @@
 package io.github.m4gshm.connections.client;
 
 import lombok.experimental.UtilityClass;
-import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
@@ -27,7 +26,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(String componentName, Class<?> componentType,
-                                                          ConfigurableApplicationContext context)  {
+                                                          ConfigurableApplicationContext context) {
         var javaClass = lookupClass(componentType);
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = javaClass.getMethods();
@@ -82,7 +81,7 @@ public class WebsocketClientUtils {
                 return uri.toString();
             } else {
                 //log
-                return result.toString();
+                return result != null ? result.toString() : null;
             }
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = eval(object, instructionHandle.getPrev(), constantPoolGen, bootstrapMethods);

@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
@@ -21,11 +22,27 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractControllerHttpMethods;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractFeignClient;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.extractMethodJmsListeners;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.findDependencyByType;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.getComponentPath;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.isIncluded;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.isSpringBootMainClass;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.loadedClass;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -33,11 +50,15 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRes
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Direction.out;
-import static io.github.m4gshm.connections.model.Interface.Type.*;
+import static io.github.m4gshm.connections.model.Interface.Type.http;
+import static io.github.m4gshm.connections.model.Interface.Type.jms;
+import static io.github.m4gshm.connections.model.Interface.Type.ws;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 
@@ -45,13 +66,7 @@ import static java.util.stream.Stream.ofNullable;
 @RequiredArgsConstructor
 public class ComponentsExtractor {
     private final ConfigurableApplicationContext context;
-    private final BeanFilter exclude;
-
-    @Data
-    public static class BeanFilter {
-        private final Set<String> packages;
-        private final Set<String> beanNames;
-    }
+    private final Options options;
 
     private static Interface newInterface(JmsClient jmsClient, String group) {
         return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).build();
@@ -103,37 +118,34 @@ public class ComponentsExtractor {
         return of(interfaces).flatMap(Collection::stream).collect(toLinkedHashSet());
     }
 
-    public Components getComponents() {
-        var beanDefinitionNames = of(context.getBeanDefinitionNames());
+    private static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {
+        return isMatchAny(type.getPackage().getName(), regExps);
+    }
 
-        var exclude = Optional.ofNullable(this.exclude);
-        var excludeBeanNames = exclude.map(BeanFilter::getBeanNames).orElse(Set.of());
+    private static boolean isMatchAny(String value, Set<String> regExps) {
+        return regExps.stream().anyMatch(value::matches);
+    }
+
+    private static Stream<String> toFilteredByName(Set<String> excludeBeanNames, Stream<String> beanDefinitionNames) {
         if (!excludeBeanNames.isEmpty()) {
             beanDefinitionNames = beanDefinitionNames.filter(beanName -> {
-                if (excludeBeanNames.stream().noneMatch(beanName::matches)) {
+                if (isMatchAny(beanName, excludeBeanNames)) {
                     //log
                     return false;
                 }
                 return true;
             });
         }
+        return beanDefinitionNames;
+    }
 
-        var excludePackages = exclude.map(BeanFilter::getPackages).orElse(Set.of());
-        var allBeans = beanDefinitionNames.flatMap(beanName -> {
-            var beanType = getComponentType(beanName);
-            if (beanType == null) {
-                //log
-                return Stream.<Entry<String, Class<?>>>empty();
-            } else if (excludePackages.stream().anyMatch(regExp -> beanType.getPackage().getName().matches(regExp))) {
-                //log
-                return Stream.<Entry<String, Class<?>>>empty();
-            } else {
-                return Stream.of(entry(beanName, beanType));
-            }
-        }).collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
-            //log
-            return l;
-        }, () -> new LinkedHashMap<String, Class<?>>()));
+    public Components getComponents() {
+
+        var allBeans = getFilteredBeanNameWithType(of(context.getBeanDefinitionNames()))
+                .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                    //log
+                    return l;
+                }, () -> new LinkedHashMap<String, Class<?>>()));
 
         var componentCache = new HashMap<String, Set<Component>>();
         var rootComponent = findRootComponent(allBeans, componentCache);
@@ -153,6 +165,30 @@ public class ComponentsExtractor {
                         rootPackage, componentCache).stream()).collect(toList());
 
         return Components.builder().components(mergeComponents(rootComponents, additionalComponents)).build();
+    }
+
+    private Stream<Entry<String, Class<?>>> getFilteredBeanNameWithType(Stream<String> beanNames) {
+        var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
+        var excludeBeanNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
+        var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
+        var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
+
+        return  (excludeBeanNames.isEmpty() ? beanNames : toFilteredByName(excludeBeanNames, beanNames))
+                .flatMap(beanName -> withTypeFilteredByPackage(beanName, excludePackages))
+                .filter(e -> excludeTypes.stream().noneMatch(t -> t.isAssignableFrom(e.getValue())));
+    }
+
+    private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String beanName, Set<String> excludePackages) {
+        var beanType = getComponentType(beanName);
+        if (beanType == null) {
+            //log
+            return Stream.empty();
+        } else if (isPackageMatchAny(beanType, excludePackages)) {
+            //log
+            return Stream.empty();
+        } else {
+            return Stream.of(entry(beanName, beanType));
+        }
     }
 
     private Component findRootComponent(Map<String, Class<?>> allBeans, HashMap<String, Set<Component>> componentCache) {
@@ -297,8 +333,8 @@ public class ComponentsExtractor {
     }
 
     private Set<Component> getDependencies(String componentName, Package rootPackage, Map<String, Set<Component>> cache) {
-        return stream(context.getBeanFactory().getDependenciesForBean(componentName))
-                .flatMap(dep -> getComponents(dep, getComponentType(dep), rootPackage, cache)
+        return getFilteredBeanNameWithType(stream(context.getBeanFactory().getDependenciesForBean(componentName)))
+                .flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, cache)
                         .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())))
                 .collect(toLinkedHashSet());
     }
@@ -386,6 +422,20 @@ public class ComponentsExtractor {
                 return false;
             }
         }).findFirst().orElse(null);
+    }
+
+    @Data
+    @Builder
+    public static class Options {
+        private final BeanFilter exclude;
+
+        @Data
+        @Builder
+        public static class BeanFilter {
+            private final Set<String> packageName;
+            private final Set<String> beanName;
+            private final Set<Class<?>> type;
+        }
     }
 
     @Data
