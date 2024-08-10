@@ -161,39 +161,51 @@ public class EvalUtils {
             return callMethod(null, type, methodName, argumentTypes, arguments, instructionHandle, instructionHandle, constantPoolGen);
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeSpec = (INVOKESPECIAL) instruction;
+            var lookup = MethodHandles.lookup();
             var type = getClassByName(instruction.getClassName(constantPoolGen));
+            var signature = invokeSpec.getSignature(constantPoolGen);
+            var methodType = fromMethodDescriptorString(signature, type.getClassLoader());
             if ("<init>".equals(methodName)) {
+//                var constructor = getMethodHandle(() -> lookup.findConstructor(type, methodType));
+//                Object result = invoke(constructor, asList(arguments));
+//                return success(result, instructionHandle, instructionHandle);
                 return instantiateObject(instructionHandle, type, argumentTypes, arguments);
             } else {
-                var signature = invokeSpec.getSignature(constantPoolGen);
-                var methodType = fromMethodDescriptorString(signature, type.getClassLoader());
-                var lookup = getPrivateLookup(type, MethodHandles.lookup());
-                MethodHandle methodHandle;
-                try {
-                    methodHandle = lookup.findSpecial(type, methodName, methodType, type);
-                } catch (NoSuchMethodException | IllegalAccessException e) {
-                    throw new EvalException(e);
-                }
                 var invokeArgs = new ArrayList<>(arguments.length);
                 invokeArgs.add(object);
                 invokeArgs.addAll(asList(arguments));
-                Object result;
-                try {
-                    result = methodHandle.invokeWithArguments(invokeArgs);
-                } catch (Throwable e) {
-                    throw new EvalException(e);
-                }
+                var privateLookup = getPrivateLookup(type, lookup);
+                var methodHandle = getMethodHandle(() -> privateLookup.findSpecial(type, methodName, methodType, type));
+                var result = invoke(methodHandle, invokeArgs);
                 return success(result, instructionHandle, instructionHandle);
             }
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen);
     }
 
+    private static Object invoke(MethodHandle methodHandle, List<Object> arguments) {
+        try {
+            return methodHandle.invokeWithArguments(arguments);
+        } catch (Throwable e) {
+            throw new EvalException(e);
+        }
+    }
+
+    private static MethodHandle getMethodHandle(MethodHandleLookup lookup) {
+        MethodHandle constructor;
+        try {
+            constructor = lookup.get();
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new EvalException(e);
+        }
+        return constructor;
+    }
+
     private static CallResult<Object> instantiateObject(InstructionHandle instructionHandle,
                                                         Class<?> type, Class[] argumentTypes, Object[] arguments) {
         Constructor<?> constructor;
         try {
-            constructor = type.getConstructor(argumentTypes);
+            constructor = type.getDeclaredConstructor(argumentTypes);
         } catch (NoSuchMethodException e) {
             throw new EvalException(e);
         }
@@ -420,6 +432,11 @@ public class EvalUtils {
 
     private static String toString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
         return instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
+    }
+
+    @FunctionalInterface
+    public interface MethodHandleLookup {
+        MethodHandle get() throws NoSuchMethodException, IllegalAccessException;
     }
 
     @Data

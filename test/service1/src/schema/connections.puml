@@ -93,6 +93,8 @@ rectangle "output" as output {
     jmsQueueService ..( out.jms.jmsQueueEvents
     interface "jmsQueueEvents2" as out.jms.jmsQueueEvents2
     jmsQueueService ..( out.jms.jmsQueueEvents2
+    interface "jms-private-queue" as out.jms.jms.private.queue
+    jmsQueueService ..( out.jms.jms.private.queue
   }
 }
 @enduml

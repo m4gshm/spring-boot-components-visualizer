@@ -19,11 +19,19 @@ public class JmsQueueService extends AbstractJmsQueueService {
         jmsTemplate.sendAndReceive(wrap("jmsQueue"), session -> session.createTextMessage(message3));
         jmsTemplate.send(new StringBuilder("jmsQueueEvents").toString(), session -> getMessage(message3, session));
         jmsTemplate.send(super.getJmsQueueEvents2(), session -> getMessage(message3, session));
+        jmsTemplate.send(new PrivateQueueFactory().getQueue(), session -> getMessage(message3, session));
     }
 
     @Override
     protected String getJmsQueueEvents2() {
         throw new UnsupportedOperationException("getJmsQueueEvents2");
+    }
+
+
+    private class PrivateQueueFactory {
+        private String getQueue() {
+            return "jms-private-queue";
+        }
     }
 
     private TextMessage getMessage(String message3, Session session) throws JMSException {
