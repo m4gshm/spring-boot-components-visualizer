@@ -179,7 +179,9 @@ public class ComponentsExtractor {
         }
     }
 
-    private Component findRootComponent(Map<String, Class<?>> allBeans, HashMap<String, Set<Component>> componentCache, boolean failFast) {
+    private Component findRootComponent(Map<String, Class<?>> allBeans,
+                                        Map<String, Set<Component>> componentCache,
+                                        boolean failFast) {
         return allBeans.entrySet().stream()
                 .filter(e -> isSpringBootMainClass(e.getValue()))
                 .flatMap(e -> getComponents(e.getKey(), e.getValue(), null, componentCache, failFast))
@@ -187,7 +189,8 @@ public class ComponentsExtractor {
     }
 
     private Stream<Component> getComponents(String componentName, Class<?> componentType,
-                                            Package rootPackage, Map<String, Set<Component>> cache, boolean failFast) {
+                                            Package rootPackage, Map<String, Set<Component>> cache,
+                                            boolean failFast) {
         var cached = cache.get(componentName);
         if (cached != null) {
             //log
@@ -204,7 +207,8 @@ public class ComponentsExtractor {
             return Stream.empty();
         }
 
-        var websocketHandlers = extractInWebsocketHandlers(componentName, componentType, rootPackage, cache);
+        var websocketHandlers = extractInWebsocketHandlers(componentName, componentType,
+                rootPackage, cache);
         if (!websocketHandlers.isEmpty()) {
             return websocketHandlers.stream();
         } else {
@@ -214,7 +218,8 @@ public class ComponentsExtractor {
             var inJmsInterface = extractMethodJmsListeners(componentType).stream()
                     .map(jmsClient -> newInterface(jmsClient, componentName)).collect(toList());
 
-            var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(componentName, rootPackage, cache, failFast);
+            var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(componentName,
+                    rootPackage, cache, failFast);
 
             //log
             var outJmsInterfaces = getOutJmsInterfaces(componentName, componentType, dependencies, failFast);
@@ -265,7 +270,8 @@ public class ComponentsExtractor {
         return componentType;
     }
 
-    private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies, boolean failFast) {
+    private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType,
+                                               Collection<Component> dependencies, boolean failFast) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(componentName, componentType, context);
@@ -317,7 +323,7 @@ public class ComponentsExtractor {
 
     private Collection<Component> extractInWebsocketHandlers(
             String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache) {
-        var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
+        var webSocketConfigClass = Utils.loadedClass(() -> WebSocketConfigurationSupport.class);
         if (webSocketConfigClass != null && webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {

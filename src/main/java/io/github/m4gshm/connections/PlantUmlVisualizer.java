@@ -7,6 +7,8 @@ import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,21 +46,25 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 
 @Slf4j
-@RequiredArgsConstructor
 public class PlantUmlVisualizer implements Visualizer<String> {
 
     public static final String INDENT = "  ";
     public static final String SCHEME_DELIMETER = "://";
     public static final String PATH_DELIMITER = "/";
     public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
-            "", List.of("*", "$", "{", "}", " ", "(", ")", "#"),
-            ".", List.of("-", PATH_DELIMITER, ":", "?", "=")
+            "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
+            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
     );
     private final String applicationName;
-    private final Map<String, List<String>> plantUmlAliasEscapes;
+    private final Options options;
 
     public PlantUmlVisualizer(String applicationName) {
-        this(applicationName, DEFAULT_ESCAPES);
+        this(applicationName, null);
+    }
+
+    public PlantUmlVisualizer(String applicationName, Options options) {
+        this.applicationName = applicationName;
+        this.options = options != null ? options : Options.builder().replaces(DEFAULT_ESCAPES).build();
     }
 
     public static String directionGroup(Direction direction) {
@@ -344,8 +350,9 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     private String plantUmlAlias(String name) {
         var escaped = name;
-        for (var replacer : plantUmlAliasEscapes.keySet()) {
-            escaped = escaped.replaceAll(regExp(plantUmlAliasEscapes.get(replacer)), replacer);
+        var replaces = this.options.getReplaces();
+        for (var replacer : replaces.keySet()) {
+            escaped = escaped.replaceAll(regExp(replaces.get(replacer)), replacer);
         }
         return escaped;
     }
@@ -466,5 +473,11 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         ;
 
         private final String code;
+    }
+
+    @Data
+    @Builder
+    public static class Options {
+        private final Map<String, List<String>> replaces;
     }
 }

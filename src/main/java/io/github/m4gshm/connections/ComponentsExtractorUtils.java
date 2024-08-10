@@ -91,7 +91,7 @@ public class ComponentsExtractorUtils {
     }
 
     static <T extends Annotation> T getAnnotation(Class<?> aClass, Supplier<Class<T>> supplier) {
-        var annotationClass = loadedClass(supplier);
+        var annotationClass = Utils.loadedClass(supplier);
         if (annotationClass == null) {
             return null;
         }
@@ -115,7 +115,7 @@ public class ComponentsExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
             Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
     ) {
-        var annotationClass = loadedClass(supplier);
+        var annotationClass = Utils.loadedClass(supplier);
         if (annotationClass == null) {
             return Set.of();
         } else {
@@ -128,7 +128,7 @@ public class ComponentsExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
-        var annotationClass = loadedClass(supplier);
+        var annotationClass = Utils.loadedClass(supplier);
         return annotationClass == null ? Map.of() : elements.stream()
                 .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
 
@@ -227,7 +227,7 @@ public class ComponentsExtractorUtils {
                 return null;
             }
 
-            var httpMethods = ((Collection<?>) ((Map) getFieldValue(handler, "dispatch")).values()
+            var httpMethods = ((Collection<?>) ((Map<?, ?>) getFieldValue(handler, "dispatch")).values()
             ).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
                 var buildTemplateFromArgs = getFieldValue(value, "buildTemplateFromArgs");
                 var metadata = (MethodMetadata) getFieldValue(buildTemplateFromArgs, "metadata");
@@ -237,7 +237,7 @@ public class ComponentsExtractorUtils {
                 return HttpMethod.builder().method(method).url(url).build();
             }).collect(toList());
 
-            var target = (Target) getFieldValue(handler, "target");
+            var target = (Target<?>) getFieldValue(handler, "target");
             if (target == null) {
                 //log
                 return null;
@@ -268,22 +268,10 @@ public class ComponentsExtractorUtils {
     }
 
     static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
-        var type = loadedClass(classSupplier);
+        var type = Utils.loadedClass(classSupplier);
         return type != null ? dependencies.stream()
                 .filter(component -> type.isAssignableFrom(component.getType()))
                 .findFirst().orElse(null) : null;
     }
 
-    static <T> Class<T> loadedClass(Supplier<Class<T>> classSupplier) {
-        try {
-            return classSupplier.get();
-        } catch (NoClassDefFoundError e) {
-            if (log.isDebugEnabled()) {
-                log.info("Class is not supported", e);
-            } else {
-                log.info("Class is not supported, {}", e.getLocalizedMessage());
-            }
-            return null;
-        }
-    }
 }

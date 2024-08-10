@@ -1,11 +1,12 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
-import io.github.m4gshm.connections.bytecode.EvalUtils;
+import io.github.m4gshm.connections.bytecode.EvalResult;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.LocalVariableTable;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
 import org.apache.bcel.generic.INVOKEVIRTUAL;
@@ -50,6 +51,7 @@ public class JmsOperationsUtils {
         var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
         return stream(methods).flatMap(method -> {
             var code = method.getCode();
+            var localVariableTable = method.getLocalVariableTable();
             var instructionList = new InstructionList(code.getCode());
 
             var values = StreamSupport.stream(instructionList.spliterator(), false).map(instructionHandle -> {
@@ -60,7 +62,8 @@ public class JmsOperationsUtils {
 
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(context.getBean(componentName), instructionHandle, constantPoolGen, bootstrapMethods)
+                        ? extractJmsClients(context.getBean(componentName), instructionHandle, localVariableTable,
+                        constantPoolGen, bootstrapMethods)
                         : null;
             }).filter(Objects::nonNull).collect(toList());
 
@@ -70,7 +73,9 @@ public class JmsOperationsUtils {
 
     private static JmsClient extractJmsClients(
             Object object, InstructionHandle instructionHandle,
-            ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods
+            LocalVariableTable localVariableTable,
+            ConstantPoolGen constantPoolGen,
+            BootstrapMethods bootstrapMethods
     ) {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -83,9 +88,9 @@ public class JmsOperationsUtils {
             return null;
         } else {
             var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
-            var arguments = new EvalUtils.CallResult[argumentTypes.length];
+            var arguments = new EvalResult[argumentTypes.length];
             for (int i = argumentTypes.length; i > 0; i--) {
-                var evalResult = eval(object, onEval, constantPoolGen, bootstrapMethods);
+                var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods);
                 arguments[i - 1] = evalResult;
                 onEval = evalResult.getLastInstruction().getPrev();
             }
@@ -113,7 +118,7 @@ public class JmsOperationsUtils {
         return destination;
     }
 
-     static Direction getJmsDirection(String methodName) {
+    static Direction getJmsDirection(String methodName) {
         var methodNameLowerCase = methodName.toLowerCase();
         int sendIndex = methodNameLowerCase.indexOf("send");
         int receiveIndex = methodNameLowerCase.indexOf("receive");
