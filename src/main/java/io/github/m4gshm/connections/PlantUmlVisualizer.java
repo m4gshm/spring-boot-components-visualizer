@@ -24,14 +24,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
-import static com.google.common.collect.Streams.concat;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.cloud;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.queue;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.PackageOutType.rectangle;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.cloud;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.file;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.queue;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.rectangle;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -44,6 +45,7 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Stream.concat;
 
 @Slf4j
 public class PlantUmlVisualizer implements Visualizer<String> {
@@ -55,6 +57,15 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
             ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
     );
+    public static final Options DEFAULT_OPTIONS = Options.builder()
+            .idCharReplaces(DEFAULT_ESCAPES)
+            .directionGroup(PlantUmlVisualizer.Options::defaultDirectionGroup)
+            .directionGroupAggregate(PlantUmlVisualizer.Options::getAggregateOfDirectionGroup)
+            .interfaceAggregate(PlantUmlVisualizer.Options::getAggregate)
+            .interfaceSubgroupAggregate(PlantUmlVisualizer.Options::getAggregateOfSubgroup)
+            .build();
+    public static final String DIRECTION_INPUT = "input";
+    public static final String DIRECTION_OUTPUT = "output";
     private final String applicationName;
     private final Options options;
 
@@ -64,19 +75,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     public PlantUmlVisualizer(String applicationName, Options options) {
         this.applicationName = applicationName;
-        this.options = options != null ? options : Options.builder().replaces(DEFAULT_ESCAPES).build();
-    }
-
-    public static String directionGroup(Direction direction) {
-        switch (direction) {
-            case in:
-                return "input";
-            case out:
-            case outIn:
-                return "output";
-            default:
-                return String.valueOf(direction);
-        }
+        this.options = options != null ? options : DEFAULT_OPTIONS;
     }
 
     private static String regExp(List<String> strings) {
@@ -84,7 +83,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     private static void printPackage(IndentStringAppender out, String name, String id,
-                                     PackageOutType packageType, Runnable internal) {
+                                     Aggregate packageType, Runnable internal) {
         var wrap = name != null;
         if (wrap) {
             String text = format("%s", packageType.code);
@@ -103,14 +102,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             out.removeIndent();
             out.append("}\n");
         }
-    }
-
-    private static PackageOutType getPackageOutType(Type type) {
-        return type == Type.jms ? queue : cloud;
-    }
-
-    private static String notNull(String host) {
-        return ofNullable(host).orElse("");
     }
 
     private static Group newEmptyGroup(String part) {
@@ -224,15 +215,14 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     private String getInterfaceId(Interface anInterface) {
         var direction = getElementId(anInterface.getDirection().name());
-        var elementId = getElementId(direction, anInterface.getType().name(), anInterface.getName());
-        return getElementId(anInterface.getGroup(), elementId);
+        return getElementId(direction, anInterface.getType().name(), anInterface.getName());
     }
 
     private void printPackage(IndentStringAppender out, Package pack) {
-        printPackage(out, pack, PackageOutType.pack);
+        printPackage(out, pack, Aggregate.pack);
     }
 
-    private void printPackage(IndentStringAppender out, Package pack, PackageOutType packageType) {
+    private void printPackage(IndentStringAppender out, Package pack, Aggregate packageType) {
         printPackage(out, pack.getName(), pack.getPath(), packageType, () -> {
             var beans = pack.getComponents();
             if (beans != null) {
@@ -267,7 +257,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     private void printHttpMethodGroup(IndentStringAppender out, Group group,
-                                      PackageOutType packageType,
+                                      Aggregate packageType,
                                       Map<Interface, List<Component>> interfaceComponentLink,
                                       Map<HttpMethod, Interface> httpMethods,
                                       Set<String> renderedInterfaces) {
@@ -284,7 +274,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     private void printInterfaceAndSubgroups(IndentStringAppender out,
-                                            Group group, String replaceMethodUrl, PackageOutType packageType,
+                                            Group group, String replaceMethodUrl, Aggregate packageType,
                                             Map<Interface, List<Component>> interfaceComponentLink,
                                             Map<HttpMethod, Interface> httpMethods,
                                             Set<String> renderedInterfaces) {
@@ -350,7 +340,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     private String plantUmlAlias(String name) {
         var escaped = name;
-        var replaces = this.options.getReplaces();
+        var replaces = this.options.getIdCharReplaces();
         for (var replacer : replaces.keySet()) {
             escaped = escaped.replaceAll(regExp(replaces.get(replacer)), replacer);
         }
@@ -404,57 +394,38 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             });
         });
 
-        Stream<Entry<Direction, Entry<Interface, Component>>> entryStream = components.stream()
+        var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
                         .flatMap(Collection::stream)
-                        .map(anInterface -> {
-                            Entry<Direction, Entry<Interface, Component>> entry1 = entry(anInterface.getDirection(), entry(anInterface, component));
-                            return entry1;
-                        })
-                );
-        var groupedInterfaces = entryStream
-                .collect(groupingBy(directionEntryEntry -> directionGroup(directionEntryEntry.getKey()),
+                        .map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component)))
+                )
+                .collect(groupingBy(directionEntryEntry -> options.directionGroup.apply(directionEntryEntry.getKey()),
                         mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
-                                groupingBy(entry -> ofNullable(entry.getKey().getGroup()).orElse(""),
-                                        groupingBy(e -> e.getKey(), LinkedHashMap::new, mapping(e -> e.getValue(), toList()))))
-                        )));
+                                groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList()))))
+                ));
 
         var renderedInterfaces = new HashSet<String>();
-        var directionGroups = stream(Direction.values()).map(PlantUmlVisualizer::directionGroup).distinct().collect(toList());
+        var directionGroups = stream(Direction.values()).map(options.getDirectionGroup()).distinct().collect(toList());
         for (var directionGroup : directionGroups) {
             var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                printPackage(out, directionGroup, directionGroup, rectangle, () -> {
+                printPackage(out, directionGroup, directionGroup, options.getDirectionGroupAggregate().apply(directionGroup), () -> {
                     for (var type : Type.values()) {
-                        var byGroup = ofNullable(byType.get(type)).orElse(Map.of());
-                        if (!byGroup.isEmpty()) {
-                            var typeName = type.code;
-                            printPackage(out, typeName, getElementId(directionGroup, typeName), cloud, () -> {
-                                byGroup.forEach((group, interfaceComponentLink) -> {
-                                    var wrap = group != null && !group.isEmpty();
-                                    var depthDelta = wrap ? 1 : 0;
-                                    var packageType = getPackageOutType(type);
-                                    var groupId = getElementId(directionGroup, group);
-
-                                    var packageName = group != null && group.isBlank() ? null : group;
-                                    if (type == http) {
-                                        //merge by url parts
-                                        var httpMethods = extractHttpMethodsFromInterfaces(
-                                                interfaceComponentLink.keySet());
-                                        var finalGroup = groupByUrlParts(httpMethods);
-                                        printPackage(out, packageName,
-                                                groupId, packageType, () -> {
-                                                    printHttpMethodGroup(out, finalGroup, packageType,
-                                                            interfaceComponentLink, httpMethods, renderedInterfaces);
-                                                });
-                                    } else {
-                                        printPackage(out, packageName, groupId, packageType, () -> {
-                                            interfaceComponentLink.forEach((anInterface, component) -> printInterface(
-                                                    out, anInterface, component, renderedInterfaces)
-                                            );
-                                        });
-                                    }
-                                });
+                        var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
+                        if (!interfaceComponentLink.isEmpty()) {
+                            printPackage(out, type.code, getElementId(directionGroup, type.code), options.getInterfaceAggregate().apply(type), () -> {
+                                if (type == http) {
+                                    //merge by url parts
+                                    var httpMethods = extractHttpMethodsFromInterfaces(
+                                            interfaceComponentLink.keySet());
+                                    var finalGroup = groupByUrlParts(httpMethods);
+                                    printHttpMethodGroup(out, finalGroup, options.getInterfaceSubgroupAggregate().apply(type),
+                                            interfaceComponentLink, httpMethods, renderedInterfaces);
+                                } else {
+                                    interfaceComponentLink.forEach((anInterface, component) -> printInterface(
+                                            out, anInterface, component, renderedInterfaces)
+                                    );
+                                }
                             });
                         }
                     }
@@ -464,11 +435,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     @RequiredArgsConstructor
-    public enum PackageOutType {
+    public enum Aggregate {
         rectangle("rectangle"),
         pack("package"),
         cloud("cloud"),
         queue("queue"),
+        file("file"),
         database("database"),
         ;
 
@@ -478,6 +450,34 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     @Data
     @Builder
     public static class Options {
-        private final Map<String, List<String>> replaces;
+        private final Map<String, List<String>> idCharReplaces;
+        private final Function<Direction, String> directionGroup;
+        private final Function<String, Aggregate> directionGroupAggregate;
+        private final Function<Type, Aggregate> interfaceAggregate;
+        private final Function<Type, Aggregate> interfaceSubgroupAggregate;
+
+        public static Aggregate getAggregate(Type type) {
+            return type == Type.jms ? queue : cloud;
+        }
+
+        public static Aggregate getAggregateOfSubgroup(Type type) {
+            return file;
+        }
+
+        public static Aggregate getAggregateOfDirectionGroup(String directionGroup) {
+            return rectangle;
+        }
+
+        public static String defaultDirectionGroup(Direction direction) {
+            switch (direction) {
+                case in:
+                    return DIRECTION_INPUT;
+                case out:
+                case outIn:
+                    return DIRECTION_OUTPUT;
+                default:
+                    return String.valueOf(direction);
+            }
+        }
     }
 }

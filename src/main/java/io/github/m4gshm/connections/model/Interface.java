@@ -17,7 +17,6 @@ import static lombok.AccessLevel.PRIVATE;
 public class Interface {
     Object core;
     String name;
-    String group;
     Direction direction;
     Type type;
 

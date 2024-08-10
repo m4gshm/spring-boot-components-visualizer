@@ -34,7 +34,7 @@ service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
 rectangle "input" as input {
   cloud "http" as input.http {
-    cloud "/api/v1" {
+    file "/api/v1" {
       interface "*:/" as in.http...
       in.http... )..> mainController
       interface "GET:/req" as in.http.GET..req
@@ -45,7 +45,7 @@ rectangle "input" as input {
     interface "/events" as in.ws..events
     in.ws..events )..> eventsHandler
   }
-  cloud "jms" as input.jms {
+  queue "jms" as input.jms {
     interface "queue1" as in.jms.queue1
     in.jms.queue1 )..> jmsQueueListener
     interface "queue2" as in.jms.queue2
@@ -59,7 +59,7 @@ rectangle "output" as output {
     interface "GET:/{id}" as out.http.GET..id
     standaloneService2Api ..( out.http.GET..id
     service2FeignClient ..( out.http.GET..id
-    cloud "http://service2" {
+    file "http://service2" {
       interface "GET:/" as out.http.GET..
       service2LegacyImpl ..( out.http.GET..
       service2LegacyImpl ..( out.http.GET..id
@@ -85,7 +85,7 @@ rectangle "output" as output {
     interface "ws://service-property-injected" as out.ws.ws...service.property.injected
     service2StreamClientImpl ..( out.ws.ws...service.property.injected
   }
-  cloud "jms" as output.jms {
+  queue "jms" as output.jms {
     interface "jmsQueue" as outIn.jms.jmsQueue
     outIn.jms.jmsQueue ).. jmsQueueService
     jmsQueueService <.. outIn.jms.jmsQueue
