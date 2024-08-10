@@ -13,7 +13,7 @@ public class EvalException extends RuntimeException {
     }
 
     public static EvalException newUnsupportedEvalException(Instruction instruction, ConstantPoolGen constantPoolGen) {
-        return newInvalidEvalException("unsupported instruction: ", instruction, constantPoolGen);
+        return newInvalidEvalException("unsupported instruction", instruction, constantPoolGen);
     }
 
     public static EvalException newInvalidEvalException(String message, Instruction instruction, ConstantPoolGen constantPoolGen) {

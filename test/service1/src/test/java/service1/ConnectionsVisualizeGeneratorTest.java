@@ -1,5 +1,6 @@
 package service1;
 
+import io.github.m4gshm.connections.ComponentsExtractor;
 import io.github.m4gshm.connections.OnApplicationReadyEventConnectionsVisualizeGenerator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,13 @@ public class ConnectionsVisualizeGeneratorTest {
 
     @Configuration
     public static class TestConfig {
+
+        @Bean
+        ComponentsExtractor.Options options() {
+            return ComponentsExtractor.Options.builder()
+                    .failFast(true)
+                    .build();
+        }
         @Bean
         OnApplicationReadyEventConnectionsVisualizeGenerator.Storage<String> storage() {
             return content -> {

@@ -34,9 +34,9 @@ public class ReflectionUtils {
         }
     }
 
-    public static Method getDeclaredMethod(String name, Class<?> type, Class[] argTypes) {
+    public static Method getDeclaredMethod(String name, Class<?> type, Class<?>[] argumentTypes) {
         while (!(type == null || Object.class.equals(type))) try {
-            return type.getDeclaredMethod(name, argTypes);
+            return type.getDeclaredMethod(name, argumentTypes);
         } catch (NoSuchMethodException e) {
             type = type.getSuperclass();
         }
