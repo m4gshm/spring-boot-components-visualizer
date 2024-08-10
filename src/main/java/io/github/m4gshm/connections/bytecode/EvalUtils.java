@@ -40,6 +40,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -57,6 +58,7 @@ import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.notFoun
 import static io.github.m4gshm.connections.bytecode.EvalUtils.CallResult.success;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
+import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.of;
@@ -240,36 +242,12 @@ public class EvalUtils {
         var lambdaInstance = metafactory.dynamicInvoker();
         Object result;
         try {
-            result = lambdaInstance.invoke(arguments.length == 1 ? arguments[0] : arguments);
+            result = lambdaInstance.invokeWithArguments(asList(arguments));
         } catch (Throwable e) {
             throw new EvalException(e);
         }
 
         return result;
-    }
-
-    private static Lookup getLookup(Class<?> targetClass) {
-        try {
-            return MethodHandles.publicLookup().in(targetClass);
-        } catch (Exception e) {
-            throw e;
-        }
-//        Constructor<Lookup> constructor;
-//        try {
-//            constructor = Lookup.class.getDeclaredConstructor(Class.class);
-//        } catch (NoSuchMethodException e) {
-//            throw new EvalException(e);
-//        }
-//        try {
-//            constructor.setAccessible(true);
-//        } catch (InaccessibleObjectException | SecurityException e) {
-//            throw new EvalException(e);
-//        }
-//        try {
-//            return constructor.newInstance(targetClass);
-//        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-//            throw new EvalException(e);
-//        }
     }
 
     private static Map.Entry<MethodHandle, Lookup> newMethodHandleAndLookup(ConstantMethodHandle constant, ConstantPool cp, Lookup lookup) {
