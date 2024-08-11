@@ -14,28 +14,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.StringTokenizer;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.frame;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.pack;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.queue;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.rectangle;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.*;
 import static io.github.m4gshm.connections.model.Interface.Type.http;
+import static io.github.m4gshm.connections.model.Interface.Type.jms;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -43,10 +31,7 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.mapping;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
 import static lombok.AccessLevel.PRIVATE;
 
@@ -310,21 +295,38 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
         }
         for (var component : components) {
-            var componentId = plantUmlAlias(component.getName());
-            var direction = anInterface.getDirection();
-            switch (direction) {
-                case in:
-                    out.append(format("%s )..> %s\n", interfaceId, componentId));
-                    break;
-                case out:
-                    out.append(format("%s ..( %s\n", componentId, interfaceId));
-                    break;
-                case outIn:
-                    out.append(format("%s ).. %s\n", interfaceId, componentId));
-                    out.append(format("%s <.. %s\n", componentId, interfaceId));
-                    break;
-            }
+            printDirection(out, interfaceId, anInterface, component);
         }
+    }
+
+    protected void printDirection(IndentStringAppender out, String interfaceId,
+                                  Interface anInterface, Component component) {
+        var type = anInterface.getType();
+        var componentId = plantUmlAlias(component.getName());
+        var direction = anInterface.getDirection();
+        switch (direction) {
+            case in:
+                out.append(inFormat(type, interfaceId, componentId));
+                break;
+            case out:
+                out.append(outFormat(type, interfaceId, componentId));
+                break;
+            case outIn:
+                out.append(outInFormat(type, interfaceId, componentId));
+                break;
+        }
+    }
+
+    protected String outFormat(Type type, String interfaceId, String componentId) {
+        return format((type == jms ? "%s ..> %s" : "%s ..( %s") + "\n", componentId, interfaceId);
+    }
+
+    protected String outInFormat(Type type, String interfaceId, String componentId) {
+        return format("%1$s ..> %2$s\n%1$s <.. %2$s\n", componentId, interfaceId);
+    }
+
+    protected String inFormat(Type type, String interfaceId, String componentId) {
+        return format("%s )..> %s\n", interfaceId, componentId);
     }
 
     protected Package populatePath(String parentPath, Package pack) {

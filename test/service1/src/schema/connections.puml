@@ -29,9 +29,6 @@ coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
-jmsQueueService ..> jmsTemplate
-service2LegacyImpl ..> restTemplate
-service2StreamClientImpl ..> webSocketClient
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" #line.dotted; {
@@ -87,14 +84,14 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   queue "jms" as output.jms {
     interface "jmsQueue" as outIn.jms.jmsQueue
-    outIn.jms.jmsQueue ).. jmsQueueService
+    jmsQueueService ..> outIn.jms.jmsQueue
     jmsQueueService <.. outIn.jms.jmsQueue
     interface "jmsQueueEvents" as out.jms.jmsQueueEvents
-    jmsQueueService ..( out.jms.jmsQueueEvents
+    jmsQueueService ..> out.jms.jmsQueueEvents
     interface "jmsQueueEvents2" as out.jms.jmsQueueEvents2
-    jmsQueueService ..( out.jms.jmsQueueEvents2
+    jmsQueueService ..> out.jms.jmsQueueEvents2
     interface "jms-private-queue" as out.jms.jms.private.queue
-    jmsQueueService ..( out.jms.jms.private.queue
+    jmsQueueService ..> out.jms.jms.private.queue
   }
 }
 @enduml

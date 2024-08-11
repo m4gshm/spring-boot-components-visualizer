@@ -38,6 +38,7 @@ public class ConnectionsVisualizeGeneratorTest {
         ComponentsExtractor.Options options() {
             return ComponentsExtractor.Options.builder()
                     .failFast(true)
+                    .ignoreNotFoundDependencies(true)
                     .build();
         }
         @Bean
