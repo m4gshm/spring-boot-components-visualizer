@@ -56,16 +56,24 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 public class EvalUtils {
 
     public static JavaClass lookupClass(Class<?> componentType) {
-        var proxyClass = loadedClass(() -> SpringProxy.class);
-        if (proxyClass != null && componentType.getName().contains("$$") && proxyClass.isAssignableFrom(componentType)) {
-            //log
-            componentType = componentType.getSuperclass();
-        }
+        componentType = unproxy(componentType);
         try {
             return Repository.lookupClass(componentType);
         } catch (ClassNotFoundException e) {
             throw new EvalException(e);
         }
+    }
+
+    public static Class<?> unproxy(Class<?> componentType) {
+        if (componentType == null) {
+            return null;
+        }
+        var springProxyClass = loadedClass(() -> SpringProxy.class);
+        if (springProxyClass != null && componentType.getName().contains("$$") && springProxyClass.isAssignableFrom(componentType)) {
+            //log
+            componentType = componentType.getSuperclass();
+        }
+        return componentType;
     }
 
     public static EvalResult<Object> eval(Object object, InstructionHandle instructionHandle,

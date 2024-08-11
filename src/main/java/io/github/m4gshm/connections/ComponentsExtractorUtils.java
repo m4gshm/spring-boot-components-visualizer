@@ -9,6 +9,7 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

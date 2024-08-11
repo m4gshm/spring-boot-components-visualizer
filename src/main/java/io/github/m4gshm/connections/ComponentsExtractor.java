@@ -29,6 +29,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
@@ -170,11 +171,11 @@ public class ComponentsExtractor {
 
         return (excludeBeanNames.isEmpty() ? beanNames : toFilteredByName(excludeBeanNames, beanNames))
                 .flatMap(componentName -> withTypeFilteredByPackage(componentName, excludePackages))
-                .filter(e -> excludeTypes.stream().noneMatch(t -> t.isAssignableFrom(e.getValue())));
+                .filter(e -> excludeTypes.stream().noneMatch(type -> type.isAssignableFrom(e.getValue())));
     }
 
-    private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String compinentName, Set<String> excludePackages) {
-        var componentType = getComponentType(compinentName);
+    private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String componentName, Set<String> excludePackages) {
+        var componentType = getComponentType(componentName);
         if (componentType == null) {
             //log
             return Stream.empty();
@@ -182,7 +183,7 @@ public class ComponentsExtractor {
             //log
             return Stream.empty();
         } else {
-            return Stream.of(entry(compinentName, componentType));
+            return Stream.of(entry(componentName, componentType));
         }
     }
 
@@ -274,7 +275,7 @@ public class ComponentsExtractor {
             //log
             componentType = null;
         }
-        return componentType;
+        return unproxy(componentType);
     }
 
     private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType,
