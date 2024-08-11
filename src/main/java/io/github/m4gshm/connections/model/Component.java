@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.FieldDefaults;
 
-import java.util.List;
 import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -19,5 +18,5 @@ public class Component {
     private final String path;
     private final Class<?> type;
     private final Set<Interface> interfaces;
-    private final Set<Component> dependencies;
+    private final Set<String> dependencies;
 }

@@ -78,19 +78,20 @@ public class ComponentsExtractor {
     }
 
     @SafeVarargs
-    private static Collection<Component> mergeComponents(Collection<Component>... components) {
+    private static Map<String, Component> mergeComponents(Collection<Component>... components) {
         return of(components).flatMap(Collection::stream).collect(toMap(Component::getName, c -> c, (l, r) -> {
             var lInterfaces = l.getInterfaces();
             var lDependencies = l.getDependencies();
             var rInterfaces = r.getInterfaces();
             var rDependencies = r.getDependencies();
-            var dependencies = mergeComponents(lDependencies, rDependencies);
+            var dependencies = new LinkedHashSet<>(lDependencies);
+            dependencies.addAll(rDependencies);
             var interfaces = mergeInterfaces(lInterfaces, rInterfaces);
             return l.toBuilder()
                     .dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies)))
                     .interfaces(unmodifiableSet(interfaces))
                     .build();
-        }, LinkedHashMap::new)).values();
+        }, LinkedHashMap::new));
     }
 
     @SafeVarargs
@@ -152,7 +153,13 @@ public class ComponentsExtractor {
                 .flatMap(e -> extractInWebsocketHandlers(e.getKey(), e.getValue(),
                         rootPackage, componentCache).stream()).collect(toList());
 
-        return Components.builder().components(mergeComponents(rootComponents, additionalComponents)).build();
+        var componentsPerName = mergeComponents(rootComponents, additionalComponents);
+        var components = options.isIgnoreNotFoundDependencies() ? componentsPerName.values().stream()
+                .map(component -> component.toBuilder().dependencies(component.getDependencies().stream()
+                        .filter(componentsPerName::containsKey)
+                        .collect(toLinkedHashSet())).build())
+                .collect(toList()) : componentsPerName.values();
+        return Components.builder().components(components).build();
     }
 
     private Stream<Entry<String, Class<?>>> getFilteredBeanNameWithType(Stream<String> beanNames) {
@@ -250,7 +257,7 @@ public class ComponentsExtractor {
                             inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(),
                             outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream()
                     ).flatMap(s -> s).collect(toLinkedHashSet()))
-                    .dependencies(dependencies)
+                    .dependencies(dependencies.stream().map(Component::getName).collect(toLinkedHashSet()))
                     .build();
 
             cache.put(componentName, Set.of(component));
@@ -411,6 +418,7 @@ public class ComponentsExtractor {
     public static class Options {
         private final BeanFilter exclude;
         private boolean failFast;
+        private boolean ignoreNotFoundDependencies;
 
         @Data
         @Builder

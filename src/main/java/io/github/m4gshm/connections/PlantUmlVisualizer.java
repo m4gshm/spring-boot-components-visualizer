@@ -60,8 +60,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
             ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
     );
-    public static final String DIRECTION_INPUT = "input";
-    public static final String DIRECTION_OUTPUT = "output";
     public static final Options DEFAULT_OPTIONS = Options.builder()
             .idCharReplaces(DEFAULT_ESCAPES)
             .directionGroup(PlantUmlVisualizer.Options::defaultDirectionGroup)
@@ -70,6 +68,8 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             .interfaceSubgroupAggregate(PlantUmlVisualizer.Options::getAggregateOfSubgroup)
             .packagePathAggregate(PlantUmlVisualizer.Options::getPackagePath)
             .build();
+    public static final String DIRECTION_INPUT = "input";
+    public static final String DIRECTION_OUTPUT = "output";
     private final String applicationName;
     private final Options options;
 
@@ -83,10 +83,10 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     protected void printPackage(IndentStringAppender out, String name, String id,
-                                AggregateStyle packageType, Runnable internal) {
+                                AggregateStyle aggregateStyle, Runnable internal) {
         var wrap = name != null;
         if (wrap) {
-            var text = format("%s", packageType.getAggregate());
+            var text = format("%s", aggregateStyle.getAggregate());
             out.append(text);
             if (!name.isBlank()) {
                 out.append(format(" \"%s\"", name));
@@ -94,7 +94,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                     out.append(format(" as %s", id));
                 }
             }
-            var style = packageType.getStyle();
+            var style = aggregateStyle.getStyle();
             if (style != null) {
                 if (!style.startsWith("#")) {
                     style = "#" + style;
@@ -402,11 +402,9 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             printPackage(out, pack);
         }
 
-        components.forEach(component -> {
-            component.getDependencies().stream().map(Component::getName).forEach(dependency -> {
-                out.append(format("%s ..> %s\n", plantUmlAlias(component.getName()), plantUmlAlias(dependency)));
-            });
-        });
+        components.forEach(component -> component.getDependencies().forEach(dependency ->
+                out.append(format("%s ..> %s\n", plantUmlAlias(component.getName()), plantUmlAlias(dependency))))
+        );
 
         var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
@@ -425,9 +423,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             if (!byType.isEmpty()) {
                 printPackage(out, directionGroup, directionGroup, options.getDirectionGroupAggregate().apply(directionGroup), () -> {
                     for (var type : Type.values()) {
-                        var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
+                        var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(
+                                byType.get(type)).orElse(Map.of()
+                        );
                         if (!interfaceComponentLink.isEmpty()) {
-                            printPackage(out, type.code, getElementId(directionGroup, type.code), options.getInterfaceAggregate().apply(type), () -> {
+                            var elementId = getElementId(directionGroup, type.code);
+                            printPackage(out, type.code, elementId, options.getInterfaceAggregate().apply(type), () -> {
                                 if (type == http) {
                                     //merge by url parts
                                     var httpMethods = extractHttpMethodsFromInterfaces(
