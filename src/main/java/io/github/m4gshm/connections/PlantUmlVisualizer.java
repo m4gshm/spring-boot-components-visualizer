@@ -477,7 +477,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     @Data
-    @Builder
+    @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
         Map<String, List<String>> idCharReplaces;
@@ -496,7 +496,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
 
         public static AggregateStyle getPackagePath(String path) {
-            return newAggregateStyle(pack);
+            return newAggregateStyle(pack, "line.dotted;text:gray");
         }
 
         public static AggregateStyle getAggregate(Type type) {
@@ -508,7 +508,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
 
         public static AggregateStyle getAggregateOfDirectionGroup(String directionGroup) {
-            return newAggregateStyle(rectangle, "line.dashed;");
+            return newAggregateStyle(Aggregate.cloud, "line.dotted;line:gray;");
         }
 
         public static String defaultDirectionGroup(Direction direction) {
@@ -524,7 +524,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
 
         @Data
-        @Builder
+        @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class AggregateStyle {
             Aggregate aggregate;

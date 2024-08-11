@@ -1,25 +1,25 @@
 @startuml
-package "api" as api {
-  package "http" as api.http {
+package "api" as api #line.dotted;text:gray {
+  package "http" as api.http #line.dotted;text:gray {
     [mainController] as mainController
   }
-  package "ws" as api.ws {
+  package "ws" as api.ws #line.dotted;text:gray {
     [eventsHandler] as eventsHandler
   }
 }
-package "service" as service {
+package "service" as service #line.dotted;text:gray {
   [coreService] as coreService
-  package "external" as service.external {
-    package "jms" as service.external.jms {
+  package "external" as service.external #line.dotted;text:gray {
+    package "jms" as service.external.jms #line.dotted;text:gray {
       [jmsQueueListener] as jmsQueueListener
       [jmsQueueService] as jmsQueueService
     }
-    package "rest" as service.external.rest {
+    package "rest" as service.external.rest #line.dotted;text:gray {
       [service2LegacyImpl] as service2LegacyImpl
       [standaloneService2Api] as standaloneService2Api
       [service2FeignClient] as service2FeignClient
     }
-    package "ws" as service.external.ws {
+    package "ws" as service.external.ws #line.dotted;text:gray {
       [service2StreamClientImpl] as service2StreamClientImpl
     }
   }
@@ -32,7 +32,7 @@ jmsQueueListener ..> coreService
 jmsQueueService ..> jmsTemplate
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
-rectangle "input" as input #line.dashed; {
+cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" #line.dotted; {
       interface "*:/" as in.http...
@@ -54,7 +54,7 @@ rectangle "input" as input #line.dashed; {
     in.jms.default )..> jmsQueueService
   }
 }
-rectangle "output" as output #line.dashed; {
+cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
     interface "GET:/{id}" as out.http.GET..id
     standaloneService2Api ..( out.http.GET..id
