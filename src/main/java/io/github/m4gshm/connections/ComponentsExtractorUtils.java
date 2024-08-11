@@ -9,9 +9,9 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,19 +20,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Controller;
-import org.springframework.util.StringValueResolver;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -44,9 +38,7 @@ import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Map.entry;
-import static java.util.stream.Collectors.toCollection;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
@@ -183,14 +175,14 @@ public class ComponentsExtractorUtils {
         return method == null || method.isEmpty() ? url : method + ":" + url;
     }
 
-    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, StringValueResolver valueResolver) {
+    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
                 .map(entry -> JmsClient.builder()
                         .direction(in)
                         .name(entry.getKey().getName())
-                        .destination(valueResolver.resolveStringValue(entry.getValue().destination()))
+                        .destination(beanFactory.resolveEmbeddedValue(entry.getValue().destination()))
                         .build())
                 .collect(toList());
     }
