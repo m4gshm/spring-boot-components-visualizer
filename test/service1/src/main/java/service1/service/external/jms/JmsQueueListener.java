@@ -12,7 +12,7 @@ public class JmsQueueListener {
 
     private final CoreService coreService;
 
-    @JmsListener(destination = "queue1")
+    @JmsListener(destination = "${queue1}")
     public void listenQueue1(String message) {
 
     }

@@ -11,8 +11,10 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.config.EmbeddedValueResolver;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.core.JmsOperations;
+import org.springframework.util.StringValueResolver;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
@@ -48,6 +50,11 @@ import static java.util.stream.Stream.ofNullable;
 public class ComponentsExtractor {
     private final ConfigurableApplicationContext context;
     private final Options options;
+    private final StringValueResolver valueResolver;
+
+    public ComponentsExtractor(ConfigurableApplicationContext context, Options options) {
+        this(context, options, new EmbeddedValueResolver(context.getBeanFactory()));
+    }
 
     private static Interface newInterface(JmsClient jmsClient, String group) {
         return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).build();
@@ -223,7 +230,7 @@ public class ComponentsExtractor {
             var result = new ArrayList<Component>();
 
             //log
-            var inJmsInterface = extractMethodJmsListeners(componentType).stream()
+            var inJmsInterface = extractMethodJmsListeners(componentType, valueResolver).stream()
                     .map(jmsClient -> newInterface(jmsClient, componentName)).collect(toList());
 
             var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(componentName,

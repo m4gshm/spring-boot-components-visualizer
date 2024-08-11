@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.StringValueResolver;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
@@ -182,14 +183,14 @@ public class ComponentsExtractorUtils {
         return method == null || method.isEmpty() ? url : method + ":" + url;
     }
 
-    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType) {
+    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, StringValueResolver valueResolver) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
                 .map(entry -> JmsClient.builder()
                         .direction(in)
                         .name(entry.getKey().getName())
-                        .destination(entry.getValue().destination())
+                        .destination(valueResolver.resolveStringValue(entry.getValue().destination()))
                         .build())
                 .collect(toList());
     }

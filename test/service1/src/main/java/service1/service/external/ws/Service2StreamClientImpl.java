@@ -34,7 +34,7 @@ public class Service2StreamClientImpl implements AutoCloseable {
 
     private final WebSocketClient webSocketClient;
     private final Properties properties;
-    @Value("${service2.url:ws://service2-value-inject}")
+    @Value("${service2-value-inject.url:ws://service2-value-inject}")
     private String service2Url;
     private volatile List<Future<WebSocketSession>> sessionCompletableFuture;
 
