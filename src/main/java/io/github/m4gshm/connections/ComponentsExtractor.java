@@ -169,20 +169,20 @@ public class ComponentsExtractor {
         var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
 
         return (excludeBeanNames.isEmpty() ? beanNames : toFilteredByName(excludeBeanNames, beanNames))
-                .flatMap(beanName -> withTypeFilteredByPackage(beanName, excludePackages))
+                .flatMap(componentName -> withTypeFilteredByPackage(componentName, excludePackages))
                 .filter(e -> excludeTypes.stream().noneMatch(t -> t.isAssignableFrom(e.getValue())));
     }
 
-    private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String beanName, Set<String> excludePackages) {
-        var beanType = getComponentType(beanName);
-        if (beanType == null) {
+    private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String compinentName, Set<String> excludePackages) {
+        var componentType = getComponentType(compinentName);
+        if (componentType == null) {
             //log
             return Stream.empty();
-        } else if (isPackageMatchAny(beanType, excludePackages)) {
+        } else if (isPackageMatchAny(componentType, excludePackages)) {
             //log
             return Stream.empty();
         } else {
-            return Stream.of(entry(beanName, beanType));
+            return Stream.of(entry(compinentName, componentType));
         }
     }
 
