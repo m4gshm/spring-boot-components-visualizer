@@ -32,16 +32,16 @@ jmsQueueListener ..> coreService
 jmsQueueService ..> jmsTemplate
 service2LegacyImpl ..> restTemplate
 service2StreamClientImpl ..> webSocketClient
-rectangle "input" as input {
-  cloud "http" as input.http {
-    file "/api/v1" {
+rectangle "input" as input #line.dashed; {
+  rectangle "http" as input.http {
+    frame "/api/v1" #line.dotted; {
       interface "*:/" as in.http...
       in.http... )..> mainController
       interface "GET:/req" as in.http.GET..req
       in.http.GET..req )..> mainController
     }
   }
-  cloud "web socket" as input.websocket {
+  rectangle "web socket" as input.websocket {
     interface "/events" as in.ws..events
     in.ws..events )..> eventsHandler
   }
@@ -54,18 +54,18 @@ rectangle "input" as input {
     in.jms.default )..> jmsQueueService
   }
 }
-rectangle "output" as output {
-  cloud "http" as output.http {
+rectangle "output" as output #line.dashed; {
+  rectangle "http" as output.http {
     interface "GET:/{id}" as out.http.GET..id
     standaloneService2Api ..( out.http.GET..id
     service2FeignClient ..( out.http.GET..id
-    file "http://service2" {
+    frame "http://service2" #line.dotted; {
       interface "GET:/" as out.http.GET..
       service2LegacyImpl ..( out.http.GET..
       service2LegacyImpl ..( out.http.GET..id
     }
   }
-  cloud "web socket" as output.websocket {
+  rectangle "web socket" as output.websocket {
     interface "ws://service-template" as out.ws.ws...service.template
     service2StreamClientImpl ..( out.ws.ws...service.template
     interface "ws://service-template/{id}/" as out.ws.ws...service.template.id.
