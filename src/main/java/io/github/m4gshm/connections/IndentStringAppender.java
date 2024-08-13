@@ -26,22 +26,38 @@ public class IndentStringAppender {
         level--;
     }
 
-    public IndentStringAppender append(String text) {
+
+    public IndentStringAppender append(String text, boolean splitLines) {
         if (text != null && !text.isEmpty()) {
             var intends = intend.repeat(level);
-            var tokenizer = new StringTokenizer(text, lineBreak, true);
-            while (tokenizer.hasMoreTokens()) {
-                var line = tokenizer.nextToken();
+            if (splitLines) {
+                var tokenizer = new StringTokenizer(text, lineBreak, true);
+                while (tokenizer.hasMoreTokens()) {
+                    var line = tokenizer.nextToken();
+                    if (newLine) {
+                        out.append(intends);
+                        newLine = false;
+                    }
+                    out.append(line);
+                    if (line.endsWith(lineBreak)) {
+                        newLine = true;
+                    }
+                }
+            } else {
                 if (newLine) {
                     out.append(intends);
                     newLine = false;
                 }
-                out.append(line);
-                if (line.endsWith(lineBreak)) {
+                out.append(text);
+                if (text.endsWith(lineBreak)) {
                     newLine = true;
                 }
             }
         }
         return this;
+    }
+
+    public IndentStringAppender append(String text) {
+        return append(text, true);
     }
 }

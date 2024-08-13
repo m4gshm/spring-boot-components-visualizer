@@ -55,6 +55,9 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             .build();
     private final String applicationName;
     private final Options options;
+    @Getter
+    private final Map<String, String> collapsedComponents = new HashMap<>();
+    private final Map<String, String> printedComponentRelations = new HashMap<>();
 
     public PlantUmlVisualizer(String applicationName) {
         this(applicationName, null);
@@ -234,14 +237,21 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     protected void printUnion(IndentStringAppender out, Package pack, UnionStyle style) {
-        printUnion(out, pack.getName(), pack.getPath(), style, () -> {
-            var beans = pack.getComponents();
-            if (beans != null) {
-                beans.forEach(bean -> printComponent(out, bean));
+        var packageId = pack.getPath();
+        printUnion(out, pack.getName(), packageId, style, () -> {
+            var components = pack.getComponents();
+            if (components != null) {
+                if (components.size() > options.collapseComponentsMoreThen) {
+                    printCollapsedComponents(out, packageId, components);
+                } else {
+                    for (var component : components) {
+                        printComponent(out, component);
+                    }
+                }
             }
             var packages = pack.getPackages();
-            if (packages != null) {
-                packages.forEach(subPack -> printUnion(out, subPack));
+            if (packages != null) for (var subPack : packages) {
+                printUnion(out, subPack);
             }
         });
     }
@@ -381,7 +391,16 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     protected void printComponent(IndentStringAppender out, Component component) {
         var componentName = component.getName();
-        out.append(format("[%s] as %s\n", componentName, plantUmlAlias(componentName)));
+        out.append(format("component %s as %s\n", componentName, plantUmlAlias(componentName)));
+    }
+
+    protected void printCollapsedComponents(IndentStringAppender out, String packageId, Collection<Component> components) {
+        var text = components.stream().map(Component::getName).reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+        var collapsedComponentsId = getElementId(packageId, "components");
+        out.append(format("collections \"%s\" as %s\n", text, collapsedComponentsId), false);
+        for (var component : components) {
+            collapsedComponents.put(component.getName(), collapsedComponentsId);
+        }
     }
 
     protected Stream<Package> mergeSubPack(Package pack) {
@@ -446,16 +465,23 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
         var mergerPackages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
 
-        Runnable runnable = () -> {
+        printUnion(out, together, () -> {
             for (var pack : mergerPackages) {
                 printUnion(out, pack);
             }
-        };
-        printUnion(out, together, runnable);
+        });
 
-        components.forEach(component -> component.getDependencies().forEach(dependency ->
-                out.append(format("%s ..> %s\n", plantUmlAlias(component.getName()), plantUmlAlias(dependency))))
-        );
+        for (var component : components) {
+            var componentName = component.getName();
+            var collapsedComponentName = checkCollapsedName(componentName);
+            for (var dependency : component.getDependencies()) {
+                var dependencyName = checkCollapsedName(dependency);
+                if (!dependencyName.equals(printedComponentRelations.get(componentName))) {
+                    out.append(format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName)));
+                    printedComponentRelations.put(collapsedComponentName, dependencyName);
+                }
+            }
+        }
 
         var groupedInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
@@ -500,6 +526,11 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
     }
 
+    private String checkCollapsedName(String name) {
+        var collapsedName = collapsedComponents.get(name);
+        return collapsedName != null ? collapsedName : name;
+    }
+
     @Getter
     @RequiredArgsConstructor
     public enum UnionBorder {
@@ -542,6 +573,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
+        int collapseComponentsMoreThen = 5;
         Map<String, List<String>> idCharReplaces;
         Function<Direction, String> directionGroup;
         Function<String, UnionStyle> directionGroupAggregate;
