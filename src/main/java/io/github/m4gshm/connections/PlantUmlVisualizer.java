@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections;
 
-import io.github.m4gshm.connections.PlantUmlVisualizer.Options.AggregateStyle;
+import io.github.m4gshm.connections.PlantUmlVisualizer.Options.UnionStyle;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.HttpMethod.Group;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -8,6 +8,7 @@ import io.github.m4gshm.connections.model.Package;
 import io.github.m4gshm.connections.model.Interface.Type;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,7 @@ import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
-import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.*;
+import static io.github.m4gshm.connections.PlantUmlVisualizer.UnionBorder.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -98,25 +99,34 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         return type == Type.storage ? "entity" : "interface";
     }
 
-    protected void printPackage(IndentStringAppender out, String name, String id,
-                                AggregateStyle aggregateStyle, Runnable internal) {
-        var wrap = name != null;
+    protected void printUnion(IndentStringAppender out, UnionBorder border, Runnable internal) {
+        printUnion(out, null, null, UnionStyle.builder().unionBorder(border).build(), internal);
+    }
+
+    protected void printUnion(IndentStringAppender out, String name, String id,
+                              UnionStyle unionStyle, Runnable internal) {
+        var unionBorder = unionStyle.getUnionBorder();
+        var supportNameIdStyle = unionBorder.isSupportNameIdStyle();
+        var wrap = !supportNameIdStyle || name != null;
         if (wrap) {
-            var text = format("%s", aggregateStyle.getAggregate());
+            var text = format("%s", unionBorder);
             out.append(text);
-            if (!name.isBlank()) {
-                out.append(format(" \"%s\"", name));
-                if (id != null) {
-                    out.append(format(" as %s", id));
+            if (supportNameIdStyle) {
+                if (!name.isBlank()) {
+                    out.append(format(" \"%s\"", name));
+                    if (id != null) {
+                        out.append(format(" as %s", id));
+                    }
+                }
+                var style = unionStyle.getStyle();
+                if (style != null) {
+                    if (!style.startsWith("#")) {
+                        style = "#" + style;
+                    }
+                    out.append(" ").append(style);
                 }
             }
-            var style = aggregateStyle.getStyle();
-            if (style != null) {
-                if (!style.startsWith("#")) {
-                    style = "#" + style;
-                }
-                out.append(" ").append(style);
-            }
+
             out.append(" {\n");
             out.addIndent();
         }
@@ -219,19 +229,19 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         return getElementId(direction, anInterface.getType().name(), anInterface.getName());
     }
 
-    protected void printPackage(IndentStringAppender out, Package pack) {
-        printPackage(out, pack, options.getPackagePathAggregate().apply(pack.getPath()));
+    protected void printUnion(IndentStringAppender out, Package pack) {
+        printUnion(out, pack, options.getPackagePathAggregate().apply(pack.getPath()));
     }
 
-    protected void printPackage(IndentStringAppender out, Package pack, AggregateStyle style) {
-        printPackage(out, pack.getName(), pack.getPath(), style, () -> {
+    protected void printUnion(IndentStringAppender out, Package pack, UnionStyle style) {
+        printUnion(out, pack.getName(), pack.getPath(), style, () -> {
             var beans = pack.getComponents();
             if (beans != null) {
                 beans.forEach(bean -> printComponent(out, bean));
             }
             var packages = pack.getPackages();
             if (packages != null) {
-                packages.forEach(subPack -> printPackage(out, subPack));
+                packages.forEach(subPack -> printUnion(out, subPack));
             }
         });
     }
@@ -258,7 +268,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     protected void printHttpMethodGroup(IndentStringAppender out, Group group,
-                                        AggregateStyle style,
+                                        UnionStyle style,
                                         Map<Interface, List<Component>> interfaceComponentLink,
                                         Map<HttpMethod, Interface> httpMethods,
                                         Set<String> renderedInterfaces) {
@@ -267,7 +277,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
             printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods, renderedInterfaces);
         } else {
-            printPackage(out, group.getPath(), null, style,
+            printUnion(out, group.getPath(), null, style,
                     () -> printInterfaceAndSubgroups(out, group, PATH_DELIMITER, style,
                             interfaceComponentLink, httpMethods, renderedInterfaces)
             );
@@ -275,7 +285,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     protected void printInterfaceAndSubgroups(IndentStringAppender out,
-                                              Group group, String replaceMethodUrl, AggregateStyle style,
+                                              Group group, String replaceMethodUrl, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods,
                                               Set<String> renderedInterfaces) {
@@ -434,11 +444,14 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             );
         })).values();
 
-        packages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
+        var mergerPackages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
 
-        for (var pack : packages) {
-            printPackage(out, pack);
-        }
+        Runnable runnable = () -> {
+            for (var pack : mergerPackages) {
+                printUnion(out, pack);
+            }
+        };
+        printUnion(out, together, runnable);
 
         components.forEach(component -> component.getDependencies().forEach(dependency ->
                 out.append(format("%s ..> %s\n", plantUmlAlias(component.getName()), plantUmlAlias(dependency))))
@@ -461,12 +474,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             if (!byType.isEmpty()) {
                 var directionGroupStyle = options.getDirectionGroupAggregate().apply(directionGroup);
                 var directionGroupPackageName = directionGroup.isBlank() ? null : directionGroup;
-                printPackage(out, directionGroupPackageName, directionGroup, directionGroupStyle, () -> {
+                printUnion(out, directionGroupPackageName, directionGroup, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
                         var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
                         if (!interfaceComponentLink.isEmpty()) {
                             var elementId = getElementId(directionGroup, type.code);
-                            printPackage(out, type.code, elementId, options.getInterfaceAggregate().apply(type), () -> {
+                            printUnion(out, type.code, elementId, options.getInterfaceAggregate().apply(type), () -> {
                                 if (type == http) {
                                     //merge by url parts
                                     var httpMethods = extractHttpMethodsFromInterfaces(
@@ -487,8 +500,9 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
     }
 
+    @Getter
     @RequiredArgsConstructor
-    public enum Aggregate {
+    public enum UnionBorder {
         rectangle,
         pack("package"),
         cloud,
@@ -497,12 +511,21 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         folder,
         frame,
         database,
-        ;
+        together(false);
 
+        private final boolean supportNameIdStyle;
         private final String code;
 
-        Aggregate() {
-            this(null);
+        UnionBorder(String code) {
+            this(true, code);
+        }
+
+        UnionBorder(boolean supportNameIdStyle) {
+            this(supportNameIdStyle, null);
+        }
+
+        UnionBorder() {
+            this(true, null);
         }
 
         public String getCode() {
@@ -521,28 +544,28 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     public static class Options {
         Map<String, List<String>> idCharReplaces;
         Function<Direction, String> directionGroup;
-        Function<String, AggregateStyle> directionGroupAggregate;
-        Function<Type, AggregateStyle> interfaceAggregate;
-        Function<Type, AggregateStyle> interfaceSubgroupAggregate;
-        Function<String, AggregateStyle> packagePathAggregate;
+        Function<String, UnionStyle> directionGroupAggregate;
+        Function<Type, UnionStyle> interfaceAggregate;
+        Function<Type, UnionStyle> interfaceSubgroupAggregate;
+        Function<String, UnionStyle> packagePathAggregate;
 
-        private static AggregateStyle newAggregateStyle(Aggregate aggregate) {
-            return AggregateStyle.builder().aggregate(aggregate).build();
+        private static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
+            return UnionStyle.builder().unionBorder(unionBorder).build();
         }
 
-        private static AggregateStyle newAggregateStyle(Aggregate aggregate, String style) {
-            return AggregateStyle.builder().aggregate(aggregate).style(style).build();
+        private static UnionStyle newAggregateStyle(UnionBorder unionBorder, String style) {
+            return UnionStyle.builder().unionBorder(unionBorder).style(style).build();
         }
 
-        public static AggregateStyle getPackagePath(String path) {
+        public static UnionStyle getPackagePath(String path) {
             return newAggregateStyle(pack, "line.dotted;text:gray");
         }
 
-        public static AggregateStyle getAggregateStyle(Type type) {
+        public static UnionStyle getAggregateStyle(Type type) {
             return newAggregateStyle(getAggregate(type));
         }
 
-        public static Aggregate getAggregate(Type type) {
+        public static UnionBorder getAggregate(Type type) {
             if (type != null) switch (type) {
                 case jms:
                     return queue;
@@ -552,12 +575,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             return rectangle;
         }
 
-        public static AggregateStyle getAggregateOfSubgroup(Type type) {
+        public static UnionStyle getAggregateOfSubgroup(Type type) {
             return newAggregateStyle(frame, "line.dotted;");
         }
 
-        public static AggregateStyle getAggregateOfDirectionGroup(String directionGroup) {
-            return newAggregateStyle(Aggregate.cloud, "line.dotted;line:gray;");
+        public static UnionStyle getAggregateOfDirectionGroup(String directionGroup) {
+            return newAggregateStyle(UnionBorder.cloud, "line.dotted;line:gray;");
         }
 
         public static String defaultDirectionGroup(Direction direction) {
@@ -575,8 +598,8 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        public static class AggregateStyle {
-            Aggregate aggregate;
+        public static class UnionStyle {
+            UnionBorder unionBorder;
             String style;
         }
     }

@@ -1,36 +1,38 @@
 @startuml
-package "api" as api #line.dotted;text:gray {
-  package "http" as api.http #line.dotted;text:gray {
-    [mainController] as mainController
-  }
-  package "ws" as api.ws #line.dotted;text:gray {
-    [eventsHandler] as eventsHandler
-  }
-}
-package "service" as service #line.dotted;text:gray {
-  [coreService] as coreService
-  package "external" as service.external #line.dotted;text:gray {
-    package "jms" as service.external.jms #line.dotted;text:gray {
-      [jmsQueueListener] as jmsQueueListener
-      [jmsQueueService] as jmsQueueService
+together {
+  package "api" as api #line.dotted;text:gray {
+    package "http" as api.http #line.dotted;text:gray {
+      [mainController] as mainController
     }
-    package "rest" as service.external.rest #line.dotted;text:gray {
-      [service2LegacyImpl] as service2LegacyImpl
-      [standaloneService2Api] as standaloneService2Api
-      [service2FeignClient] as service2FeignClient
-    }
-    package "ws" as service.external.ws #line.dotted;text:gray {
-      [service2StreamClientImpl] as service2StreamClientImpl
+    package "ws" as api.ws #line.dotted;text:gray {
+      [eventsHandler] as eventsHandler
     }
   }
-}
-package "db" as db #line.dotted;text:gray {
-  package "jpa" as db.jpa #line.dotted;text:gray {
-    [simpleEntityRepository] as simpleEntityRepository
-    [userRepository] as userRepository
+  package "service" as service #line.dotted;text:gray {
+    [coreService] as coreService
+    package "external" as service.external #line.dotted;text:gray {
+      package "jms" as service.external.jms #line.dotted;text:gray {
+        [jmsQueueListener] as jmsQueueListener
+        [jmsQueueService] as jmsQueueService
+      }
+      package "rest" as service.external.rest #line.dotted;text:gray {
+        [service2LegacyImpl] as service2LegacyImpl
+        [standaloneService2Api] as standaloneService2Api
+        [service2FeignClient] as service2FeignClient
+      }
+      package "ws" as service.external.ws #line.dotted;text:gray {
+        [service2StreamClientImpl] as service2StreamClientImpl
+      }
+    }
   }
-  package "mongo" as db.mongo #line.dotted;text:gray {
-    [documentRepository] as documentRepository
+  package "db" as db #line.dotted;text:gray {
+    package "jpa" as db.jpa #line.dotted;text:gray {
+      [simpleEntityRepository] as simpleEntityRepository
+      [userRepository] as userRepository
+    }
+    package "mongo" as db.mongo #line.dotted;text:gray {
+      [documentRepository] as documentRepository
+    }
   }
 }
 mainController ..> coreService
