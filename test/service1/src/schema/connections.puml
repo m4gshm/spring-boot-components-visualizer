@@ -24,11 +24,18 @@ package "service" as service #line.dotted;text:gray {
     }
   }
 }
+package "db.jpa" as db.jpa #line.dotted;text:gray {
+  [simpleEntityRepository] as simpleEntityRepository
+}
 mainController ..> coreService
 coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
+rectangle "jpa" as jpa {
+  interface "service1.db.jpa.model.SimpleEntity" as undefined.jpa.service1.db.jpa.model.SimpleEntity
+  undefined.jpa.service1.db.jpa.model.SimpleEntity ..> simpleEntityRepository
+}
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" #line.dotted; {

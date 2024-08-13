@@ -27,16 +27,17 @@ public class Interface {
     @Getter
     @RequiredArgsConstructor
     public enum Direction {
-        undefined, in, out, outIn(out, in);
+        undefined, in, out, outIn, storage;
+    }
 
-        private final Set<Direction> directions;
+    @RequiredArgsConstructor
+    public enum Type {
+        http, ws("web socket"), grpc, jms, kafka, jpa;
 
-        Direction(Direction... directions) {
-            this.directions = directions.length > 0 ? Set.of(directions) : Set.of(this);
-        }
+        public final String code;
 
-        public boolean is(Direction direction) {
-            return directions.contains(direction);
+        Type() {
+            code = this.name();
         }
     }
 
@@ -46,17 +47,6 @@ public class Interface {
         private String path;
         private Set<Interface> interfaces;
         private Map<String, Group> groups;
-    }
-
-    @RequiredArgsConstructor
-    public enum Type {
-        http, ws("web socket"), grpc, jms, kafka;
-
-        public final String code;
-
-        Type() {
-            code = this.name();
-        }
     }
 
 }

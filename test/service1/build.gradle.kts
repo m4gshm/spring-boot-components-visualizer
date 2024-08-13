@@ -26,6 +26,12 @@ dependencies {
 
     implementation("org.springframework.boot:spring-boot-starter-websocket:$springBootVer")
     implementation("org.springframework.boot:spring-boot-starter-artemis:$springBootVer")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa:$springBootVer")
+    implementation("org.springframework.data:spring-data-keyvalue:2.7.18")
+    implementation("org.springframework.data:spring-data-jpa:2.7.18")
+//    implementation("org.hibernate:hibernate-core:6.4.1.Final")
+    implementation("javax.persistence:javax.persistence-api:2.2")
+    implementation("com.h2database:h2:2.3.230")
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")

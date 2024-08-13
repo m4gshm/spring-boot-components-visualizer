@@ -67,6 +67,36 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         this.options = options != null ? options : DEFAULT_OPTIONS;
     }
 
+    private static List<String> splitUrl(String url) {
+        final String scheme, path;
+        int schemeEnd = url.indexOf(SCHEME_DELIMETER);
+        if (schemeEnd >= 0) {
+            scheme = url.substring(0, schemeEnd);
+            path = url.substring(schemeEnd + SCHEME_DELIMETER.length());
+        } else {
+            scheme = null;
+            path = url;
+        }
+
+        var parts = new ArrayList<String>();
+
+        if (!path.isBlank()) {
+            var first = true;
+            var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
+            while (tokenizer.hasMoreTokens()) {
+                var part = tokenizer.nextToken();
+                if (first && scheme != null) {
+                    part = scheme + SCHEME_DELIMETER + part;
+                } else {
+                    part = PATH_DELIMITER + part;
+                }
+                parts.add(part);
+                first = false;
+            }
+        }
+        return parts;
+    }
+
     protected void printPackage(IndentStringAppender out, String name, String id,
                                 AggregateStyle aggregateStyle, Runnable internal) {
         var wrap = name != null;
@@ -135,32 +165,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         var url = httpMethod.getUrl();
         url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
 
-        final String scheme, path;
-        int schemeEnd = url.indexOf(SCHEME_DELIMETER);
-        if (schemeEnd >= 0) {
-            scheme = url.substring(0, schemeEnd);
-            path = url.substring(schemeEnd + SCHEME_DELIMETER.length());
-        } else {
-            scheme = null;
-            path = url;
-        }
-
-        var parts = new ArrayList<String>();
-
-        if (!path.isBlank()) {
-            var first = true;
-            var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
-            while (tokenizer.hasMoreTokens()) {
-                var part = tokenizer.nextToken();
-                if (first && scheme != null) {
-                    part = scheme + SCHEME_DELIMETER + part;
-                } else {
-                    part = PATH_DELIMITER + part;
-                }
-                parts.add(part);
-                first = false;
-            }
-        }
+        var parts = splitUrl(url);
 
         var nexGroupsLevel = group.getGroups();
         var currentGroup = group;
@@ -314,6 +319,8 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             case outIn:
                 out.append(outInFormat(type, interfaceId, componentId));
                 break;
+            default:
+                out.append(linkFormat(type, interfaceId, componentId));
         }
     }
 
@@ -327,6 +334,10 @@ public class PlantUmlVisualizer implements Visualizer<String> {
 
     protected String inFormat(Type type, String interfaceId, String componentId) {
         return format("%s )..> %s\n", interfaceId, componentId);
+    }
+
+    protected String linkFormat(Type type, String interfaceId, String componentId) {
+        return format("%s ..> %s\n", interfaceId, componentId);
     }
 
     protected Package populatePath(String parentPath, Package pack) {
@@ -344,8 +355,11 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     protected Stream<Package> mergeSubPack(Package pack) {
         var packComponents = pack.getComponents();
         var subPackages = pack.getPackages();
-        return packComponents.isEmpty() && subPackages.size() == 1
-                ? subPackages.stream().map(subPack -> subPack.toBuilder().name(getElementId(pack.getName(), subPack.getName())).build()).flatMap(this::mergeSubPack)
+        return (packComponents == null || packComponents.isEmpty()) && subPackages.size() == 1
+                ? subPackages.stream().map(subPack -> subPack.toBuilder()
+                        .name(getElementId(pack.getName(), subPack.getName()))
+                        .build())
+                .flatMap(this::mergeSubPack)
                 : Stream.of(pack);
     }
 
@@ -423,11 +437,10 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         for (var directionGroup : directionGroups) {
             var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                printPackage(out, directionGroup, directionGroup, options.getDirectionGroupAggregate().apply(directionGroup), () -> {
+                var directionGroupStyle = options.getDirectionGroupAggregate().apply(directionGroup);
+                printPackage(out, directionGroup.isBlank() ? null : directionGroup, directionGroup, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
-                        var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(
-                                byType.get(type)).orElse(Map.of()
-                        );
+                        var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
                         if (!interfaceComponentLink.isEmpty()) {
                             var elementId = getElementId(directionGroup, type.code);
                             printPackage(out, type.code, elementId, options.getInterfaceAggregate().apply(type), () -> {
@@ -522,7 +535,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                 case outIn:
                     return DIRECTION_OUTPUT;
                 default:
-                    return String.valueOf(direction);
+                    return "";
             }
         }
 

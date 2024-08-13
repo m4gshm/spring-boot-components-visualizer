@@ -6,12 +6,19 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
+import io.github.m4gshm.connections.model.OrmEntity;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.metamodel.spi.MetamodelImplementor;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.data.jpa.repository.support.JpaMetamodelEntityInformation;
+import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.core.support.RepositoryFactoryInformation;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
@@ -22,26 +29,29 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
+import javax.persistence.metamodel.Metamodel;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
+import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
-import static io.github.m4gshm.connections.model.Interface.Direction.in;
-import static io.github.m4gshm.connections.model.Interface.Direction.out;
+import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
+import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
+import static org.springframework.beans.factory.BeanFactory.FACTORY_BEAN_PREFIX;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -130,12 +140,20 @@ public class ComponentsExtractor {
     }
 
     public Components getComponents() {
-        var allBeans = getFilteredBeanNameWithType(of(context.getBeanDefinitionNames()))
+        var beanFactory = context.getBeanFactory();
+        String[] beanNamesForType = beanFactory.getBeanNamesForType(RepositoryFactoryInformation.class);
+        var beanDefinitionNames = asList(beanFactory.getBeanDefinitionNames());
+
+        List<String> collect1 = beanDefinitionNames.stream().filter(n -> n.startsWith("&")).collect(toList());
+        var singletonNames = beanFactory.getSingletonNames();
+        List<String> collect = of(singletonNames).filter(n -> !beanDefinitionNames.contains(n)).collect(toList());
+        var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream())
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
                     //log
                     return l;
                 }, () -> new LinkedHashMap<String, Class<?>>()));
 
+        var stringClassEntry = allBeans.entrySet().stream().filter(e -> RepositoryFactoryInformation.class.isAssignableFrom(e.getValue())).findFirst().orElse(null);
         var componentCache = new HashMap<String, Set<Component>>();
         var failFast = options.isFailFast();
         var rootComponent = findRootComponent(allBeans, componentCache, failFast);
@@ -226,6 +244,10 @@ public class ComponentsExtractor {
             var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory()).stream()
                     .map(jmsClient -> newInterface(jmsClient, componentName)).collect(toList());
 
+
+            //log
+            var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
+
             var dependencies = feignClient != null ? Set.<Component>of() : getDependencies(componentName,
                     rootPackage, cache, failFast);
 
@@ -256,7 +278,8 @@ public class ComponentsExtractor {
                     .type(componentType)
                     .interfaces(of(
                             inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(),
-                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream()
+                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream(),
+                            repositoryEntityInterfaces.stream()
                     ).flatMap(s -> s).collect(toLinkedHashSet()))
                     .dependencies(dependencies.stream().map(Component::getName).collect(toLinkedHashSet()))
                     .build();
@@ -265,6 +288,50 @@ public class ComponentsExtractor {
             result.add(component);
             return result.stream();
         }
+    }
+
+    private List<Interface> getRepositoryEntityInterfaces(String componentName, Class<?> componentType) {
+        var repositoryEntities = new ArrayList<Interface>();
+        var repositoryClass = loadedClass(() -> Repository.class);
+        if (repositoryClass == null) {
+            //log
+        } else if (repositoryClass.isAssignableFrom(componentType)) {
+            var factoryComponentName = FACTORY_BEAN_PREFIX + componentName;
+            Object factory;
+            try {
+                factory = context.getBean(factoryComponentName);
+            } catch (BeansException e) {
+                log.error("get factory error, {}", factoryComponentName, e);
+                factory = null;
+            }
+            if (factory instanceof RepositoryFactoryInformation) {
+                var repoInfo = (RepositoryFactoryInformation<?, ?>) factory;
+                var persistentEntity = repoInfo.getPersistentEntity();
+                var type = persistentEntity.getTypeInformation().getType();
+
+                var entityInformation = repoInfo.getEntityInformation();
+                if (entityInformation instanceof JpaMetamodelEntityInformation) {
+                    var metamodel = (Metamodel) getFieldValue(entityInformation, "metamodel");
+                    if (metamodel instanceof MetamodelImplementor) {
+                        var hiberMetamodel = (MetamodelImplementor) metamodel;
+                        var entityPersisters = hiberMetamodel.entityPersisters();
+                        for (var entityClassName : entityPersisters.keySet()) {
+                            var entityPersister = entityPersisters.get(entityClassName);
+                            var tables = entityPersister.getPropertySpaces();
+                            var build = OrmEntity.builder()
+                                    .entityType(type)
+                                    .storedTo(stream(tables).map(Object::toString).collect(toList()))
+                                    .engine(OrmEntity.Engine.jpa)
+                                    .build();
+                            var anInterface = Interface.builder().name(entityClassName).type(jpa)
+                                    .direction(undefined).core(build).build();
+                            repositoryEntities.add(anInterface);
+                        }
+                    }
+                }
+            }
+        }
+        return repositoryEntities;
     }
 
     private Class<?> getComponentType(String beanName) {
@@ -331,8 +398,10 @@ public class ComponentsExtractor {
 
     private Collection<Component> extractInWebsocketHandlers(
             String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache) {
-        var webSocketConfigClass = Utils.loadedClass(() -> WebSocketConfigurationSupport.class);
-        if (webSocketConfigClass != null && webSocketConfigClass.isAssignableFrom(componentType)) {
+        var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
+        if (webSocketConfigClass == null) {
+            //log
+        } else if (webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {
                 return cachedComponents;

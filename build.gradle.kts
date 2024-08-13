@@ -39,6 +39,10 @@ dependencies {
     compileOnly("org.springframework.cloud:spring-cloud-openfeign-core:3.1.9")
     compileOnly("org.springframework.cloud:spring-cloud-context:3.1.8")
     compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
+    compileOnly("org.springframework.data:spring-data-commons:2.7.18")
+    compileOnly("org.springframework.data:spring-data-jpa:2.7.18")
+    compileOnly("javax.persistence:javax.persistence-api:2.2")
+    compileOnly("org.hibernate:hibernate-core:5.6.15.Final")
 
     compileOnly("jakarta.jms:jakarta.jms-api:2.0.3")
     testImplementation("jakarta.jms:jakarta.jms-api:2.0.3")

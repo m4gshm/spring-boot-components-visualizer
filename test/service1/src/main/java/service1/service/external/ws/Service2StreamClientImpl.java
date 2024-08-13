@@ -71,7 +71,7 @@ public class Service2StreamClientImpl implements AutoCloseable {
     }
 
     private void closeAll() {
-        for (var webSocketSessionFuture : sessionCompletableFuture) {
+        if (sessionCompletableFuture != null) for (var webSocketSessionFuture : sessionCompletableFuture) {
             try {
                 close(webSocketSessionFuture);
             } catch (Exception e) {

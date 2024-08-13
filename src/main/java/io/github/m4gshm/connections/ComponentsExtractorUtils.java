@@ -32,6 +32,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
+import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
@@ -85,7 +86,7 @@ public class ComponentsExtractorUtils {
     }
 
     static <T extends Annotation> T getAnnotation(Class<?> aClass, Supplier<Class<T>> supplier) {
-        var annotationClass = Utils.loadedClass(supplier);
+        var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return null;
         }
@@ -109,7 +110,7 @@ public class ComponentsExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
             Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
     ) {
-        var annotationClass = Utils.loadedClass(supplier);
+        var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return Set.of();
         } else {
@@ -122,7 +123,7 @@ public class ComponentsExtractorUtils {
     static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
-        var annotationClass = Utils.loadedClass(supplier);
+        var annotationClass = loadedClass(supplier);
         return annotationClass == null ? Map.of() : elements.stream()
                 .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
 
@@ -169,10 +170,6 @@ public class ComponentsExtractorUtils {
 
     static boolean isSpringBootMainClass(Class<?> beanType) {
         return beanType != null && hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
-    }
-
-    static String getHttpInterfaceName(String method, String url) {
-        return method == null || method.isEmpty() ? url : method + ":" + url;
     }
 
     static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
@@ -262,7 +259,7 @@ public class ComponentsExtractorUtils {
     }
 
     static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
-        var type = Utils.loadedClass(classSupplier);
+        var type = loadedClass(classSupplier);
         return type != null ? dependencies.stream()
                 .filter(component -> type.isAssignableFrom(component.getType()))
                 .findFirst().orElse(null) : null;
