@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections;
 
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.util.LinkedHashSet;
 import java.util.function.Supplier;
@@ -17,12 +18,16 @@ public class Utils {
         try {
             return classSupplier.get();
         } catch (NoClassDefFoundError e) {
-            if (log.isDebugEnabled()) {
-                log.info("Class is not supported", e);
-            } else {
-                log.info("Class is not supported, {}", e.getLocalizedMessage());
-            }
+            logUnsupportedClass(log, e);
             return null;
+        }
+    }
+
+    public static void logUnsupportedClass(Logger log, NoClassDefFoundError e) {
+        if (log.isDebugEnabled()) {
+            log.info("Class is not supported", e);
+        } else {
+            log.info("Class is not supported, {}", e.getLocalizedMessage());
         }
     }
 }

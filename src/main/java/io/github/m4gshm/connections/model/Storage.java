@@ -11,12 +11,14 @@ import static lombok.AccessLevel.PRIVATE;
 @Data
 @Builder(toBuilder = true)
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class OrmEntity {
+public class Storage {
     Class<?> entityType;
     Collection<String> storedTo;
     Engine engine;
 
     public enum Engine {
-        jpa, mongodb;
+        jpa, mongo;
     }
 }
+
+

@@ -1,13 +1,11 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.PlantUmlVisualizer.Options.AggregateStyle;
-import io.github.m4gshm.connections.model.Component;
-import io.github.m4gshm.connections.model.HttpMethod;
+import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.HttpMethod.Group;
-import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
-import io.github.m4gshm.connections.model.Interface.Type;
 import io.github.m4gshm.connections.model.Package;
+import io.github.m4gshm.connections.model.Interface.Type;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +20,7 @@ import java.util.stream.Stream;
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static io.github.m4gshm.connections.PlantUmlVisualizer.Aggregate.*;
-import static io.github.m4gshm.connections.model.Interface.Type.http;
-import static io.github.m4gshm.connections.model.Interface.Type.jms;
+import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -45,16 +42,16 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
             ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
     );
+    public static final String DIRECTION_INPUT = "input";
+    public static final String DIRECTION_OUTPUT = "output";
     public static final Options DEFAULT_OPTIONS = Options.builder()
             .idCharReplaces(DEFAULT_ESCAPES)
             .directionGroup(PlantUmlVisualizer.Options::defaultDirectionGroup)
             .directionGroupAggregate(PlantUmlVisualizer.Options::getAggregateOfDirectionGroup)
-            .interfaceAggregate(PlantUmlVisualizer.Options::getAggregate)
+            .interfaceAggregate(PlantUmlVisualizer.Options::getAggregateStyle)
             .interfaceSubgroupAggregate(PlantUmlVisualizer.Options::getAggregateOfSubgroup)
             .packagePathAggregate(PlantUmlVisualizer.Options::getPackagePath)
             .build();
-    public static final String DIRECTION_INPUT = "input";
-    public static final String DIRECTION_OUTPUT = "output";
     private final String applicationName;
     private final Options options;
 
@@ -95,6 +92,10 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             }
         }
         return parts;
+    }
+
+    protected String renderAs(Interface.Type type) {
+        return type == Type.storage ? "entity" : "interface";
     }
 
     protected void printPackage(IndentStringAppender out, String name, String id,
@@ -297,10 +298,31 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                                   Collection<Component> components, Set<String> renderedInterfaces) {
         var interfaceId = getInterfaceId(anInterface);
         if (renderedInterfaces.add(interfaceId)) {
-            out.append(format("interface \"%s\" as %s\n", anInterface.getName(), interfaceId));
+            out.append(format(renderAs(anInterface.getType()) + " \"%s\" as %s\n", renderInterfaceName(anInterface), interfaceId));
         }
+
+        printInterfaceCore(out, anInterface.getCore(), interfaceId);
+
         for (var component : components) {
             printDirection(out, interfaceId, anInterface, component);
+        }
+    }
+
+    protected String renderInterfaceName(Interface anInterface) {
+        var name = anInterface.getName();
+        if (anInterface.getType() == storage) {
+            var lasted = name.lastIndexOf(".");
+            return lasted > 0 ? name.substring(lasted + 1) : null;
+        }
+        return name;
+    }
+
+    protected void printInterfaceCore(IndentStringAppender out, Object core, String interfaceId) {
+        if (core instanceof Storage) {
+            var ormEntity = (Storage) core;
+            var storedTo = ormEntity.getStoredTo();
+            var tables = storedTo.stream().reduce("", (l, r) -> (l.isBlank() ? "" : l + "\n") + r);
+            out.append(format("note right of %s: %s\n", interfaceId, tables));
         }
     }
 
@@ -311,33 +333,33 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         var direction = anInterface.getDirection();
         switch (direction) {
             case in:
-                out.append(inFormat(type, interfaceId, componentId));
+                out.append(renderIn(type, interfaceId, componentId));
                 break;
             case out:
-                out.append(outFormat(type, interfaceId, componentId));
+                out.append(renderOut(type, interfaceId, componentId));
                 break;
             case outIn:
-                out.append(outInFormat(type, interfaceId, componentId));
+                out.append(renderOutIn(type, interfaceId, componentId));
                 break;
             default:
-                out.append(linkFormat(type, interfaceId, componentId));
+                out.append(renderLink(type, interfaceId, componentId));
         }
     }
 
-    protected String outFormat(Type type, String interfaceId, String componentId) {
+    protected String renderOut(Type type, String interfaceId, String componentId) {
         return format((type == jms ? "%s ..> %s" : "%s ..( %s") + "\n", componentId, interfaceId);
     }
 
-    protected String outInFormat(Type type, String interfaceId, String componentId) {
+    protected String renderOutIn(Type type, String interfaceId, String componentId) {
         return format("%1$s ..> %2$s\n%1$s <.. %2$s\n", componentId, interfaceId);
     }
 
-    protected String inFormat(Type type, String interfaceId, String componentId) {
+    protected String renderIn(Type type, String interfaceId, String componentId) {
         return format("%s )..> %s\n", interfaceId, componentId);
     }
 
-    protected String linkFormat(Type type, String interfaceId, String componentId) {
-        return format("%s ..> %s\n", interfaceId, componentId);
+    protected String renderLink(Type type, String interfaceId, String componentId) {
+        return format("%s .. %s\n", interfaceId, componentId);
     }
 
     protected Package populatePath(String parentPath, Package pack) {
@@ -438,7 +460,8 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
                 var directionGroupStyle = options.getDirectionGroupAggregate().apply(directionGroup);
-                printPackage(out, directionGroup.isBlank() ? null : directionGroup, directionGroup, directionGroupStyle, () -> {
+                var directionGroupPackageName = directionGroup.isBlank() ? null : directionGroup;
+                printPackage(out, directionGroupPackageName, directionGroup, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
                         var interfaceComponentLink = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
                         if (!interfaceComponentLink.isEmpty()) {
@@ -515,8 +538,18 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             return newAggregateStyle(pack, "line.dotted;text:gray");
         }
 
-        public static AggregateStyle getAggregate(Type type) {
-            return newAggregateStyle(type == Type.jms ? queue : rectangle);
+        public static AggregateStyle getAggregateStyle(Type type) {
+            return newAggregateStyle(getAggregate(type));
+        }
+
+        public static Aggregate getAggregate(Type type) {
+            if (type != null) switch (type) {
+                case jms:
+                    return queue;
+                case storage:
+                    return database;
+            }
+            return rectangle;
         }
 
         public static AggregateStyle getAggregateOfSubgroup(Type type) {

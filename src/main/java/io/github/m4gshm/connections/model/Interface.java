@@ -6,9 +6,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
-import java.util.Map;
-import java.util.Set;
-
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
@@ -27,26 +24,18 @@ public class Interface {
     @Getter
     @RequiredArgsConstructor
     public enum Direction {
-        undefined, in, out, outIn, storage;
+        undefined, in, out, outIn;
     }
 
     @RequiredArgsConstructor
     public enum Type {
-        http, ws("web socket"), grpc, jms, kafka, jpa;
+        http, ws("web socket"), grpc, jms, kafka, storage;
 
         public final String code;
 
         Type() {
             code = this.name();
         }
-    }
-
-    @Data
-    @Builder(toBuilder = true)
-    public static class Group {
-        private String path;
-        private Set<Interface> interfaces;
-        private Map<String, Group> groups;
     }
 
 }

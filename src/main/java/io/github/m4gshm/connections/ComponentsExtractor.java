@@ -6,17 +6,17 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Interface.Direction;
-import io.github.m4gshm.connections.model.OrmEntity;
+import io.github.m4gshm.connections.model.Storage;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.jpa.repository.support.JpaMetamodelEntityInformation;
+import org.springframework.data.mongodb.repository.query.MongoEntityInformation;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.core.support.RepositoryFactoryInformation;
 import org.springframework.jms.core.JmsOperations;
@@ -36,14 +36,15 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
-import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.Utils.*;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
+import static io.github.m4gshm.connections.model.Storage.Engine.jpa;
+import static io.github.m4gshm.connections.model.Storage.Engine.mongo;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
@@ -141,19 +142,14 @@ public class ComponentsExtractor {
 
     public Components getComponents() {
         var beanFactory = context.getBeanFactory();
-        String[] beanNamesForType = beanFactory.getBeanNamesForType(RepositoryFactoryInformation.class);
         var beanDefinitionNames = asList(beanFactory.getBeanDefinitionNames());
 
-        List<String> collect1 = beanDefinitionNames.stream().filter(n -> n.startsWith("&")).collect(toList());
-        var singletonNames = beanFactory.getSingletonNames();
-        List<String> collect = of(singletonNames).filter(n -> !beanDefinitionNames.contains(n)).collect(toList());
         var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream())
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
                     //log
                     return l;
                 }, () -> new LinkedHashMap<String, Class<?>>()));
 
-        var stringClassEntry = allBeans.entrySet().stream().filter(e -> RepositoryFactoryInformation.class.isAssignableFrom(e.getValue())).findFirst().orElse(null);
         var componentCache = new HashMap<String, Set<Component>>();
         var failFast = options.isFailFast();
         var rootComponent = findRootComponent(allBeans, componentCache, failFast);
@@ -304,31 +300,53 @@ public class ComponentsExtractor {
                 log.error("get factory error, {}", factoryComponentName, e);
                 factory = null;
             }
-            if (factory instanceof RepositoryFactoryInformation) {
-                var repoInfo = (RepositoryFactoryInformation<?, ?>) factory;
-                var persistentEntity = repoInfo.getPersistentEntity();
-                var type = persistentEntity.getTypeInformation().getType();
+            try {
+                if (factory instanceof RepositoryFactoryInformation) {
+                    var repoInfo = (RepositoryFactoryInformation<?, ?>) factory;
+                    var persistentEntity = repoInfo.getPersistentEntity();
+                    var type = persistentEntity.getTypeInformation().getType();
+                    var entityClassName = type.getName();
 
-                var entityInformation = repoInfo.getEntityInformation();
-                if (entityInformation instanceof JpaMetamodelEntityInformation) {
-                    var metamodel = (Metamodel) getFieldValue(entityInformation, "metamodel");
-                    if (metamodel instanceof MetamodelImplementor) {
-                        var hiberMetamodel = (MetamodelImplementor) metamodel;
-                        var entityPersisters = hiberMetamodel.entityPersisters();
-                        for (var entityClassName : entityPersisters.keySet()) {
+                    var entityInformation = repoInfo.getEntityInformation();
+                    if (entityInformation instanceof JpaMetamodelEntityInformation) {
+                        var metamodel = (Metamodel) getFieldValue(entityInformation, "metamodel");
+                        if (metamodel instanceof MetamodelImplementor) {
+                            var hiberMetamodel = (MetamodelImplementor) metamodel;
+                            var entityPersisters = hiberMetamodel.entityPersisters();
                             var entityPersister = entityPersisters.get(entityClassName);
-                            var tables = entityPersister.getPropertySpaces();
-                            var build = OrmEntity.builder()
-                                    .entityType(type)
-                                    .storedTo(stream(tables).map(Object::toString).collect(toList()))
-                                    .engine(OrmEntity.Engine.jpa)
-                                    .build();
-                            var anInterface = Interface.builder().name(entityClassName).type(jpa)
-                                    .direction(undefined).core(build).build();
-                            repositoryEntities.add(anInterface);
+                            if (entityPersister != null) {
+                                var tables = entityPersister.getPropertySpaces();
+                                repositoryEntities.add(Interface.builder()
+                                        .name(entityClassName)
+                                        .type(storage)
+                                        .direction(undefined)
+                                        .core(Storage.builder()
+                                                .entityType(type)
+                                                .storedTo(stream(tables).map(Object::toString).collect(toList()))
+                                                .engine(jpa)
+                                                .build()
+                                        ).build());
+                            } else {
+                                //log
+                            }
                         }
+                    } else if (entityInformation instanceof MongoEntityInformation) {
+                        var mongoInfo = (MongoEntityInformation<?, ?>) entityInformation;
+                        var collectionName = mongoInfo.getCollectionName();
+                        repositoryEntities.add(Interface.builder()
+                                .name(entityClassName)
+                                .type(storage)
+                                .direction(undefined)
+                                .core(Storage.builder()
+                                        .entityType(type)
+                                        .storedTo(List.of(collectionName))
+                                        .engine(mongo)
+                                        .build()
+                                ).build());
                     }
                 }
+            } catch (NoClassDefFoundError e) {
+                logUnsupportedClass(log, e);
             }
         }
         return repositoryEntities;

@@ -41,6 +41,7 @@ dependencies {
     compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
     compileOnly("org.springframework.data:spring-data-commons:2.7.18")
     compileOnly("org.springframework.data:spring-data-jpa:2.7.18")
+    compileOnly("org.springframework.data:spring-data-mongodb:3.4.18")
     compileOnly("javax.persistence:javax.persistence-api:2.2")
     compileOnly("org.hibernate:hibernate-core:5.6.15.Final")
 
