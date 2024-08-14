@@ -11,16 +11,16 @@ import java.util.function.Consumer;
 
 @Slf4j
 @RequiredArgsConstructor
-public class OnApplicationReadyEventConnectionsVisualizeGenerator<T> implements ApplicationListener<ApplicationReadyEvent> {
+public class OnApplicationReadyEventSchemaGenerator<T> implements ApplicationListener<ApplicationReadyEvent> {
 
     private final ComponentsExtractor extractor;
-    private final Visualizer<T> visualizer;
+    private final SchemaFactory<T> schemaRenderer;
     private final Storage<T> storage;
 
     @Override
     @SneakyThrows
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        storage.accept(visualizer.render(extractor.getComponents()));
+        storage.accept(schemaRenderer.create(extractor.getComponents()));
     }
 
     public interface Storage<T> extends Consumer<T> {

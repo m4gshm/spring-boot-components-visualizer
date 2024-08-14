@@ -1,8 +1,8 @@
 package service1;
 
 import io.github.m4gshm.connections.ComponentsExtractor;
-import io.github.m4gshm.connections.OnApplicationReadyEventConnectionsVisualizeGenerator;
-import io.github.m4gshm.connections.PlantUmlVisualizer;
+import io.github.m4gshm.connections.OnApplicationReadyEventSchemaGenerator;
+import io.github.m4gshm.connections.PlantUmlTextFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -15,18 +15,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 
-import static io.github.m4gshm.connections.PlantUmlVisualizer.DEFAULT_OPTIONS;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.DEFAULT_OPTIONS;
 import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
         Service1Application.class,
-        ConnectionsVisualizeGeneratorTest.TestConfig.class
+        SchemaRendererTest.TestConfig.class
 })
 @EnableAutoConfiguration
-public class ConnectionsVisualizeGeneratorTest {
+public class SchemaRendererTest {
 
     @Autowired
-    OnApplicationReadyEventConnectionsVisualizeGenerator<?> visualizeGenerator;
+    OnApplicationReadyEventSchemaGenerator<?> visualizeGenerator;
 
     @Test
     public void generatePlantUml() {
@@ -45,12 +45,12 @@ public class ConnectionsVisualizeGeneratorTest {
         }
 
         @Bean
-        PlantUmlVisualizer.Options plantUmlVisualizerOptions() {
+        PlantUmlTextFactory.Options plantUmlVisualizerOptions() {
             return DEFAULT_OPTIONS.toBuilder().collapseComponentsMoreThen(2).build();
         }
 
         @Bean
-        OnApplicationReadyEventConnectionsVisualizeGenerator.Storage<String> storage() {
+        OnApplicationReadyEventSchemaGenerator.Storage<String> storage() {
             return content -> {
                 var envName = "CONNECTIONS_VISUALIZE_PLANTUML_OUT";
                 var outFileName = requireNonNull(System.getenv(envName), envName);

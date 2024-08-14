@@ -78,7 +78,7 @@ public class ComponentsExtractorUtils {
     }
 
     static boolean isVisualizeAPI(Class<?> beanType) {
-        return OnApplicationReadyEventConnectionsVisualizeGenerator.Storage.class.isAssignableFrom(beanType);
+        return OnApplicationReadyEventSchemaGenerator.Storage.class.isAssignableFrom(beanType);
     }
 
     static <T extends Annotation> boolean hasAnnotation(Class<?> type, Supplier<Class<T>> annotationSupplier) {
