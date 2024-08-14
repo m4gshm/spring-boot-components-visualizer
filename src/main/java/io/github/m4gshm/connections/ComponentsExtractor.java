@@ -270,7 +270,7 @@ public class ComponentsExtractor {
             //log
             var component = Component.builder()
                     .name(name)
-                    .path(getComponentPath(rootPackage, componentType))
+                    .path(getComponentPath(options.isCropRootPackagePath(), rootPackage, componentType))
                     .type(componentType)
                     .interfaces(of(
                             inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(),
@@ -319,7 +319,7 @@ public class ComponentsExtractor {
                                 repositoryEntities.add(Interface.builder()
                                         .name(entityClassName)
                                         .type(storage)
-                                        .direction(undefined)
+                                        .direction(internal)
                                         .core(Storage.builder()
                                                 .entityType(type)
                                                 .storedTo(stream(tables).map(Object::toString).collect(toList()))
@@ -336,7 +336,7 @@ public class ComponentsExtractor {
                         repositoryEntities.add(Interface.builder()
                                 .name(entityClassName)
                                 .type(storage)
-                                .direction(undefined)
+                                .direction(internal)
                                 .core(Storage.builder()
                                         .entityType(type)
                                         .storedTo(List.of(collectionName))
@@ -480,7 +480,7 @@ public class ComponentsExtractor {
                                 ? webSocketHandlerName :
                                 webSocketHandlerClass.getSimpleName()
                         )
-                        .path(getComponentPath(rootPackage, webSocketHandlerClass))
+                        .path(getComponentPath(options.isCropRootPackagePath(), rootPackage, webSocketHandlerClass))
                         .interfaces(Set.of(anInterface))
                         .dependencies(Set.of()).build());
             }
@@ -507,6 +507,7 @@ public class ComponentsExtractor {
         private final BeanFilter exclude;
         private boolean failFast;
         private boolean ignoreNotFoundDependencies;
+        private boolean cropRootPackagePath;
 
         @Data
         @Builder

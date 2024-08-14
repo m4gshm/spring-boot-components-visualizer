@@ -24,7 +24,7 @@ public class Interface {
     @Getter
     @RequiredArgsConstructor
     public enum Direction {
-        undefined, in, out, outIn;
+        undefined, internal, in, out, outIn;
     }
 
     @RequiredArgsConstructor

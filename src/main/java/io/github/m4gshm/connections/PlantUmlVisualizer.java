@@ -55,6 +55,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     public static final String DIRECTION_OUTPUT = "output";
     private final String applicationName;
     private final Options options;
+    private final String head, bottom;
     @Getter
     private final Map<String, String> collapsedComponents = new HashMap<>();
     private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
@@ -64,8 +65,14 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     public PlantUmlVisualizer(String applicationName, Options options) {
+        this(applicationName, options, null, null);
+    }
+
+    public PlantUmlVisualizer(String applicationName, Options options, String head, String bottom) {
         this.applicationName = applicationName;
         this.options = options != null ? options : DEFAULT_OPTIONS;
+        this.head = head;
+        this.bottom = bottom;
     }
 
     private static List<String> splitUrl(String url) {
@@ -247,9 +254,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                 }
             }
             var packages = pack.getPackages();
-            if (packages != null) for (var subPack : packages) {
-                printUnion(out, subPack);
-            }
+            if (packages != null) printPackages(out, packages);
         });
     }
 
@@ -428,15 +433,21 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     @Override
-    public String visualize(Components components) {
+    public String render(Components components) {
         var out = new StringBuilder();
 
         out.append("@startuml\n");
+        if (head != null) {
+            out.append(head);
+        }
 
 //        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
         visualize(components.getComponents(), out);
 
+        if (bottom != null) {
+            out.append(bottom);
+        }
         out.append("@enduml\n");
         return out.toString();
     }
@@ -462,13 +473,13 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             );
         })).values();
 
-        var mergerPackages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
+        var mergedPackages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
 
-        printUnion(out, together, () -> {
-            for (var pack : mergerPackages) {
-                printUnion(out, pack);
-            }
-        });
+        if (mergedPackages.size() < 2) {
+            printPackages(out, mergedPackages);
+        } else {
+            printUnion(out, together, () -> printPackages(out, mergedPackages));
+        }
 
         for (var component : components) {
             printComponentDependencyRelations(out, component);
@@ -514,6 +525,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                     }
                 });
             }
+        }
+    }
+
+    private void printPackages(IndentStringAppender out, List<Package> mergerPackages) {
+        for (var pack : mergerPackages) {
+            printUnion(out, pack);
         }
     }
 

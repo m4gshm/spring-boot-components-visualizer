@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
 import static io.github.m4gshm.connections.PlantUmlVisualizer.*;
-import static io.github.m4gshm.connections.Visualizer.getApplicationName;
+import static io.github.m4gshm.connections.Utils.getApplicationName;
 
 @Configuration
 public class PlantUmlConnectionsVisualizerAutoConfiguration {

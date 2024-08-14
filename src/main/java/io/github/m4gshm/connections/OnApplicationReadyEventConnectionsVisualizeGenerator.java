@@ -20,7 +20,7 @@ public class OnApplicationReadyEventConnectionsVisualizeGenerator<T> implements 
     @Override
     @SneakyThrows
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        storage.accept(visualizer.visualize(extractor.getComponents()));
+        storage.accept(visualizer.render(extractor.getComponents()));
     }
 
     public interface Storage<T> extends Consumer<T> {

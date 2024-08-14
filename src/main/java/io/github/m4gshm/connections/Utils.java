@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
+import org.springframework.core.env.Environment;
 
 import java.util.LinkedHashSet;
 import java.util.function.Supplier;
@@ -29,5 +30,9 @@ public class Utils {
         } else {
             log.info("Class is not supported, {}", e.getLocalizedMessage());
         }
+    }
+
+    public static String getApplicationName(Environment environment) {
+        return environment.getProperty("spring.application.name", "application");
     }
 }

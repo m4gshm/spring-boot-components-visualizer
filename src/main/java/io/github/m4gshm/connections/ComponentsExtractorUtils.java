@@ -246,16 +246,18 @@ public class ComponentsExtractorUtils {
         }
     }
 
-    static String getComponentPath(Package rootPackage, Class<?> componentType) {
-        if (rootPackage != null) {
-            var rootPackageName = rootPackage.getName();
-            var typePackageName = componentType.getPackage().getName();
-            if (typePackageName.startsWith(rootPackageName)) {
-                var path = typePackageName.substring(rootPackageName.length());
-                return path.startsWith(".") ? path.substring(1) : path;
-            }
+    static String getComponentPath(boolean cropRootPackagePath, Package rootPackage, Class<?> componentType) {
+        var typePackageName = componentType.getPackage().getName();
+        final String path;
+        if (cropRootPackagePath) {
+            var rootPackageName = Optional.ofNullable(rootPackage).map(Package::getName).orElse("");
+            path = typePackageName.startsWith(rootPackageName)
+                    ? typePackageName.substring(rootPackageName.length())
+                    : typePackageName;
+        } else {
+            path = typePackageName;
         }
-        return "";
+        return path.startsWith(".") ? path.substring(1) : path;
     }
 
     static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
