@@ -472,31 +472,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         });
 
         for (var component : components) {
-            var componentName = component.getName();
-            var collapsedComponentName = checkCollapsedName(componentName);
-            var collapsed = !collapsedComponentName.equals(componentName);
-            for (var dependency : component.getDependencies()) {
-                var dependencyName = checkCollapsedName(dependency);
-                var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
-                var alreadyPrinted = printedComponentRelations.getOrDefault(collapsedComponentName, Set.of()).contains(dependencyName);
-                if (options.reduceCollapsedElementRelations && !alreadyPrinted) {
-                    out.append(renderedRelation);
-                    printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
-                } else {
-                    if (options.reduceInnerCollapsedElementRelations) {
-                        var selfLink = collapsedComponentName.equals(dependencyName);
-                        var collapsedSelfLinked = collapsed && selfLink;
-                        if (collapsedSelfLinked && !alreadyPrinted) {
-                            out.append(renderedRelation);
-                            printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
-                        } else if (!collapsedSelfLinked) {
-                            out.append(renderedRelation);
-                        }
-                    } else {
-                        out.append(renderedRelation);
-                    }
-                }
-            }
+            printComponentDependencyRelations(out, component);
         }
 
         var groupedInterfaces = components.stream()
@@ -538,6 +514,34 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                         }
                     }
                 });
+            }
+        }
+    }
+
+    protected void printComponentDependencyRelations(IndentStringAppender out, Component component) {
+        var componentName = component.getName();
+        var collapsedComponentName = checkCollapsedName(componentName);
+        var collapsed = !collapsedComponentName.equals(componentName);
+        for (var dependency : component.getDependencies()) {
+            var dependencyName = checkCollapsedName(dependency);
+            var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
+            var alreadyPrinted = printedComponentRelations.getOrDefault(collapsedComponentName, Set.of()).contains(dependencyName);
+            if (options.reduceCollapsedElementRelations && !alreadyPrinted) {
+                out.append(renderedRelation);
+                printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
+            } else {
+                if (options.reduceInnerCollapsedElementRelations) {
+                    var selfLink = collapsedComponentName.equals(dependencyName);
+                    var collapsedSelfLinked = collapsed && selfLink;
+                    if (collapsedSelfLinked && !alreadyPrinted) {
+                        out.append(renderedRelation);
+                        printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
+                    } else if (!collapsedSelfLinked) {
+                        out.append(renderedRelation);
+                    }
+                } else {
+                    out.append(renderedRelation);
+                }
             }
         }
     }
