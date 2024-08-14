@@ -43,16 +43,16 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
             ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
     );
-    public static final String DIRECTION_INPUT = "input";
-    public static final String DIRECTION_OUTPUT = "output";
     public static final Options DEFAULT_OPTIONS = Options.builder()
-            .idCharReplaces(DEFAULT_ESCAPES)
             .directionGroup(PlantUmlVisualizer.Options::defaultDirectionGroup)
+            .idCharReplaces(DEFAULT_ESCAPES)
             .directionGroupAggregate(PlantUmlVisualizer.Options::getAggregateOfDirectionGroup)
             .interfaceAggregate(PlantUmlVisualizer.Options::getAggregateStyle)
             .interfaceSubgroupAggregate(PlantUmlVisualizer.Options::getAggregateOfSubgroup)
             .packagePathAggregate(PlantUmlVisualizer.Options::getPackagePath)
             .build();
+    public static final String DIRECTION_INPUT = "input";
+    public static final String DIRECTION_OUTPUT = "output";
     private final String applicationName;
     private final Options options;
     @Getter
@@ -233,10 +233,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     }
 
     protected void printUnion(IndentStringAppender out, Package pack) {
-        printUnion(out, pack, options.getPackagePathAggregate().apply(pack.getPath()));
-    }
-
-    protected void printUnion(IndentStringAppender out, Package pack, UnionStyle style) {
+        UnionStyle style = options.getPackagePathAggregate().apply(pack.getPath());
         var packageId = pack.getPath();
         printUnion(out, pack.getName(), packageId, style, () -> {
             var components = pack.getComponents();
@@ -349,7 +346,9 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     protected void printDirection(IndentStringAppender out, String interfaceId,
                                   Interface anInterface, Component component) {
         var type = anInterface.getType();
-        var componentId = plantUmlAlias(component.getName());
+        var componentName = component.getName();
+        var collapsedComponentId = collapsedComponents.get(componentName);
+        var componentId = collapsedComponentId != null ? collapsedComponentId : plantUmlAlias(componentName);
         var direction = anInterface.getDirection();
         switch (direction) {
             case in:

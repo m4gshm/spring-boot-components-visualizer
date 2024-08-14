@@ -2,6 +2,7 @@ package service1;
 
 import io.github.m4gshm.connections.ComponentsExtractor;
 import io.github.m4gshm.connections.OnApplicationReadyEventConnectionsVisualizeGenerator;
+import io.github.m4gshm.connections.PlantUmlVisualizer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -14,6 +15,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 
+import static io.github.m4gshm.connections.PlantUmlVisualizer.DEFAULT_OPTIONS;
 import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
@@ -35,12 +37,18 @@ public class ConnectionsVisualizeGeneratorTest {
     public static class TestConfig {
 
         @Bean
-        ComponentsExtractor.Options options() {
+        ComponentsExtractor.Options componentExtractorOptions() {
             return ComponentsExtractor.Options.builder()
                     .failFast(true)
                     .ignoreNotFoundDependencies(true)
                     .build();
         }
+
+        @Bean
+        PlantUmlVisualizer.Options plantUmlVisualizerOptions() {
+            return DEFAULT_OPTIONS.toBuilder().collapseComponentsMoreThen(2).build();
+        }
+
         @Bean
         OnApplicationReadyEventConnectionsVisualizeGenerator.Storage<String> storage() {
             return content -> {
