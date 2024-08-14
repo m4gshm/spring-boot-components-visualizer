@@ -81,7 +81,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
 //        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
-        render(out, components.getComponents());
+        printBody(out, components.getComponents());
 
         if (bottom != null) {
             out.append(bottom);
@@ -90,7 +90,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return out.toString();
     }
 
-    protected void render(StringBuilder dest, Collection<Component> components) {
+    protected void printBody(StringBuilder dest, Collection<Component> components) {
         var out = new IndentStringAppender(dest, INDENT);
 
         var packages = toPackagesHierarchy(components);
@@ -265,6 +265,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var packages = pack.getPackages();
             if (packages != null) printPackages(out, packages);
         });
+    }
+
+    private void printPackages(IndentStringAppender out, List<Package> packages) {
+        for (var pack : packages) {
+            printPackage(out, pack);
+        }
     }
 
     private Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
@@ -445,13 +451,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 .map(PlantUmlTextFactoryUtils::getComponentPackage))
                 .values().stream().flatMap(this::mergeSubPack)
                 .collect(toList());
-    }
-
-
-    private void printPackages(IndentStringAppender out, List<Package> packages) {
-        for (var pack : packages) {
-            printPackage(out, pack);
-        }
     }
 
     protected void printComponentDependencyRelations(IndentStringAppender out, Component component) {
