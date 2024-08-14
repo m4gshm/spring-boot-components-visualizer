@@ -75,7 +75,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         this.bottom = bottom;
     }
 
-    private static List<String> splitUrl(String url) {
+    public static List<String> splitUrl(String url) {
         final String scheme, path;
         int schemeEnd = url.indexOf(SCHEME_DELIMETER);
         if (schemeEnd >= 0) {
@@ -105,8 +105,59 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         return parts;
     }
 
-    protected String renderAs(Interface.Type type) {
+    public static Package getComponentPackage(Component component) {
+        var componentPath = component.getPath();
+
+        var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
+                .map(packageName -> Package.builder().name(packageName))
+                .collect(toList());
+
+        reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(component)));
+
+        return reversePathBuilders.stream().reduce((l, r) -> {
+            var lPack = l.build();
+            r.packages(singletonList(lPack));
+            return r;
+        }).map(Package.PackageBuilder::build).orElse(
+                Package.builder().name(componentPath).components(singletonList(component)).build()
+        );
+    }
+
+    public static Group newEmptyGroup(String part) {
+        return Group.builder()
+                .path(part)
+                .groups(new LinkedHashMap<>())
+                .build();
+    }
+
+    public static String renderAs(Interface.Type type) {
         return type == Type.storage ? "entity" : "interface";
+    }
+
+    public static Group getLastGroup(Group group, HttpMethod httpMethod) {
+        var url = httpMethod.getUrl();
+        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
+
+        var parts = splitUrl(url);
+
+        var nexGroupsLevel = group.getGroups();
+        var currentGroup = group;
+        for (var part : parts) {
+            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
+            nexGroupsLevel = currentGroup.getGroups();
+        }
+        return currentGroup;
+    }
+
+    protected static String regExp(List<String> strings) {
+        return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
+    }
+
+    protected List<Package> toPackagesHierarchy(Collection<Component> components) {
+        return distinctPackages(null, components.stream()
+                .map(PlantUmlVisualizer::getComponentPackage))
+                .values().stream().flatMap(this::mergeSubPack)
+                .collect(toList());
     }
 
     protected void printUnion(IndentStringAppender out, UnionBorder border, Runnable internal) {
@@ -147,56 +198,6 @@ public class PlantUmlVisualizer implements Visualizer<String> {
         }
     }
 
-    protected Group newEmptyGroup(String part) {
-        return Group.builder()
-                .path(part).groups(new LinkedHashMap<>())
-                .build();
-    }
-
-    protected Group reduce(Group group) {
-        var nextGroups = group.getGroups();
-        while (nextGroups.size() == 1 && group.getMethods() == null) {
-            var nextGroupPath = nextGroups.keySet().iterator().next();
-            var nextGroup = nextGroups.get(nextGroupPath);
-            var path = Optional.ofNullable(group.getPath()).orElse("");
-            var newPath = path.endsWith(PATH_DELIMITER) || nextGroupPath.startsWith(PATH_DELIMITER)
-                    || nextGroupPath.contains(SCHEME_DELIMETER)
-                    ? path + nextGroupPath
-                    : path + PATH_DELIMITER + nextGroupPath;
-            group.setPath(newPath);
-            group.setMethods(nextGroup.getMethods());
-            group.setGroups(nextGroups = nextGroup.getGroups());
-        }
-
-        group.setGroups(reduceNext(group.getGroups()));
-
-        return group;
-    }
-
-    protected Map<String, Group> reduceNext(Map<String, Group> groups) {
-        return groups.entrySet().stream()
-                .map(e -> entry(e.getKey(), reduce(e.getValue())))
-                .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
-                    log.debug("merge http method groups {} and {}", l, r);
-                    return l;
-                }, LinkedHashMap::new));
-    }
-
-    protected Group getLastGroup(Group group, HttpMethod httpMethod) {
-        var url = httpMethod.getUrl();
-        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
-
-        var parts = splitUrl(url);
-
-        var nexGroupsLevel = group.getGroups();
-        var currentGroup = group;
-        for (var part : parts) {
-            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
-            nexGroupsLevel = currentGroup.getGroups();
-        }
-        return currentGroup;
-    }
-
     protected Map<HttpMethod, Interface> extractHttpMethodsFromInterfaces(Collection<Interface> interfaces) {
         return interfaces.stream().map(anInterface -> {
             var core = anInterface.getCore();
@@ -226,12 +227,32 @@ public class PlantUmlVisualizer implements Visualizer<String> {
             currentGroup.setMethods(methods);
         }
         //reduce groups
-        var finalGroup = reduce(rootGroup);
-        return finalGroup;
+        return reduce(rootGroup);
     }
 
-    protected String regExp(List<String> strings) {
-        return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
+    protected Group reduce(Group group) {
+        var nextGroups = group.getGroups();
+        while (nextGroups.size() == 1 && group.getMethods() == null) {
+            var nextGroupPath = nextGroups.keySet().iterator().next();
+            var nextGroup = nextGroups.get(nextGroupPath);
+            var path = Optional.ofNullable(group.getPath()).orElse("");
+            var newPath = path.endsWith(PATH_DELIMITER) || nextGroupPath.startsWith(PATH_DELIMITER)
+                    || nextGroupPath.contains(SCHEME_DELIMETER)
+                    ? path + nextGroupPath
+                    : path + PATH_DELIMITER + nextGroupPath;
+            group.setPath(newPath);
+            group.setMethods(nextGroup.getMethods());
+            group.setGroups(nextGroups = nextGroup.getGroups());
+        }
+
+        group.setGroups(group.getGroups().entrySet().stream()
+                .map(e -> entry(e.getKey(), reduce(e.getValue())))
+                .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                    log.debug("merge http method groups {} and {}", l, r);
+                    return l;
+                }, LinkedHashMap::new)));
+
+        return group;
     }
 
     private String getInterfaceId(Interface anInterface) {
@@ -274,8 +295,7 @@ public class PlantUmlVisualizer implements Visualizer<String> {
                     ofNullable(l.getPackages()).orElse(emptyList()).stream(),
                     ofNullable(r.getPackages()).orElse(emptyList()).stream())
             );
-            var pack = l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
-            return pack;
+            return l.toBuilder().components(components).packages(copyOf(distinctPackages.values())).build();
         }, LinkedHashMap::new));
     }
 
@@ -455,30 +475,12 @@ public class PlantUmlVisualizer implements Visualizer<String> {
     protected void visualize(Collection<Component> components, StringBuilder dest) {
         var out = new IndentStringAppender(dest, INDENT);
 
-        var packages = distinctPackages(null, components.stream().map(component -> {
-            var componentPath = component.getPath();
+        var packages = toPackagesHierarchy(components);
 
-            var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
-                    .map(packageName -> Package.builder().name(packageName))
-                    .collect(toList());
-
-            reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(component)));
-
-            return reversePathBuilders.stream().reduce((l, r) -> {
-                var lPack = l.build();
-                r.packages(singletonList(lPack));
-                return r;
-            }).map(Package.PackageBuilder::build).orElse(
-                    Package.builder().name(componentPath).components(singletonList(component)).build()
-            );
-        })).values();
-
-        var mergedPackages = packages.stream().flatMap(this::mergeSubPack).collect(toList());
-
-        if (mergedPackages.size() < 2) {
-            printPackages(out, mergedPackages);
+        if (packages.size() < 2) {
+            printPackages(out, packages);
         } else {
-            printUnion(out, together, () -> printPackages(out, mergedPackages));
+            printUnion(out, together, () -> printPackages(out, packages));
         }
 
         for (var component : components) {
