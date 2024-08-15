@@ -20,10 +20,10 @@ import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
         Service1Application.class,
-        SchemaRendererTest.TestConfig.class
+        SchemaGeneratorTest.TestConfig.class
 })
 @EnableAutoConfiguration
-public class SchemaRendererTest {
+public class SchemaGeneratorTest {
 
     @Autowired
     OnApplicationReadyEventSchemaGenerator<?> visualizeGenerator;
