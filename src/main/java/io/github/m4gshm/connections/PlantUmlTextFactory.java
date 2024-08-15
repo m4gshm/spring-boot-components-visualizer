@@ -16,10 +16,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
-import static io.github.m4gshm.connections.PlantUmlTextFactory.Options.newAggregateStyle;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -29,6 +29,7 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Map.entry;
+import static java.util.Objects.requireNonNullElseGet;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
@@ -47,19 +48,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
     public static final String LINE_DOTTED = "line.dotted;";
-    public static final Options DEFAULT_OPTIONS = Options.builder()
-            .directionGroup(PlantUmlTextFactory.Options::defaultDirectionGroup)
-            .idCharReplaces(DEFAULT_ESCAPES)
-            .directionGroupAggregate(PlantUmlTextFactory.Options::getAggregateOfDirectionGroup)
-            .interfaceAggregate(PlantUmlTextFactory.Options::getAggregateStyle)
-            .interfaceSubgroupAggregate(PlantUmlTextFactory.Options::getAggregateOfSubgroup)
-            .packagePathAggregate(PlantUmlTextFactory.Options::getPackagePath)
-            .build();
     private final String applicationName;
     private final Options options;
-    private final String head, bottom;
     @Getter
     private final Map<String, String> collapsedComponents = new HashMap<>();
+    private final Map<String, String> collapsedInterfaces = new HashMap<>();
     private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
 
     public PlantUmlTextFactory(String applicationName) {
@@ -72,9 +65,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     public PlantUmlTextFactory(String applicationName, Options options, String head, String bottom) {
         this.applicationName = applicationName;
-        this.options = options != null ? options : DEFAULT_OPTIONS;
-        this.head = head;
-        this.bottom = bottom;
+        this.options = options != null ? options : Options.DEFAULT;
     }
 
     @Override
@@ -82,16 +73,19 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var out = new StringBuilder();
 
         out.append("@startuml\n");
+        var head = options.getHead();
         if (head != null) {
             out.append(head);
+            out.append("\n");
         }
 
 //        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
         printBody(out, components.getComponents());
-
+        var bottom = options.getBottom();
         if (bottom != null) {
             out.append(bottom);
+            out.append("\n");
         }
         out.append("@enduml\n");
         return out.toString();
@@ -149,36 +143,49 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     private void printInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
                                  Map<Interface, List<Component>> interfaceRelations) {
-        if (type == http) {
+        var group = options.supportGroups.test(type);
+        if (type == http && group) {
             //merge by url parts
             var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations.keySet());
             var finalGroup = groupByUrlParts(httpMethods);
-            var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
-            printHttpMethodGroup(out, finalGroup, unionStyle, interfaceRelations, httpMethods);
-        } else if (type == jms) {
-            var groupedInterfaces = interfaceRelations.entrySet().stream()
-                    .map(e -> entry(new LinkedHashSet<>(e.getValue()), e))
-                    .collect(groupingBy(e -> e.getKey().stream().map(Component::getName)
-                                    .reduce("", (l, r) -> (l.isBlank() ? "" : l + ",") + r),
-                            mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue, (l, r) -> {
-                                var s = new ArrayList<>(l);
-                                s.addAll(r);
-                                return unmodifiableList(s);
-                            }))));
+            printHttpMethodGroup(out, finalGroup, options.getInterfaceSubgroupAggregate().apply(type), interfaceRelations, httpMethods);
+        } else {
+            //collapse of group
+            if (group) {
+                printGroupedInterfaces(out, directionGroupTypeId, type, interfaceRelations);
+            } else {
+                interfaceRelations.forEach((anInterface, component) -> printInterface(out, anInterface, component));
+            }
+        }
+    }
 
-            var style = newAggregateStyle(rectangle, LINE_DOTTED_TEXT_GRAY);
-            groupedInterfaces.forEach((group, interfaceRelationsOfGroup) -> {
-                var groupName = interfaceRelationsOfGroup.size() > 1 ? group : null;
-                var groupId = getElementId(directionGroupTypeId, type.code, groupName);
-                printUnion(out, groupName, groupId, style, () -> {
-                    interfaceRelationsOfGroup.forEach((anInterface, components) -> {
-                        printInterface(out, anInterface, components);
-                    });
+    protected void printGroupedInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
+                                          Map<Interface, List<Component>> interfaceRelations) {
+        var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
+        var groupedInterfaces = groupInterfacesByComponents(interfaceRelations);
+        groupedInterfaces.forEach((group, interfaceRelationsOfGroup) -> {
+            var groupName = interfaceRelationsOfGroup.size() > 1 ? group : null;
+            var groupId = getElementId(directionGroupTypeId, type.code, groupName);
+            printUnion(out, groupName, groupId, unionStyle, () -> {
+                interfaceRelationsOfGroup.forEach((anInterface, components) -> {
+                    printInterface(out, anInterface, components);
                 });
             });
-        } else {
-            interfaceRelations.forEach((anInterface, component) -> printInterface(out, anInterface, component));
-        }
+        });
+    }
+
+    protected Map<String, Map<Interface, List<Component>>> groupInterfacesByComponents(
+            Map<Interface, List<Component>> interfaceRelations
+    ) {
+        return interfaceRelations.entrySet().stream()
+                .map(e -> entry(new LinkedHashSet<>(e.getValue()), e))
+                .collect(groupingBy(e -> e.getKey().stream().map(Component::getName)
+                                .reduce("", (l, r) -> (l.isBlank() ? "" : l + ",") + r),
+                        mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                            var s = new ArrayList<>(l);
+                            s.addAll(r);
+                            return unmodifiableList(s);
+                        }))));
     }
 
     protected void printUnion(IndentStringAppender out, String name, String id,
@@ -293,8 +300,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected boolean isCollapseComponents(Package pack) {
         var components = pack.getComponents();
-        return options.collapseComponentsMoreThen != null && components != null &&
-                components.size() > options.collapseComponentsMoreThen;
+        var collapseComponents = options.collapseComponents.apply(pack);
+        return requireNonNullElseGet(collapseComponents, () -> options.collapseComponentsMoreThen != null
+                && components != null
+                && components.size() > options.collapseComponentsMoreThen);
     }
 
     private void printPackages(IndentStringAppender out, List<Package> packages) {
@@ -556,16 +565,30 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
-        @Builder.Default
-        Integer collapseComponentsMoreThen = 5;
+        public static final Options DEFAULT = Options.builder().build();
+        String head, bottom;
         boolean reduceCollapsedElementRelations = false;
         boolean reduceInnerCollapsedElementRelations = true;
-        Map<String, List<String>> idCharReplaces;
-        Function<Direction, String> directionGroup;
-        Function<String, UnionStyle> directionGroupAggregate;
-        Function<Type, UnionStyle> interfaceAggregate;
-        Function<Type, UnionStyle> interfaceSubgroupAggregate;
-        Function<String, UnionStyle> packagePathAggregate;
+        @Builder.Default
+        Map<String, List<String>> idCharReplaces = DEFAULT_ESCAPES;
+        @Builder.Default
+        Function<Direction, String> directionGroup = Options::defaultDirectionGroup;
+        @Builder.Default
+        Function<String, UnionStyle> directionGroupAggregate = directionGroup -> newAggregateStyle(cloud, LINE_DOTTED_LINE_GRAY);
+        @Builder.Default
+        Function<Type, UnionStyle> interfaceAggregate = type -> newAggregateStyle(getAggregate(type));
+        @Builder.Default
+        Function<Type, UnionStyle> interfaceSubgroupAggregate = type -> newAggregateStyle(frame, LINE_DOTTED_TEXT_GRAY);
+        @Builder.Default
+        Function<String, UnionStyle> packagePathAggregate = path -> newAggregateStyle(pack, LINE_DOTTED_TEXT_GRAY);
+        @Builder.Default
+        Predicate<Type> supportGroups = type -> Set.of(http, jms, ws).contains(type);
+        @Builder.Default
+        Integer collapseComponentsMoreThen = 5;
+        @Builder.Default
+        Integer collapseInterfacesMoreThen = 5;
+        @Builder.Default
+        Function<Package, Boolean> collapseComponents = pack -> null;
 
         public static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
@@ -573,14 +596,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
         public static UnionStyle newAggregateStyle(UnionBorder unionBorder, String style) {
             return UnionStyle.builder().unionBorder(unionBorder).style(style).build();
-        }
-
-        public static UnionStyle getPackagePath(String path) {
-            return newAggregateStyle(pack, LINE_DOTTED_TEXT_GRAY);
-        }
-
-        public static UnionStyle getAggregateStyle(Type type) {
-            return newAggregateStyle(getAggregate(type));
         }
 
         public static UnionBorder getAggregate(Type type) {
@@ -591,14 +606,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                     return database;
             }
             return rectangle;
-        }
-
-        public static UnionStyle getAggregateOfSubgroup(Type type) {
-            return newAggregateStyle(frame, LINE_DOTTED);
-        }
-
-        public static UnionStyle getAggregateOfDirectionGroup(String directionGroup) {
-            return newAggregateStyle(UnionBorder.cloud, LINE_DOTTED_LINE_GRAY);
         }
 
         public static String defaultDirectionGroup(Direction direction) {

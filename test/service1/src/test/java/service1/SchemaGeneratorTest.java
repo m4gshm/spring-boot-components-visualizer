@@ -15,7 +15,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 
-import static io.github.m4gshm.connections.PlantUmlTextFactory.DEFAULT_OPTIONS;
 import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
@@ -46,7 +45,10 @@ public class SchemaGeneratorTest {
 
         @Bean
         PlantUmlTextFactory.Options plantUmlVisualizerOptions() {
-            return DEFAULT_OPTIONS.toBuilder().collapseComponentsMoreThen(2).build();
+            return PlantUmlTextFactory.Options.DEFAULT.toBuilder()
+                    .collapseComponentsMoreThen(2)
+//                    .head("skinparam linetype polyline\n")
+                    .build();
         }
 
         @Bean
