@@ -27,8 +27,8 @@ service2FeignClient" as service1.service.external.rest.components
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component simpleEntityRepository as simpleEntityRepository
       component userRepository as userRepository
+      component simpleEntityRepository as simpleEntityRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository
@@ -43,12 +43,12 @@ coreService ..> simpleEntityRepository
 coreService ..> documentRepository
 jmsQueueListener ..> coreService
 database "storage" as storage {
-  entity "SimpleEntity" as internal.storage.service1.db.jpa.model.SimpleEntity
-  note right of internal.storage.service1.db.jpa.model.SimpleEntity: simple_entity
-  internal.storage.service1.db.jpa.model.SimpleEntity .. simpleEntityRepository
   entity "UserEntity" as internal.storage.service1.db.jpa.model.UserEntity
   note right of internal.storage.service1.db.jpa.model.UserEntity: auth.user
   internal.storage.service1.db.jpa.model.UserEntity .. userRepository
+  entity "SimpleEntity" as internal.storage.service1.db.jpa.model.SimpleEntity
+  note right of internal.storage.service1.db.jpa.model.SimpleEntity: simple_entity
+  internal.storage.service1.db.jpa.model.SimpleEntity .. simpleEntityRepository
   entity "DocumentEntity" as internal.storage.service1.db.mongo.model.DocumentEntity
   note right of internal.storage.service1.db.mongo.model.DocumentEntity: documentEntity
   internal.storage.service1.db.mongo.model.DocumentEntity .. documentRepository
@@ -77,12 +77,13 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:/{id}" as out.http.GET..id
-    service1.service.external.rest.components ..( out.http.GET..id
-    service1.service.external.rest.components ..( out.http.GET..id
+    interface "GET:/standalone-service2/{id}" as out.http.GET..standalone.service2.id
+    service1.service.external.rest.components ..( out.http.GET..standalone.service2.id
     frame "http://service2" #line.dotted; {
       interface "GET:/" as out.http.GET..
       service1.service.external.rest.components ..( out.http.GET..
+      interface "GET:/{id}" as out.http.GET..id
+      service1.service.external.rest.components ..( out.http.GET..id
       service1.service.external.rest.components ..( out.http.GET..id
     }
   }

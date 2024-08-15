@@ -218,6 +218,13 @@ public class ComponentsExtractorUtils {
                 return null;
             }
 
+            var target = (Target<?>) getFieldValue(handler, "target");
+            if (target == null) {
+                //log
+                return null;
+            }
+            var rootUrl = target.url();
+
             var httpMethods = ((Collection<?>) ((Map<?, ?>) getFieldValue(handler, "dispatch")).values()
             ).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
                 var buildTemplateFromArgs = getFieldValue(value, "buildTemplateFromArgs");
@@ -228,16 +235,11 @@ public class ComponentsExtractorUtils {
                 return HttpMethod.builder().method(method).url(url).build();
             }).collect(toList());
 
-            var target = (Target<?>) getFieldValue(handler, "target");
-            if (target == null) {
-                //log
-                return null;
-            }
             var type = target.type();
             return FeignClient.builder()
                     .type(type)
                     .name(target.name())
-                    .url(target.url())
+                    .url(rootUrl)
                     .httpMethods(httpMethods)
                     .build();
         } catch (NoSuchBeanDefinitionException e) {

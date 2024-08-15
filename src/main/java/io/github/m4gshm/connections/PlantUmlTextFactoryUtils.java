@@ -6,50 +6,17 @@ import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Package;
 import lombok.experimental.UtilityClass;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.StringTokenizer;
 
 import static com.google.common.collect.Lists.reverse;
+import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 
 @UtilityClass
 public class PlantUmlTextFactoryUtils {
-    public static final String SCHEME_DELIMITER = "://";
-    public static final String PATH_DELIMITER = "/";
-
-    public static List<String> splitUrl(String url) {
-        final String scheme, path;
-        int schemeEnd = url.indexOf(SCHEME_DELIMITER);
-        if (schemeEnd >= 0) {
-            scheme = url.substring(0, schemeEnd);
-            path = url.substring(schemeEnd + SCHEME_DELIMITER.length());
-        } else {
-            scheme = null;
-            path = url;
-        }
-
-        var parts = new ArrayList<String>();
-
-        if (!path.isBlank()) {
-            var first = true;
-            var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
-            while (tokenizer.hasMoreTokens()) {
-                var part = tokenizer.nextToken();
-                if (first && scheme != null) {
-                    part = scheme + SCHEME_DELIMITER + part;
-                } else {
-                    part = PATH_DELIMITER + part;
-                }
-                parts.add(part);
-                first = false;
-            }
-        }
-        return parts;
-    }
 
     public static Package getComponentPackage(Component component) {
         var componentPath = component.getPath();
@@ -84,7 +51,7 @@ public class PlantUmlTextFactoryUtils {
         var url = httpMethod.getUrl();
         url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
 
-        var parts = splitUrl(url);
+        var parts = UriUtils.splitURI(url);
 
         var nexGroupsLevel = group.getGroups();
         var currentGroup = group;

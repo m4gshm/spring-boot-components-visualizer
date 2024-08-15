@@ -36,6 +36,7 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
+import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
@@ -253,12 +254,19 @@ public class ComponentsExtractor {
             var outWsInterfaces = getOutWsInterfaces(componentName, componentType, dependencies, failFast);
             //log
             var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(componentName, componentType, dependencies, failFast);
-
             //log
-            var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
+            var outFeignHttpInterface = ofNullable(feignClient)
+                    .flatMap(client -> ofNullable(client.getHttpMethods())
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
-                    .map(httpMethod -> Interface.builder().direction(out).type(http).core(httpMethod).build())
+                    .map(httpMethod -> {
+                        var clientUrl = client.getUrl();
+                        var methodUrl = httpMethod.getUrl();
+                        if (clientUrl != null && !clientUrl.startsWith(methodUrl)) {
+                            httpMethod = httpMethod.toBuilder().url(joinURI(clientUrl, methodUrl)).build();
+                        }
+                        return Interface.builder().direction(out).type(http).core(httpMethod).build();
+                    })
             ).collect(toList());
 
             //log

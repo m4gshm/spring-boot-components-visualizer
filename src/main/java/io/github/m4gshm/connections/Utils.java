@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class Utils {
+
     public static <T> Collector<T, ?, LinkedHashSet<T>> toLinkedHashSet() {
         return Collectors.toCollection(LinkedHashSet::new);
     }
@@ -35,4 +36,5 @@ public class Utils {
     public static String getApplicationName(Environment environment) {
         return environment.getProperty("spring.application.name", "application");
     }
+
 }

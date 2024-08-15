@@ -21,6 +21,7 @@ import java.util.stream.Stream;
 import static com.google.common.collect.ImmutableList.copyOf;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
+import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
@@ -55,7 +56,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     @Getter
     private final Map<String, String> collapsedComponents = new HashMap<>();
     private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
-//    private final Set<String> renderedInterfaces = new HashSet<String>();
 
     public PlantUmlTextFactory(String applicationName) {
         this(applicationName, null);
@@ -229,11 +229,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var nextGroupPath = nextGroups.keySet().iterator().next();
             var nextGroup = nextGroups.get(nextGroupPath);
             var path = Optional.ofNullable(group.getPath()).orElse("");
-            var newPath = path.endsWith(PATH_DELIMITER)
-                    || nextGroupPath.startsWith(PATH_DELIMITER)
-                    || nextGroupPath.contains(SCHEME_DELIMITER)
-                    ? path + nextGroupPath
-                    : path + PATH_DELIMITER + nextGroupPath;
+            var newPath = UriUtils.joinURI(path, nextGroupPath);
             group.setPath(newPath);
             group.setMethods(nextGroup.getMethods());
             group.setGroups(nextGroups = nextGroup.getGroups());
@@ -339,10 +335,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printInterface(IndentStringAppender out, Interface anInterface, Collection<Component> components) {
         var interfaceId = getInterfaceId(anInterface);
-//        if (renderedInterfaces.add(interfaceId)) {
-            out.append(format(renderAs(anInterface.getType()) + " \"%s\" as %s\n",
-                    renderInterfaceName(anInterface), interfaceId));
-//        }
+        out.append(format(renderAs(anInterface.getType()) + " \"%s\" as %s\n",
+                renderInterfaceName(anInterface), interfaceId));
 
         printInterfaceCore(out, anInterface.getCore(), interfaceId);
 
