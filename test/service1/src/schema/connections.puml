@@ -67,12 +67,14 @@ cloud "input" as input #line.dotted;line:gray; {
     in.ws..events )..> eventsHandler
   }
   queue "jms" as input.jms {
-    interface "queue1" as in.jms.queue1
-    in.jms.queue1 )..> jmsQueueListener
-    interface "queue2" as in.jms.queue2
-    in.jms.queue2 )..> jmsQueueListener
     interface "default" as in.jms.default
     in.jms.default )..> jmsQueueService
+    rectangle "jmsQueueListener" as input.jms.jms.jmsQueueListener #line.dotted;text:gray {
+      interface "queue2" as in.jms.queue2
+      in.jms.queue2 )..> jmsQueueListener
+      interface "queue1" as in.jms.queue1
+      in.jms.queue1 )..> jmsQueueListener
+    }
   }
 }
 cloud "output" as output #line.dotted;line:gray; {
@@ -108,15 +110,17 @@ cloud "output" as output #line.dotted;line:gray; {
     service2StreamClientImpl ..( out.ws.ws...service.property.injected
   }
   queue "jms" as output.jms {
-    interface "jmsQueue" as outIn.jms.jmsQueue
-    jmsQueueService ..> outIn.jms.jmsQueue
-    jmsQueueService <.. outIn.jms.jmsQueue
-    interface "jmsQueueEvents" as out.jms.jmsQueueEvents
-    jmsQueueService ..> out.jms.jmsQueueEvents
-    interface "jmsQueueEvents2" as out.jms.jmsQueueEvents2
-    jmsQueueService ..> out.jms.jmsQueueEvents2
-    interface "jms-private-queue" as out.jms.jms.private.queue
-    jmsQueueService ..> out.jms.jms.private.queue
+    rectangle "jmsQueueService" as output.jms.jms.jmsQueueService #line.dotted;text:gray {
+      interface "jmsQueueEvents" as out.jms.jmsQueueEvents
+      jmsQueueService ..> out.jms.jmsQueueEvents
+      interface "jms-private-queue" as out.jms.jms.private.queue
+      jmsQueueService ..> out.jms.jms.private.queue
+      interface "jmsQueueEvents2" as out.jms.jmsQueueEvents2
+      jmsQueueService ..> out.jms.jmsQueueEvents2
+      interface "jmsQueue" as outIn.jms.jmsQueue
+      jmsQueueService ..> outIn.jms.jmsQueue
+      jmsQueueService <.. outIn.jms.jmsQueue
+    }
   }
 }
 @enduml

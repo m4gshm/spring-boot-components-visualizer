@@ -19,6 +19,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.Options.newAggregateStyle;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -26,6 +27,7 @@ import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
+import static java.util.Collections.unmodifiableList;
 import static java.util.Map.entry;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.*;
@@ -42,6 +44,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     );
     public static final String DIRECTION_INPUT = "input";
     public static final String DIRECTION_OUTPUT = "output";
+    public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
+    public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
+    public static final String LINE_DOTTED = "line.dotted;";
     public static final Options DEFAULT_OPTIONS = Options.builder()
             .directionGroup(PlantUmlTextFactory.Options::defaultDirectionGroup)
             .idCharReplaces(DEFAULT_ESCAPES)
@@ -131,9 +136,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                     for (var type : Type.values()) {
                         var interfaceRelations = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
                         if (!interfaceRelations.isEmpty()) {
-                            var elementId = getElementId(directionGroup, type.code);
-                            printUnion(out, type.code, elementId, options.getInterfaceAggregate().apply(type), () -> {
-                                printInterfaces(out, type, interfaceRelations);
+                            var directionGroupTypeId = getElementId(directionGroup, type.code);
+                            printUnion(out, type.code, directionGroupTypeId, options.getInterfaceAggregate().apply(type), () -> {
+                                printInterfaces(out, directionGroupTypeId, type, interfaceRelations);
                             });
                         }
                     }
@@ -142,18 +147,37 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    private void printInterfaces(IndentStringAppender out, Type type, Map<Interface, List<Component>> interfaceRelations) {
+    private void printInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
+                                 Map<Interface, List<Component>> interfaceRelations) {
         if (type == http) {
             //merge by url parts
-            var httpMethods = extractHttpMethodsFromInterfaces(
-                    interfaceRelations.keySet());
+            var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations.keySet());
             var finalGroup = groupByUrlParts(httpMethods);
-            printHttpMethodGroup(out, finalGroup, options.getInterfaceSubgroupAggregate().apply(type),
-                    interfaceRelations, httpMethods);
+            var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
+            printHttpMethodGroup(out, finalGroup, unionStyle, interfaceRelations, httpMethods);
+        } else if (type == jms) {
+            var groupedInterfaces = interfaceRelations.entrySet().stream()
+                    .map(e -> entry(new LinkedHashSet<>(e.getValue()), e))
+                    .collect(groupingBy(e -> e.getKey().stream().map(Component::getName)
+                                    .reduce("", (l, r) -> (l.isBlank() ? "" : l + ",") + r),
+                            mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+                                var s = new ArrayList<>(l);
+                                s.addAll(r);
+                                return unmodifiableList(s);
+                            }))));
+
+            var style = newAggregateStyle(rectangle, LINE_DOTTED_TEXT_GRAY);
+            groupedInterfaces.forEach((group, interfaceRelationsOfGroup) -> {
+                var groupName = interfaceRelationsOfGroup.size() > 1 ? group : null;
+                var groupId = getElementId(directionGroupTypeId, type.code, groupName);
+                printUnion(out, groupName, groupId, style, () -> {
+                    interfaceRelationsOfGroup.forEach((anInterface, components) -> {
+                        printInterface(out, anInterface, components);
+                    });
+                });
+            });
         } else {
-            interfaceRelations.forEach((anInterface, component) -> printInterface(
-                    out, anInterface, component)
-            );
+            interfaceRelations.forEach((anInterface, component) -> printInterface(out, anInterface, component));
         }
     }
 
@@ -543,16 +567,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         Function<Type, UnionStyle> interfaceSubgroupAggregate;
         Function<String, UnionStyle> packagePathAggregate;
 
-        private static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
+        public static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
         }
 
-        private static UnionStyle newAggregateStyle(UnionBorder unionBorder, String style) {
+        public static UnionStyle newAggregateStyle(UnionBorder unionBorder, String style) {
             return UnionStyle.builder().unionBorder(unionBorder).style(style).build();
         }
 
         public static UnionStyle getPackagePath(String path) {
-            return newAggregateStyle(pack, "line.dotted;text:gray");
+            return newAggregateStyle(pack, LINE_DOTTED_TEXT_GRAY);
         }
 
         public static UnionStyle getAggregateStyle(Type type) {
@@ -570,11 +594,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
 
         public static UnionStyle getAggregateOfSubgroup(Type type) {
-            return newAggregateStyle(frame, "line.dotted;");
+            return newAggregateStyle(frame, LINE_DOTTED);
         }
 
         public static UnionStyle getAggregateOfDirectionGroup(String directionGroup) {
-            return newAggregateStyle(UnionBorder.cloud, "line.dotted;line:gray;");
+            return newAggregateStyle(UnionBorder.cloud, LINE_DOTTED_LINE_GRAY);
         }
 
         public static String defaultDirectionGroup(Direction direction) {
