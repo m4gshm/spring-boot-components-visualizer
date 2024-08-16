@@ -14,11 +14,16 @@ import static lombok.AccessLevel.PRIVATE;
 public class Interface {
     Object core;
     String name;
+    String id;
     Direction direction;
     Type type;
 
     public String getName() {
         return name != null ? name : core != null ? core.toString() : null;
+    }
+
+    public String getId() {
+        return id != null ? id : core != null ? core.toString() : null;
     }
 
     @Getter

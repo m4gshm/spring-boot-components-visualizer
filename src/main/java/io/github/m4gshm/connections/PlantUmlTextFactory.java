@@ -41,7 +41,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String INDENT = "  ";
     public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
             "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
-            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",")
+            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&")
     );
     public static final String DIRECTION_INPUT = "input";
     public static final String DIRECTION_OUTPUT = "output";
@@ -52,18 +52,15 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     private final Options options;
     @Getter
     private final Map<String, String> collapsedComponents = new HashMap<>();
-//    private final Map<String, String> collapsedInterfaces = new HashMap<>();
+    //    private final Map<String, String> collapsedInterfaces = new HashMap<>();
     private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
+    private final Map<String, Object> uniques = new HashMap<>();
 
     public PlantUmlTextFactory(String applicationName) {
         this(applicationName, null);
     }
 
     public PlantUmlTextFactory(String applicationName, Options options) {
-        this(applicationName, options, null, null);
-    }
-
-    public PlantUmlTextFactory(String applicationName, Options options, String head, String bottom) {
         this.applicationName = applicationName;
         this.options = options != null ? options : Options.DEFAULT;
     }
@@ -89,6 +86,18 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
         out.append("@enduml\n");
         return out.toString();
+    }
+
+    protected void checkUniqueId(String id, Object object) {
+        if (options.isCheckUniqueViolation()) {
+            var exists = uniques.get(id);
+            if (exists != null) {
+                throw new PalmUmlTextFactoryException("not unique id is detected: id '" + id +
+                        "', object:" + object + ", exists:" + exists);
+            } else {
+                uniques.put(id, object);
+            }
+        }
     }
 
     protected void printBody(StringBuilder dest, Collection<Component> components) {
@@ -205,6 +214,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 if (!name.isBlank()) {
                     out.append(format(" \"%s\"", name));
                     if (id != null) {
+                        checkUniqueId(id, name);
                         out.append(format(" as %s", id));
                     }
                 }
@@ -283,7 +293,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected String getInterfaceId(Interface anInterface) {
         var direction = getElementId(anInterface.getDirection().name());
-        return getElementId(direction, anInterface.getType().name(), anInterface.getName());
+        return getElementId(direction, anInterface.getId());
     }
 
     protected void printPackage(IndentStringAppender out, Package pack) {
@@ -356,23 +366,39 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                               Group group, String replaceMethodUrl, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
+
         var groupMethods = group.getMethods();
-        if (groupMethods != null) for (var method : groupMethods) {
+        var groupInterfaces = Stream.ofNullable(groupMethods).flatMap(Collection::stream).map(method -> {
             var anInterface = httpMethods.get(method);
-            var groupedInterface = anInterface.toBuilder()
-                    .core(HttpMethod.builder()
-                            .method(method.getMethod()).url(replaceMethodUrl)
-                            .build())
-                    .build();
-            printInterface(out, groupedInterface, interfaceComponentLink.get(anInterface));
-        }
+            var name = HttpMethod.builder()
+                    .method(method.getMethod()).url(replaceMethodUrl)
+                    .build().toString();
+            return entry(
+                    anInterface.toBuilder().name(name).build(),
+                    interfaceComponentLink.get(anInterface)
+            );
+        }).collect(toMap(Entry::getKey, Entry::getValue));
+
+        printInterfaces(out, group.getPath(), groupInterfaces);
+//            if (groupMethods != null) for (var method : groupMethods) {
+//                var anInterface = httpMethods.get(method);
+//                var reducedMethod = HttpMethod.builder()
+//                        .method(method.getMethod()).url(replaceMethodUrl)
+//                        .build();
+//                String name = reducedMethod.toString();
+//                var groupedInterface = anInterface.toBuilder().name(name).build();
+//                printInterface(out, groupedInterface, interfaceComponentLink.get(anInterface));
+//            }
+
         for (var subGroup : group.getGroups().values()) {
             printHttpMethodGroup(out, subGroup, style, interfaceComponentLink, httpMethods);
         }
+
     }
 
     protected void printInterface(IndentStringAppender out, Interface anInterface, Collection<Component> components) {
         var interfaceId = getInterfaceId(anInterface);
+        checkUniqueId(interfaceId, anInterface);
         out.append(format(renderAs(anInterface.getType()) + " \"%s\" as %s\n",
                 renderInterfaceName(anInterface), interfaceId));
 
@@ -455,7 +481,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printComponent(IndentStringAppender out, Component component) {
         var componentName = component.getName();
-        out.append(format("component %s as %s\n", componentName, plantUmlAlias(componentName)));
+        var componentId = plantUmlAlias(componentName);
+        checkUniqueId(componentId, component);
+        out.append(format("component %s as %s\n", componentName, componentId));
     }
 
     protected void printCollapsedComponents(IndentStringAppender out, String packageId,
@@ -463,6 +491,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var text = components.stream().map(Component::getName)
                 .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
         var collapsedComponentsId = getElementId(packageId, "components");
+        checkUniqueId(collapsedComponentsId, "package:" + packageId);
         out.append(format("collections \"%s\" as %s\n", text, collapsedComponentsId), false);
         for (var component : components) {
             collapsedComponents.put(component.getName(), collapsedComponentsId);
@@ -473,12 +502,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                             Map<Interface, List<Component>> interfaces) {
         var text = interfaces.keySet().stream().map(Interface::getName)
                 .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
-        var collapsedComponentsId = getElementId(parentId, "interfaces");
-        out.append(format("collections \"%s\" as %s\n", text, collapsedComponentsId), false);
-//        for (var in : interfaces.keySet()) {
-//            collapsedInterfaces.put(in.getName(), collapsedComponentsId);
-//        }
-        interfaces.forEach((anInterface, components) -> printInterfaceReferences(out, collapsedComponentsId, anInterface, components));
+        var collapsedId = getElementId(parentId, "interfaces");
+        checkUniqueId(collapsedId, "parent:" + parentId);
+        out.append(format("collections \"%s\" as %s\n", text, collapsedId), false);
+        interfaces.forEach((anInterface, components) -> printInterfaceReferences(out, collapsedId, anInterface, components));
 
     }
 
@@ -591,8 +618,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
         String head, bottom;
+        @Builder.Default
         boolean reduceCollapsedElementRelations = false;
+        @Builder.Default
         boolean reduceInnerCollapsedElementRelations = true;
+        //debug option
+        @Builder.Default
+        boolean checkUniqueViolation = true;
         @Builder.Default
         Map<String, List<String>> idCharReplaces = DEFAULT_ESCAPES;
         @Builder.Default

@@ -39,7 +39,6 @@ public class SchemaGeneratorTest {
         ComponentsExtractor.Options componentExtractorOptions() {
             return ComponentsExtractor.Options.builder()
                     .failFast(true)
-                    .ignoreNotFoundDependencies(true)
                     .build();
         }
 
