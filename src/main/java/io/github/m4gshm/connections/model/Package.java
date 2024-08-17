@@ -14,6 +14,7 @@ import static lombok.AccessLevel.PRIVATE;
 public class Package {
     private String name;
     private String path;
+    private Object core;
     private List<Component> components;
     private List<Package> packages;
 }

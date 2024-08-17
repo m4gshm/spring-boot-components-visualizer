@@ -56,6 +56,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     private final Map<String, String> collapsedComponents = new HashMap<>();
     //    private final Map<String, String> collapsedInterfaces = new HashMap<>();
     private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
+    private final Map<String, Set<String>> printedInterfaceRelations = new HashMap<>();
     private final Map<String, Object> uniques = new HashMap<>();
 
     public PlantUmlTextFactory(String applicationName) {
@@ -478,8 +479,14 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                            Interface anInterface, Component component) {
         var type = anInterface.getType();
         var componentName = component.getName();
-        var collapsedComponentId = collapsedComponents.get(componentName);
-        var componentId = collapsedComponentId != null ? collapsedComponentId : plantUmlAlias(componentName);
+        var collapsedComponentId = checkCollapsedName(componentName);
+        var collapsedComponent = !componentName.equals(collapsedComponentId);
+        var componentId = collapsedComponent ? collapsedComponentId : plantUmlAlias(componentName);
+        var printed = collapsedComponent && printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
+        if (printed) {
+            return;
+        }
+
         var direction = anInterface.getDirection();
         switch (direction) {
             case in:
@@ -494,6 +501,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             default:
                 out.append(renderLink(type, interfaceId, componentId));
         }
+        printedInterfaceRelations.computeIfAbsent(componentId, k -> new LinkedHashSet<>()).add(interfaceId);
     }
 
     protected String renderOut(Type type, String interfaceId, String componentId) {
@@ -611,24 +619,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var collapsed = !collapsedComponentName.equals(componentName);
         for (var dependency : component.getDependencies()) {
             var dependencyName = checkCollapsedName(dependency);
+            var selfLink = collapsedComponentName.equals(dependencyName);
             var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
             var alreadyPrinted = printedComponentRelations.getOrDefault(collapsedComponentName, Set.of()).contains(dependencyName);
-            if (options.reduceCollapsedElementRelations && !alreadyPrinted) {
-                out.append(renderedRelation);
+
+            var render = !collapsed || (selfLink
+                    ? options.reduceInnerCollapsedElementRelations && !alreadyPrinted
+                    : options.reduceCollapsedElementRelations && !alreadyPrinted);
+            if (render) {
                 printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
-            } else {
-                if (options.reduceInnerCollapsedElementRelations) {
-                    var selfLink = collapsedComponentName.equals(dependencyName);
-                    var collapsedSelfLinked = collapsed && selfLink;
-                    if (collapsedSelfLinked && !alreadyPrinted) {
-                        out.append(renderedRelation);
-                        printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
-                    } else if (!collapsedSelfLinked) {
-                        out.append(renderedRelation);
-                    }
-                } else {
-                    out.append(renderedRelation);
-                }
+                out.append(renderedRelation);
             }
         }
     }
@@ -686,6 +686,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         boolean reduceCollapsedElementRelations = false;
         @Builder.Default
         boolean reduceInnerCollapsedElementRelations = true;
+        @Builder.Default
+        boolean reduceCollapsedInterfaceRelations = true;
         @Builder.Default
         boolean printPackageBorder = true;
         //debug option

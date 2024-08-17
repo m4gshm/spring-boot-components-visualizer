@@ -19,4 +19,5 @@ public class Component {
     private final Class<?> type;
     private final Set<Interface> interfaces;
     private final Set<String> dependencies;
+
 }
