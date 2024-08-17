@@ -64,7 +64,7 @@ public class ComponentsExtractor {
         this.options = options != null ? options : Options.DEFAULT;
     }
 
-    private static Interface newInterface(JmsClient jmsClient, String group) {
+    private static Interface newInterface(JmsClient jmsClient) {
         return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).core(
                 JmsClient.Destination.builder().destination(jmsClient.destination).direction(jmsClient.direction).build()
         ).build();
@@ -155,14 +155,28 @@ public class ComponentsExtractor {
         var rootPackage = getPackage(rootComponent);
         var rootPackageName = rootPackage != null ? rootPackage.getName() : null;
 
-        var rootGroupedBeans = allBeans.entrySet().stream().collect(groupingBy(e -> isRootRelatedBean(e.getValue(), rootPackageName)));
+        var rootGroupedBeans = allBeans.entrySet().stream()
+                .collect(groupingBy(e -> isRootRelatedBean(e.getValue(), rootPackageName)));
 
-        var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream().flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, componentCache, failFast).filter(Objects::nonNull).filter(component -> isIncluded(component.getType()))).collect(toList());
+        var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
+                .flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, componentCache, failFast)
+                        .filter(Objects::nonNull)
+                        .filter(component -> isIncluded(component.getType()))).collect(toList());
 
-        var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream().flatMap(e -> extractInWebsocketHandlers(e.getKey(), e.getValue(), rootPackage, componentCache).stream()).collect(toList());
+        var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream()
+                .flatMap(e -> extractInWebsocketHandlers(e.getKey(), e.getValue(), rootPackage, componentCache).stream())
+                .collect(toList());
 
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
-        var components = options.isIgnoreNotFoundDependencies() ? componentsPerName.values().stream().map(component -> component.toBuilder().dependencies(component.getDependencies().stream().filter(componentsPerName::containsKey).collect(toLinkedHashSet())).build()).collect(toList()) : componentsPerName.values();
+        var components = options.isIgnoreNotFoundDependencies()
+                ? componentsPerName.values().stream()
+                .map(component -> component.toBuilder()
+                        .dependencies(component.getDependencies().stream()
+                                .filter(componentsPerName::containsKey)
+                                .collect(toLinkedHashSet()))
+                        .build())
+                .collect(toList())
+                : componentsPerName.values();
         return Components.builder().components(components).build();
     }
 
@@ -172,7 +186,9 @@ public class ComponentsExtractor {
         var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
         var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
 
-        return (excludeBeanNames.isEmpty() ? beanNames : toFilteredByName(excludeBeanNames, beanNames)).flatMap(componentName -> withTypeFilteredByPackage(componentName, excludePackages)).filter(e -> excludeTypes.stream().noneMatch(type -> type.isAssignableFrom(e.getValue())));
+        return (excludeBeanNames.isEmpty() ? beanNames : toFilteredByName(excludeBeanNames, beanNames))
+                .flatMap(componentName -> withTypeFilteredByPackage(componentName, excludePackages))
+                .filter(e -> excludeTypes.stream().noneMatch(type -> type.isAssignableFrom(e.getValue())));
     }
 
     private Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String componentName, Set<String> excludePackages) {
@@ -188,11 +204,17 @@ public class ComponentsExtractor {
         }
     }
 
-    private Component findRootComponent(Map<String, Class<?>> allBeans, Map<String, Set<Component>> componentCache, boolean failFast) {
-        return allBeans.entrySet().stream().filter(e -> isSpringBootMainClass(e.getValue())).flatMap(e -> getComponents(e.getKey(), e.getValue(), null, componentCache, failFast)).filter(Objects::nonNull).findFirst().orElse(null);
+    private Component findRootComponent(Map<String, Class<?>> allBeans,
+                                        Map<String, Set<Component>> componentCache,
+                                        boolean failFast) {
+        return allBeans.entrySet().stream().filter(e -> isSpringBootMainClass(e.getValue()))
+                .flatMap(e -> getComponents(e.getKey(), e.getValue(), null, componentCache, failFast))
+                .filter(Objects::nonNull)
+                .findFirst().orElse(null);
     }
 
-    private Stream<Component> getComponents(String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache, boolean failFast) {
+    private Stream<Component> getComponents(String componentName, Class<?> componentType, Package rootPackage,
+                                            Map<String, Set<Component>> cache, boolean failFast) {
         var cached = cache.get(componentName);
         if (cached != null) {
             //log
@@ -216,8 +238,8 @@ public class ComponentsExtractor {
             var result = new ArrayList<Component>();
 
             //log
-            var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory()).stream().map(jmsClient -> newInterface(jmsClient, componentName)).collect(toList());
-
+            var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
+                    .stream().map(ComponentsExtractor::newInterface).collect(toList());
 
             //log
             var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
@@ -231,7 +253,9 @@ public class ComponentsExtractor {
             //log
             var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(componentName, componentType, dependencies, failFast);
             //log
-            var outFeignHttpInterface = ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods()).filter(Objects::nonNull).flatMap(Collection::stream).map(httpMethod -> {
+            var outFeignHttpInterface = ofNullable(feignClient)
+                    .flatMap(client -> ofNullable(client.getHttpMethods()).filter(Objects::nonNull)
+                            .flatMap(Collection::stream).map(httpMethod -> {
                 var clientUrl = client.getUrl();
                 var methodUrl = httpMethod.getUrl();
                 if (clientUrl != null && !clientUrl.startsWith(methodUrl)) {
@@ -248,7 +272,16 @@ public class ComponentsExtractor {
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
 
             //log
-            var component = Component.builder().name(name).path(getComponentPath(options.isCropRootPackagePath(), rootPackage, componentType)).type(componentType).interfaces(of(inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(), outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(), outJmsInterfaces.stream(), repositoryEntityInterfaces.stream()).flatMap(s -> s).collect(toLinkedHashSet())).dependencies(dependencies.stream().map(Component::getName).collect(toLinkedHashSet())).build();
+            var component = Component.builder().name(name)
+                    .path(getComponentPath(options.isCropRootPackagePath(), rootPackage, componentType))
+                    .type(componentType)
+                    .interfaces(of(
+                            inHttpInterfaces.stream(), inJmsInterface.stream(), outFeignHttpInterface.stream(),
+                            outRestOperationsHttpInterface.stream(), outWsInterfaces.stream(),
+                            outJmsInterfaces.stream(), repositoryEntityInterfaces.stream())
+                            .flatMap(s -> s)
+                            .collect(toLinkedHashSet()))
+                    .dependencies(dependencies.stream().map(Component::getName).collect(toLinkedHashSet())).build();
 
             cache.put(componentName, Set.of(component));
             result.add(component);
@@ -333,12 +366,13 @@ public class ComponentsExtractor {
         return unproxy(componentType);
     }
 
-    private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies, boolean failFast) {
+    private Set<Interface> getOutJmsInterfaces(String componentName, Class<?> componentType,
+                                               Collection<Component> dependencies, boolean failFast) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(componentName, componentType, context);
 
-            return jmsClients.stream().map(jmsClient -> newInterface(jmsClient, componentName)).collect(toLinkedHashSet());
+            return jmsClients.stream().map(ComponentsExtractor::newInterface).collect(toLinkedHashSet());
 
         } catch (EvalException e) {
             handleError("jms client getting error, component", componentName, e, failFast);
@@ -346,7 +380,8 @@ public class ComponentsExtractor {
         return Set.of();
     }
 
-    private Set<Interface> getOutWsInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies, boolean failFast) {
+    private Set<Interface> getOutWsInterfaces(String componentName, Class<?> componentType,
+                                              Collection<Component> dependencies, boolean failFast) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
             var wsClientUris = extractWebsocketClientUris(componentName, componentType, context);
@@ -364,7 +399,8 @@ public class ComponentsExtractor {
         return Set.of();
     }
 
-    private Set<Interface> getOutRestTemplateInterfaces(String componentName, Class<?> componentType, Collection<Component> dependencies, boolean failFast) {
+    private Set<Interface> getOutRestTemplateInterfaces(String componentName, Class<?> componentType,
+                                                        Collection<Component> dependencies, boolean failFast) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
@@ -376,10 +412,14 @@ public class ComponentsExtractor {
     }
 
     private Set<Component> getDependencies(String componentName, Package rootPackage, Map<String, Set<Component>> cache, boolean failFast) {
-        return getFilteredBeanNameWithType(stream(context.getBeanFactory().getDependenciesForBean(componentName))).flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, cache, failFast).filter(Objects::nonNull).filter(component -> isIncluded(component.getType()))).collect(toLinkedHashSet());
+        return getFilteredBeanNameWithType(stream(context.getBeanFactory().getDependenciesForBean(componentName)))
+                .flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, cache, failFast)
+                        .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())))
+                .collect(toLinkedHashSet());
     }
 
-    private Collection<Component> extractInWebsocketHandlers(String componentName, Class<?> componentType, Package rootPackage, Map<String, Set<Component>> cache) {
+    private Collection<Component> extractInWebsocketHandlers(String componentName, Class<?> componentType,
+                                                             Package rootPackage, Map<String, Set<Component>> cache) {
         var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
         if (webSocketConfigClass == null) {
             //log
@@ -407,7 +447,8 @@ public class ComponentsExtractor {
         return Set.of();
     }
 
-    private Stream<Component> getComponentStream(String wsUrl, Object wsHandler, Package rootPackage, Map<String, Set<Component>> cache) {
+    private Stream<Component> getComponentStream(String wsUrl, Object wsHandler, Package rootPackage,
+                                                 Map<String, Set<Component>> cache) {
         if (wsHandler instanceof WebSocketHttpRequestHandler) {
             var webSocketHandler = ((WebSocketHttpRequestHandler) wsHandler).getWebSocketHandler();
             var webSocketHandlerName = findBeanName(webSocketHandler);
@@ -434,7 +475,12 @@ public class ComponentsExtractor {
                 cache.put(webSocketHandlerName, cached);
                 return cached.stream();
             } else {
-                return of(Component.builder().type(webSocketHandlerClass).name(webSocketHandlerName != null ? webSocketHandlerName : webSocketHandlerClass.getSimpleName()).path(getComponentPath(options.isCropRootPackagePath(), rootPackage, webSocketHandlerClass)).interfaces(Set.of(anInterface)).dependencies(Set.of()).build());
+                return of(Component.builder().type(webSocketHandlerClass).name(webSocketHandlerName != null
+                        ? webSocketHandlerName
+                        : webSocketHandlerClass.getSimpleName())
+                        .path(getComponentPath(options.isCropRootPackagePath(), rootPackage, webSocketHandlerClass))
+                        .interfaces(Set.of(anInterface))
+                        .dependencies(Set.of()).build());
             }
         } else {
             return Stream.empty();
