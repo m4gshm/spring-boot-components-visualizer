@@ -23,11 +23,11 @@ import static com.google.common.collect.ImmutableList.copyOf;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
+import static io.github.m4gshm.connections.UriUtils.subURI;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.stream;
-import static java.util.Collections.emptyList;
-import static java.util.Collections.unmodifiableList;
+import static java.util.Collections.*;
 import static java.util.Map.entry;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.Optional.ofNullable;
@@ -281,12 +281,52 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             group.setGroups(nextGroups = nextGroup.getGroups());
         }
 
-        group.setGroups(group.getGroups().entrySet().stream()
+        var reducedSubGroups = group.getGroups().entrySet().stream()
                 .map(e -> entry(e.getKey(), reduce(e.getValue())))
+                .filter(e -> {
+                    var subGroup = e.getValue();
+                    var subGroupGroups = subGroup.getGroups();
+                    var subGroupMethods = subGroup.getMethods();
+                    if (subGroupGroups == null || subGroupGroups.isEmpty()) {
+                        if (subGroupMethods == null || subGroupMethods.isEmpty()) {
+                            //remove the subgroup
+                            return false;
+                        } else if (subGroupMethods.size() == 1) {
+                            //move methods of the subgroup to the parent group
+                            var parentGroupMethods = group.getMethods();
+                            var httpMethods = new LinkedHashSet<>(parentGroupMethods != null ? parentGroupMethods : emptySet());
+                            httpMethods.addAll(subGroupMethods);
+                            group.setMethods(httpMethods);
+                            subGroup.setMethods(Set.of());
+                            //remove the subgroup
+                            return false;
+                        }
+                    }
+                    return true;
+                })
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
                     log.debug("merge http method groups {} and {}", l, r);
                     return l;
-                }, LinkedHashMap::new)));
+                }, LinkedHashMap::new));
+
+//        reducedSubGroups.forEach((groupId, subGroup) -> {
+//            var subGroupGroups = subGroup.getGroups();
+//            if (subGroupGroups == null || subGroupGroups.isEmpty()) {
+//                var subGroupMethods = subGroup.getMethods();
+//                if (subGroupMethods == null || subGroupMethods.isEmpty()) {
+//                    //remove the subgroup
+//                } else if (subGroupMethods.size() == 1) {
+//                    //move methods of the subgroup to the parent group
+//                    var httpMethods = new LinkedHashSet<>(group.getMethods());
+//                    httpMethods.addAll(subGroupMethods);
+//                    subGroup.setMethods(Set.of());
+//                    //remove the subgroup
+//
+//                }
+//            }
+//        });
+
+        group.setGroups(reducedSubGroups);
 
         return group;
     }
@@ -357,7 +397,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods);
         } else {
             printUnion(out, group.getPath(), null, style,
-                    () -> printInterfaceAndSubgroups(out, group, PATH_DELIMITER, style, interfaceComponentLink, httpMethods)
+                    () -> printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods)
             );
         }
     }
@@ -366,12 +406,14 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                               Group group, String replaceMethodUrl, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
+        var groupURI = replaceMethodUrl;
 
         var groupMethods = group.getMethods();
         var groupInterfaces = Stream.ofNullable(groupMethods).flatMap(Collection::stream).map(method -> {
             var anInterface = httpMethods.get(method);
+            String s = subURI(groupURI, method.getUrl());
             var name = HttpMethod.builder()
-                    .method(method.getMethod()).url(replaceMethodUrl)
+                    .method(method.getMethod()).url(s)
                     .build().toString();
             return entry(
                     anInterface.toBuilder().name(name).build(),

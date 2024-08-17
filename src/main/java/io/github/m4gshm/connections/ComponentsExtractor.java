@@ -73,7 +73,8 @@ public class ComponentsExtractor {
     private static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
         if (rootPackageName != null) {
             var relatedType = Stream.ofNullable(type)
-                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass).map(c -> entry(c, c.getPackage()))))
+                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass)
+                            .map(c -> entry(c, c.getPackage()))))
                     .filter(e -> e.getValue().getName().startsWith(rootPackageName)).findFirst().orElse(null);
             if (relatedType != null) {
                 log.debug("type is related to root package. type: {}, related by {}", type, relatedType.getKey());
@@ -143,10 +144,11 @@ public class ComponentsExtractor {
         var beanFactory = context.getBeanFactory();
         var beanDefinitionNames = asList(beanFactory.getBeanDefinitionNames());
 
-        var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream()).collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
+        var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream())
+                .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
             //log
             return l;
-        }, () -> new LinkedHashMap<String, Class<?>>()));
+        }, LinkedHashMap::new));
 
         var componentCache = new HashMap<String, Set<Component>>();
         var failFast = options.isFailFast();
@@ -256,13 +258,13 @@ public class ComponentsExtractor {
             var outFeignHttpInterface = ofNullable(feignClient)
                     .flatMap(client -> ofNullable(client.getHttpMethods()).filter(Objects::nonNull)
                             .flatMap(Collection::stream).map(httpMethod -> {
-                var clientUrl = client.getUrl();
-                var methodUrl = httpMethod.getUrl();
-                if (clientUrl != null && !clientUrl.startsWith(methodUrl)) {
-                    httpMethod = httpMethod.toBuilder().url(joinURI(clientUrl, methodUrl)).build();
-                }
-                return Interface.builder().direction(out).type(http).core(httpMethod).build();
-            })).collect(toList());
+                                var clientUrl = client.getUrl();
+                                var methodUrl = httpMethod.getUrl();
+                                if (clientUrl != null && !clientUrl.startsWith(methodUrl)) {
+                                    httpMethod = httpMethod.toBuilder().url(joinURI(clientUrl, methodUrl)).build();
+                                }
+                                return Interface.builder().direction(out).type(http).core(httpMethod).build();
+                            })).collect(toList());
 
             //log
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
@@ -476,8 +478,8 @@ public class ComponentsExtractor {
                 return cached.stream();
             } else {
                 return of(Component.builder().type(webSocketHandlerClass).name(webSocketHandlerName != null
-                        ? webSocketHandlerName
-                        : webSocketHandlerClass.getSimpleName())
+                                ? webSocketHandlerName
+                                : webSocketHandlerClass.getSimpleName())
                         .path(getComponentPath(options.isCropRootPackagePath(), rootPackage, webSocketHandlerClass))
                         .interfaces(Set.of(anInterface))
                         .dependencies(Set.of()).build());

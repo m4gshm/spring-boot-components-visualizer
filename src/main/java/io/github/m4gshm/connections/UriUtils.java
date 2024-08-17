@@ -11,6 +11,15 @@ public class UriUtils {
     public static final String SCHEME_DELIMITER = "://";
     public static final String PATH_DELIMITER = "/";
 
+    public static String subURI(String base, String child) {
+        if (base == null) {
+            return child;
+        } else if (child.startsWith(base)) {
+            return child.substring(base.length());
+        }
+        throw new IllegalArgumentException("subURI bad uris, base: " + base + ", sub:" + child);
+    }
+
     public static String joinURI(String part, String nextPart) {
         return part.endsWith(PATH_DELIMITER)
                 || nextPart.startsWith(PATH_DELIMITER)
