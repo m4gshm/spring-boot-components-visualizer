@@ -40,8 +40,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     public static final String INDENT = "  ";
     public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
-            "", List.of("*", "$", "{", "}", " ", "(", ")", "[", "]", "#", "\"", "'"),
-            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&")
+            "", List.of(" "),
+            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]", "#", "\"", "'")
     );
     public static final String DIRECTION_INPUT = "input";
     public static final String DIRECTION_OUTPUT = "output";
