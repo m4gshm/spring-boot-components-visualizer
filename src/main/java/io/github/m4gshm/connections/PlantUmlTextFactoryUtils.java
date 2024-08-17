@@ -17,24 +17,6 @@ import static java.util.stream.Collectors.toList;
 @UtilityClass
 public class PlantUmlTextFactoryUtils {
 
-    public static Package getComponentPackage(Component component) {
-        var componentPath = component.getPath();
-
-        var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
-                .map(packageName -> Package.builder().name(packageName))
-                .collect(toList());
-
-        reversePathBuilders.stream().findFirst().ifPresent(packageBuilder -> packageBuilder.components(singletonList(component)));
-
-        return reversePathBuilders.stream().reduce((l, r) -> {
-            var lPack = l.build();
-            r.packages(singletonList(lPack));
-            return r;
-        }).map(Package.PackageBuilder::build).orElse(
-                Package.builder().name(componentPath).components(singletonList(component)).build()
-        );
-    }
-
     public static Group newEmptyGroup(String part, String path) {
         return Group.builder()
                 .part(part)

@@ -47,6 +47,7 @@ public class SchemaGeneratorTest {
             return PlantUmlTextFactory.Options.DEFAULT.toBuilder()
                     .collapseComponentsMoreThan(2)
                     .collapseInterfacesMoreThan(2)
+//                    .groupPackages(false)
 //                    .head("skinparam linetype polyline\n")
                     .build();
         }
