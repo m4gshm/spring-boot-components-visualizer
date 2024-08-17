@@ -2,28 +2,32 @@ package io.github.m4gshm.connections.model;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.experimental.FieldDefaults;
 
-import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
+import static lombok.AccessLevel.PRIVATE;
+
 @Data
 @Builder(toBuilder = true)
+@FieldDefaults(makeFinal = true, level = PRIVATE)
 public class HttpMethod {
-    private final String url;
-    private final String method;
-
-    @Data
-    @Builder(toBuilder = true)
-    public static class Group {
-        private String path;
-        private String name;
-        private Set<HttpMethod> methods;
-        private Map<String, Group> groups;
-    }
+    String url;
+    String method;
 
     @Override
     public String toString() {
         return method + ':' + url;
+    }
+
+    @Data
+    @Builder(toBuilder = true)
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class Group {
+        String path;
+        String part;
+        Set<HttpMethod> methods;
+        Map<String, Group> groups;
     }
 }

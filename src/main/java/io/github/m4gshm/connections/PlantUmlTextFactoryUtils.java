@@ -1,7 +1,7 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.Component;
-import io.github.m4gshm.connections.model.HttpMethod;
+import io.github.m4gshm.connections.model.HttpMethod.Group;
 import io.github.m4gshm.connections.model.Interface;
 import io.github.m4gshm.connections.model.Package;
 import lombok.experimental.UtilityClass;
@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 import static com.google.common.collect.Lists.reverse;
-import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
@@ -36,9 +35,9 @@ public class PlantUmlTextFactoryUtils {
         );
     }
 
-    public static HttpMethod.Group newEmptyGroup(String name, String path) {
-        return HttpMethod.Group.builder()
-                .name(name)
+    public static Group newEmptyGroup(String part, String path) {
+        return Group.builder()
+                .part(part)
                 .path(path)
                 .groups(new LinkedHashMap<>())
                 .build();
@@ -48,25 +47,7 @@ public class PlantUmlTextFactoryUtils {
         return type == Interface.Type.storage ? "entity" : "interface";
     }
 
-    public static HttpMethod.Group getLastGroup(HttpMethod.Group group, HttpMethod httpMethod) {
-        var url = httpMethod.getUrl();
-        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
-
-        var parts = UriUtils.splitURI(url);
-
-        var nexGroupsLevel = group.getGroups();
-        var currentGroup = group;
-
-        var path = new StringBuilder();
-        for (var part : parts) {
-            path.append(part);
-            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part, path.toString()));
-            nexGroupsLevel = currentGroup.getGroups();
-        }
-        return currentGroup;
-    }
-
-    protected static String regExp(List<String> strings) {
+    public static String regExp(List<String> strings) {
         return strings.stream().map(v -> "\\" + v).reduce((l, r) -> l + "|" + r).orElse("");
     }
 }

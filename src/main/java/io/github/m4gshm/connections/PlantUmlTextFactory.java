@@ -65,6 +65,34 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         this.options = options != null ? options : Options.DEFAULT;
     }
 
+    protected static void populateLastGroupByHttpMethods(Group rootGroup, HttpMethod httpMethod) {
+        var url = httpMethod.getUrl();
+        url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
+
+        var parts = UriUtils.splitURI(url);
+
+        Map<String, Group> prevGroupsLevel = null;
+        var nexGroupsLevel = rootGroup.getGroups();
+        var currentGroup = rootGroup;
+
+        var path = new StringBuilder();
+        for (var part : parts) {
+            path.append(part);
+            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part, path.toString()));
+            prevGroupsLevel = nexGroupsLevel;
+            nexGroupsLevel = currentGroup.getGroups();
+        }
+
+        var oldMethods = currentGroup.getMethods();
+        var methods = new LinkedHashSet<>(oldMethods != null ? oldMethods : Set.of());
+        methods.add(httpMethod);
+        if (prevGroupsLevel != null) {
+            //replace
+            var groupWitMethods = currentGroup.toBuilder().methods(methods).build();
+            prevGroupsLevel.put(currentGroup.getPart(), groupWitMethods);
+        }
+    }
+
     @Override
     public String create(Components components) {
         var out = new StringBuilder();
@@ -253,38 +281,29 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var rootGroup = newEmptyGroup(null, null);
         //create groups
         for (var httpMethod : httpMethods.keySet()) {
-            var currentGroup = getLastGroup(rootGroup, httpMethod);
-            var oldMethods = currentGroup.getMethods();
-            Set<HttpMethod> methods;
-            if (oldMethods != null) {
-                methods = new LinkedHashSet<>(oldMethods);
-                methods.add(httpMethod);
-            } else {
-                methods = new LinkedHashSet<>();
-                methods.add(httpMethod);
-            }
-            currentGroup.setMethods(methods);
+            populateLastGroupByHttpMethods(rootGroup, httpMethod);
         }
         //reduce groups
-        return reduce(rootGroup);
+        var reducedGroup = reduce(rootGroup);
+        return reducedGroup;
     }
 
     protected Group reduce(Group group) {
-        var nextGroups = group.getGroups();
-        while (nextGroups.size() == 1 && group.getMethods() == null) {
-            var nextGroupPath = nextGroups.keySet().iterator().next();
-            var nextGroup = nextGroups.get(nextGroupPath);
-            var newPath = nextGroup.getPath();
-            var oldName = group.getName();
-            var newName = (oldName != null ? oldName : "") + nextGroup.getName();
-            var newMethods = nextGroup.getMethods();
-            group.setName(newName);
-            group.setPath(newPath);
-            group.setMethods(newMethods);
-            group.setGroups(nextGroups = nextGroup.getGroups());
+        var subGroups = group.getGroups();
+        var part = group.getPart();
+        var path = group.getPath();
+        var newMethods = group.getMethods();
+        while (subGroups.size() == 1 && newMethods == null) {
+            var nextGroupPath = subGroups.keySet().iterator().next();
+            var nextGroup = subGroups.get(nextGroupPath);
+            path = nextGroup.getPath();
+            part = (part != null ? part : "") + nextGroup.getPart();
+            newMethods = nextGroup.getMethods();
+            subGroups = nextGroup.getGroups();
         }
-
-        var reducedSubGroups = group.getGroups().entrySet().stream()
+        var reducedGroup = group.toBuilder().part(part).path(path).methods(newMethods).groups(subGroups);
+        var reducedGroupMethods = newMethods != null ? newMethods : new LinkedHashSet<HttpMethod>();
+        var reducedSubGroups = subGroups.entrySet().stream()
                 .map(e -> entry(e.getKey(), reduce(e.getValue())))
                 .filter(e -> {
                     var subGroup = e.getValue();
@@ -299,8 +318,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                             var parentGroupMethods = group.getMethods();
                             var httpMethods = new LinkedHashSet<>(parentGroupMethods != null ? parentGroupMethods : emptySet());
                             httpMethods.addAll(subGroupMethods);
-                            group.setMethods(httpMethods);
-                            subGroup.setMethods(Set.of());
+                            reducedGroupMethods.addAll(httpMethods);
+//                            reducedGroup.methods(httpMethods);
+//                            subGroup.setMethods(Set.of());
                             //remove the subgroup
                             return false;
                         }
@@ -311,27 +331,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                     log.debug("merge http method groups {} and {}", l, r);
                     return l;
                 }, LinkedHashMap::new));
-
-//        reducedSubGroups.forEach((groupId, subGroup) -> {
-//            var subGroupGroups = subGroup.getGroups();
-//            if (subGroupGroups == null || subGroupGroups.isEmpty()) {
-//                var subGroupMethods = subGroup.getMethods();
-//                if (subGroupMethods == null || subGroupMethods.isEmpty()) {
-//                    //remove the subgroup
-//                } else if (subGroupMethods.size() == 1) {
-//                    //move methods of the subgroup to the parent group
-//                    var httpMethods = new LinkedHashSet<>(group.getMethods());
-//                    httpMethods.addAll(subGroupMethods);
-//                    subGroup.setMethods(Set.of());
-//                    //remove the subgroup
-//
-//                }
-//            }
-//        });
-
-        group.setGroups(reducedSubGroups);
-
-        return group;
+        return reducedGroup.methods(reducedGroupMethods).groups(reducedSubGroups).build();
     }
 
     protected String getInterfaceId(Interface anInterface) {
@@ -399,7 +399,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
             printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods);
         } else {
-            printUnion(out, group.getName(), null, style,
+            printUnion(out, group.getPart(), null, style,
                     () -> printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods)
             );
         }
@@ -424,7 +424,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             );
         }).collect(toMap(Entry::getKey, Entry::getValue));
 
-        printInterfaces(out, group.getName(), groupInterfaces);
+        printInterfaces(out, group.getPart(), groupInterfaces);
 
         for (var subGroup : group.getGroups().values()) {
             printHttpMethodGroup(out, subGroup, style, interfaceComponentLink, httpMethods);
