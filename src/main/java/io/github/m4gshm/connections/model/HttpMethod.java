@@ -10,16 +10,16 @@ import java.util.Set;
 @Data
 @Builder(toBuilder = true)
 public class HttpMethod {
-    private String url;
-    private String method;
+    private final String url;
+    private final String method;
 
     @Data
     @Builder(toBuilder = true)
     public static class Group {
         private String path;
+        private String name;
         private Set<HttpMethod> methods;
         private Map<String, Group> groups;
-
     }
 
     @Override

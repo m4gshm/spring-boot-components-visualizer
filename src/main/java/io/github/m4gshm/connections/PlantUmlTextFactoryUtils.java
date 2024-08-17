@@ -36,9 +36,10 @@ public class PlantUmlTextFactoryUtils {
         );
     }
 
-    public static HttpMethod.Group newEmptyGroup(String part) {
+    public static HttpMethod.Group newEmptyGroup(String name, String path) {
         return HttpMethod.Group.builder()
-                .path(part)
+                .name(name)
+                .path(path)
                 .groups(new LinkedHashMap<>())
                 .build();
     }
@@ -55,8 +56,11 @@ public class PlantUmlTextFactoryUtils {
 
         var nexGroupsLevel = group.getGroups();
         var currentGroup = group;
+
+        var path = new StringBuilder();
         for (var part : parts) {
-            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part));
+            path.append(part);
+            currentGroup = nexGroupsLevel.computeIfAbsent(part, k -> newEmptyGroup(part, path.toString()));
             nexGroupsLevel = currentGroup.getGroups();
         }
         return currentGroup;

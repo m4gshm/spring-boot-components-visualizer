@@ -250,7 +250,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected Group groupByUrlParts(Map<HttpMethod, Interface> httpMethods) {
-        var rootGroup = newEmptyGroup(null);
+        var rootGroup = newEmptyGroup(null, null);
         //create groups
         for (var httpMethod : httpMethods.keySet()) {
             var currentGroup = getLastGroup(rootGroup, httpMethod);
@@ -274,10 +274,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         while (nextGroups.size() == 1 && group.getMethods() == null) {
             var nextGroupPath = nextGroups.keySet().iterator().next();
             var nextGroup = nextGroups.get(nextGroupPath);
-            var path = Optional.ofNullable(group.getPath()).orElse("");
-            var newPath = UriUtils.joinURI(path, nextGroupPath);
+            var newPath = nextGroup.getPath();
+            var oldName = group.getName();
+            var newName = (oldName != null ? oldName : "") + nextGroup.getName();
+            var newMethods = nextGroup.getMethods();
+            group.setName(newName);
             group.setPath(newPath);
-            group.setMethods(nextGroup.getMethods());
+            group.setMethods(newMethods);
             group.setGroups(nextGroups = nextGroup.getGroups());
         }
 
@@ -396,7 +399,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
             printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods);
         } else {
-            printUnion(out, group.getPath(), null, style,
+            printUnion(out, group.getName(), null, style,
                     () -> printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods)
             );
         }
@@ -421,7 +424,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             );
         }).collect(toMap(Entry::getKey, Entry::getValue));
 
-        printInterfaces(out, group.getPath(), groupInterfaces);
+        printInterfaces(out, group.getName(), groupInterfaces);
 
         for (var subGroup : group.getGroups().values()) {
             printHttpMethodGroup(out, subGroup, style, interfaceComponentLink, httpMethods);

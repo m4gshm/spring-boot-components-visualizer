@@ -27,8 +27,8 @@ service2FeignClient" as service1.service.external.rest.components
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component simpleEntityRepository as simpleEntityRepository
       component userRepository as userRepository
+      component simpleEntityRepository as simpleEntityRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository
@@ -44,21 +44,21 @@ coreService ..> documentRepository
 jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    collections "service1.db.jpa.model.SimpleEntity\n\
-service1.db.jpa.model.UserEntity\n\
+    collections "service1.db.jpa.model.UserEntity\n\
+service1.db.jpa.model.SimpleEntity\n\
 service1.db.mongo.model.DocumentEntity" as internal.storage.interfaces
-    internal.storage.interfaces .. simpleEntityRepository
     internal.storage.interfaces .. userRepository
+    internal.storage.interfaces .. simpleEntityRepository
     internal.storage.interfaces .. documentRepository
   }
 }
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" #line.dotted;text:gray {
-      interface "GET:/req" as in.GET..api.v1.req
-      in.GET..api.v1.req )..> mainController
       interface "*:/" as in....api.v1.
       in....api.v1. )..> mainController
+      interface "GET:/req" as in.GET..api.v1.req
+      in.GET..api.v1.req )..> mainController
     }
   }
   rectangle "web socket" as input.websocket {
@@ -69,10 +69,10 @@ cloud "input" as input #line.dotted;line:gray; {
     interface "default" as in.default.in
     in.default.in )..> jmsQueueService
     frame "jmsQueueListener" as input.jms.jms.jmsQueueListener #line.dotted;text:gray {
-      interface "queue1" as in.queue1.in
-      in.queue1.in )..> jmsQueueListener
       interface "queue2" as in.queue2.in
       in.queue2.in )..> jmsQueueListener
+      interface "queue1" as in.queue1.in
+      in.queue1.in )..> jmsQueueListener
     }
   }
 }
@@ -90,15 +90,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://currentURI-method\n\
-ws://service2-value-inject\n\
-ws://defaultURI-static\n\
-ws://currentURI-supplier\n\
-ws://service-template/{id}/\n\
+      collections "ws://service-property-injected\n\
 ws://service-template\n\
-ws://service2\n\
 ws://service3\n\
-ws://service-property-injected" as service2StreamClientImpl.interfaces
+ws://service2\n\
+ws://currentURI-supplier\n\
+ws://currentURI-method\n\
+ws://service2-value-inject\n\
+ws://service-template/{id}/\n\
+ws://defaultURI-static" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
@@ -112,13 +112,13 @@ ws://service-property-injected" as service2StreamClientImpl.interfaces
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jms.jmsQueueService #line.dotted;text:gray {
-      collections "jmsQueue\n\
+      collections "jmsQueueEvents\n\
+jmsQueue\n\
 jms-private-queue\n\
-jmsQueueEvents\n\
 jmsQueueEvents2" as jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
-      jmsQueueService <.. jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
+      jmsQueueService <.. jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
     }
