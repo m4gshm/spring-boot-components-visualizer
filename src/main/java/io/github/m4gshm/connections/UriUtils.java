@@ -14,8 +14,14 @@ public class UriUtils {
     public static String subURI(String base, String child) {
         if (base == null) {
             return child;
-        } else if (child.startsWith(base)) {
-            return child.substring(base.length());
+        } else if (child != null) {
+            if (!child.contains(SCHEME_DELIMITER) || !base.contains(SCHEME_DELIMITER)) {
+                child = child.startsWith(PATH_DELIMITER) ? child.substring(PATH_DELIMITER.length()) : child;
+                base = base.startsWith(PATH_DELIMITER) ? base.substring(PATH_DELIMITER.length()) : base;
+            }
+            if (child.startsWith(base)) {
+                return child.substring(base.length());
+            }
         }
         throw new IllegalArgumentException("subURI bad uris, base: " + base + ", sub:" + child);
     }

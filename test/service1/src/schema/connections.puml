@@ -90,14 +90,14 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://service2-value-inject\n\
-ws://currentURI-method\n\
-ws://service2\n\
-ws://service-property-injected\n\
-ws://currentURI-supplier\n\
-ws://service-template/{id}/\n\
+      collections "ws://service-property-injected\n\
 ws://service-template\n\
 ws://service3\n\
+ws://service2\n\
+ws://currentURI-supplier\n\
+ws://currentURI-method\n\
+ws://service2-value-inject\n\
+ws://service-template/{id}/\n\
 ws://defaultURI-static" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
@@ -113,14 +113,14 @@ ws://defaultURI-static" as service2StreamClientImpl.interfaces
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jms.jmsQueueService #line.dotted;text:gray {
       collections "jmsQueueEvents2\n\
+jmsQueue\n\
 jms-private-queue\n\
-jmsQueueEvents\n\
-jmsQueue" as jmsQueueService.interfaces
-      jmsQueueService ..> jmsQueueService.interfaces
-      jmsQueueService ..> jmsQueueService.interfaces
+jmsQueueEvents" as jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService <.. jmsQueueService.interfaces
+      jmsQueueService ..> jmsQueueService.interfaces
+      jmsQueueService ..> jmsQueueService.interfaces
     }
   }
 }
