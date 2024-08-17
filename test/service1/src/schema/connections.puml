@@ -27,8 +27,8 @@ service2FeignClient" as service1.service.external.rest.components
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component userRepository as userRepository
       component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository
@@ -44,11 +44,11 @@ coreService ..> documentRepository
 jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    collections "service1.db.jpa.model.UserEntity\n\
-service1.db.jpa.model.SimpleEntity\n\
+    collections "service1.db.jpa.model.SimpleEntity\n\
+service1.db.jpa.model.UserEntity\n\
 service1.db.mongo.model.DocumentEntity" as internal.storage.interfaces
-    internal.storage.interfaces .. userRepository
     internal.storage.interfaces .. simpleEntityRepository
+    internal.storage.interfaces .. userRepository
     internal.storage.interfaces .. documentRepository
   }
 }
@@ -90,15 +90,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://service-property-injected\n\
-ws://service2\n\
-ws://currentURI-supplier\n\
+      collections "ws://service2-value-inject\n\
 ws://currentURI-method\n\
-ws://service2-value-inject\n\
+ws://service2\n\
+ws://service-property-injected\n\
+ws://currentURI-supplier\n\
 ws://service-template/{id}/\n\
-ws://defaultURI-static\n\
+ws://service-template\n\
 ws://service3\n\
-ws://service-template" as service2StreamClientImpl.interfaces
+ws://defaultURI-static" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces

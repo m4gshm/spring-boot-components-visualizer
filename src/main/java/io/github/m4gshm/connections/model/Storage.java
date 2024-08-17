@@ -16,6 +16,11 @@ public class Storage {
     Collection<String> storedTo;
     Engine engine;
 
+    @Override
+    public String toString() {
+        return engine + ":" + entityType + ":" + storedTo;
+    }
+
     public enum Engine {
         jpa, mongo;
     }

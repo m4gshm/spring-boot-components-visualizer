@@ -397,26 +397,25 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var methods = group.getMethods();
         var subGroups = group.getGroups();
         if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
-            printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods);
+            printInterfaceAndSubgroups(out, group, style, interfaceComponentLink, httpMethods);
         } else {
             printUnion(out, group.getPart(), null, style,
-                    () -> printInterfaceAndSubgroups(out, group, group.getPath(), style, interfaceComponentLink, httpMethods)
+                    () -> printInterfaceAndSubgroups(out, group, style, interfaceComponentLink, httpMethods)
             );
         }
     }
 
     protected void printInterfaceAndSubgroups(IndentStringAppender out,
-                                              Group group, String replaceMethodUrl, UnionStyle style,
+                                              Group group, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
-        var groupURI = replaceMethodUrl;
 
         var groupMethods = group.getMethods();
         var groupInterfaces = Stream.ofNullable(groupMethods).flatMap(Collection::stream).map(method -> {
             var anInterface = httpMethods.get(method);
-            String s = subURI(groupURI, method.getUrl());
+            var subUri = subURI(group.getPath(), method.getUrl());
             var name = HttpMethod.builder()
-                    .method(method.getMethod()).url(s)
+                    .method(method.getMethod()).url(subUri)
                     .build().toString();
             return entry(
                     anInterface.toBuilder().name(name).build(),
