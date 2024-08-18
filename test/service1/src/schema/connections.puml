@@ -1,39 +1,37 @@
 @startuml
-together {
-  package "service1" as service1 #line.dotted;text:gray {
-    package "api" as service1.api #line.dotted;text:gray {
-      package "http" as service1.api.http #line.dotted;text:gray {
-        component mainController as mainController
-      }
-      package "ws" as service1.api.ws #line.dotted;text:gray {
-        component eventsHandler as eventsHandler
-      }
+package "service1" as service1 #line.dotted;text:gray {
+  package "api" as service1.api #line.dotted;text:gray {
+    package "http" as service1.api.http #line.dotted;text:gray {
+      component mainController as mainController
     }
-    package "service" as service1.service #line.dotted;text:gray {
-      component coreService as coreService
-      package "external" as service1.service.external #line.dotted;text:gray {
-        package "jms" as service1.service.external.jms #line.dotted;text:gray {
-          component jmsQueueListener as jmsQueueListener
-          component jmsQueueService as jmsQueueService
-        }
-        package "rest" as service1.service.external.rest #line.dotted;text:gray {
-          collections "service2LegacyImpl\n\
+    package "ws" as service1.api.ws #line.dotted;text:gray {
+      component eventsHandler as eventsHandler
+    }
+  }
+  package "service" as service1.service #line.dotted;text:gray {
+    component coreService as coreService
+    package "external" as service1.service.external #line.dotted;text:gray {
+      package "jms" as service1.service.external.jms #line.dotted;text:gray {
+        component jmsQueueListener as jmsQueueListener
+        component jmsQueueService as jmsQueueService
+      }
+      package "rest" as service1.service.external.rest #line.dotted;text:gray {
+        collections "service2LegacyImpl\n\
 standaloneService2Api\n\
 service2FeignClient" as service1.service.external.rest.components
-        }
-        package "ws" as service1.service.external.ws #line.dotted;text:gray {
-          component service2StreamClientImpl as service2StreamClientImpl
-        }
+      }
+      package "ws" as service1.service.external.ws #line.dotted;text:gray {
+        component service2StreamClientImpl as service2StreamClientImpl
       }
     }
-    package "db" as service1.db #line.dotted;text:gray {
-      package "jpa" as service1.db.jpa #line.dotted;text:gray {
-        component userRepository as userRepository
-        component simpleEntityRepository as simpleEntityRepository
-      }
-      package "mongo" as service1.db.mongo #line.dotted;text:gray {
-        component documentRepository as documentRepository
-      }
+  }
+  package "db" as service1.db #line.dotted;text:gray {
+    package "jpa" as service1.db.jpa #line.dotted;text:gray {
+      component userRepository as userRepository
+      component simpleEntityRepository as simpleEntityRepository
+    }
+    package "mongo" as service1.db.mongo #line.dotted;text:gray {
+      component documentRepository as documentRepository
     }
   }
 }
@@ -91,15 +89,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://currentURI-supplier\n\
+      collections "ws://currentURI-method\n\
+ws://service2\n\
+ws://service2-value-inject\n\
+ws://defaultURI-static\n\
+ws://currentURI-supplier\n\
 ws://service-template/{id}/\n\
 ws://service-template\n\
-ws://service-property-injected\n\
 ws://service3\n\
-ws://service2\n\
-ws://currentURI-method\n\
-ws://service2-value-inject\n\
-ws://defaultURI-static" as service2StreamClientImpl.interfaces
+ws://service-property-injected" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
       service2StreamClientImpl ..( service2StreamClientImpl.interfaces
@@ -113,15 +111,15 @@ ws://defaultURI-static" as service2StreamClientImpl.interfaces
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jms.jmsQueueService #line.dotted;text:gray {
-      collections "jms-private-queue\n\
+      collections "jmsQueueEvents2\n\
+jms-private-queue\n\
 jmsQueueEvents\n\
-jmsQueue\n\
-jmsQueueEvents2" as jmsQueueService.interfaces
+jmsQueue" as jmsQueueService.interfaces
+      jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService ..> jmsQueueService.interfaces
       jmsQueueService <.. jmsQueueService.interfaces
-      jmsQueueService ..> jmsQueueService.interfaces
     }
   }
 }

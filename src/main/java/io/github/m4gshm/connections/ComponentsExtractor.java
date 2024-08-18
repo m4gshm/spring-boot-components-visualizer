@@ -2,11 +2,8 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.bytecode.EvalException;
-import io.github.m4gshm.connections.model.Component;
-import io.github.m4gshm.connections.model.HttpMethod;
-import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
-import io.github.m4gshm.connections.model.Storage;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +26,7 @@ import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
 import javax.persistence.metamodel.Metamodel;
+import java.lang.Package;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
@@ -146,9 +144,9 @@ public class ComponentsExtractor {
 
         var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream())
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
-            //log
-            return l;
-        }, LinkedHashMap::new));
+                    //log
+                    return l;
+                }, LinkedHashMap::new));
 
         var componentCache = new HashMap<String, Set<Component>>();
         var failFast = options.isFailFast();
@@ -406,7 +404,12 @@ public class ComponentsExtractor {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context);
-            return httpMethods.stream().map(httpMethod -> Interface.builder().direction(out).type(http).core(httpMethod).build()).collect(toLinkedHashSet());
+            return httpMethods.stream()
+                    .map(httpMethod -> Interface.builder()
+                            .direction(out).type(http)
+                            .core(httpMethod)
+                            .build())
+                    .collect(toLinkedHashSet());
         } catch (EvalException e) {
             handleError("rest operations client getting error, component", componentName, e, failFast);
         }

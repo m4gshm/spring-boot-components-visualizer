@@ -12,13 +12,9 @@ import static lombok.AccessLevel.PRIVATE;
 @Data
 @Builder(toBuilder = true)
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class HttpMethod {
-    String url;
-    String method;
-
-    @Override
-    public String toString() {
-        return method + ':' + url;
-    }
-
+public class HttpMethodsGroup {
+    String path;
+    String part;
+    Set<HttpMethod> methods;
+    Map<String, HttpMethodsGroup> groups;
 }

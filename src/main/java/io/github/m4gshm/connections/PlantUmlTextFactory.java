@@ -2,7 +2,6 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.PlantUmlTextFactory.Options.UnionStyle;
 import io.github.m4gshm.connections.model.*;
-import io.github.m4gshm.connections.model.HttpMethod.Group;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Package;
 import io.github.m4gshm.connections.model.Interface.Type;
@@ -31,7 +30,6 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.*;
 import static java.util.Map.entry;
-import static java.util.Objects.requireNonNullElseGet;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
@@ -68,13 +66,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         this.options = options != null ? options : Options.DEFAULT;
     }
 
-    protected static void populateLastGroupByHttpMethods(Group rootGroup, HttpMethod httpMethod) {
+    protected static void populateLastGroupByHttpMethods(HttpMethodsGroup rootGroup, HttpMethod httpMethod) {
         var url = httpMethod.getUrl();
         url = url.startsWith(PATH_DELIMITER) ? url.substring(1) : url;
 
         var parts = UriUtils.splitURI(url);
 
-        Map<String, Group> prevGroupsLevel = null;
+        Map<String, HttpMethodsGroup> prevGroupsLevel = null;
         var nexGroupsLevel = rootGroup.getGroups();
         var currentGroup = rootGroup;
 
@@ -136,11 +134,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
         var packages = toPackagesHierarchy(components);
 
-//        if (packages.size() < 2) {
-//            printPackages(out, packages);
-//        } else {
-        printUnion(out, null, null, UnionStyle.builder().unionBorder(together).build(), () -> printPackages(out, packages));
-//        }
+        printPackages(out, packages, null);
 
         for (var component : components) {
             printComponentReferences(out, component);
@@ -168,7 +162,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 var directionGroupPackageName = directionGroup.isBlank() ? null : directionGroup;
                 printUnion(out, directionGroupPackageName, directionGroup, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
-                        var interfaceRelations = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
+                        var interfaceRelations = Optional.<Map<Interface, List<Component>>>ofNullable(
+                                byType.get(type)).orElse(Map.of());
                         if (!interfaceRelations.isEmpty()) {
                             var directionGroupTypeId = getElementId(directionGroup, type.code);
                             printUnion(out, type.code, directionGroupTypeId, options.getInterfaceAggregate().apply(type), () -> {
@@ -181,19 +176,23 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    private void printInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
+    private void printInterfaces(IndentStringAppender out, String groupName, Type type,
                                  Map<Interface, List<Component>> interfaceRelations) {
         var group = options.supportGroups.test(type);
-        if (type == http && group) {
-            //merge by url parts
-            var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations.keySet());
-            var finalGroup = groupByUrlParts(httpMethods);
-            var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
-            printHttpMethodGroup(out, finalGroup, unionStyle, interfaceRelations, httpMethods);
+        if (type == http) {
+            if (group) {
+                //merge by url parts
+                var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations.keySet());
+                var finalGroup = groupByUrlParts(httpMethods);
+                var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
+                printHttpMethodGroup(out, finalGroup, unionStyle, interfaceRelations, httpMethods);
+            } else {
+                printInterfaces(out, groupName, interfaceRelations);
+            }
         } else if (group) {
-            printGroupedInterfaces(out, directionGroupTypeId, type, interfaceRelations);
+            printGroupedInterfaces(out, groupName, type, interfaceRelations);
         } else {
-            printInterfaces(out, directionGroupTypeId, interfaceRelations);
+            printInterfaces(out, groupName, interfaceRelations);
         }
     }
 
@@ -211,12 +210,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaces(IndentStringAppender out, String groupName, Map<Interface, List<Component>> interfaceRelations) {
-        var collapseInterfacesMoreThan = options.getCollapseInterfacesMoreThan();
-        if (collapseInterfacesMoreThan != null && interfaceRelations.size() > collapseInterfacesMoreThan) {
+        if (isCollapseInterfaces(interfaceRelations)) {
             printCollapsedInterfaces(out, groupName, interfaceRelations);
         } else {
             interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
         }
+    }
+
+    protected boolean isCollapseInterfaces(Map<Interface, List<Component>> interfaceRelations) {
+        var collapseInterfacesMoreThan = options.getCollapseInterfacesMoreThan();
+        return collapseInterfacesMoreThan != null && interfaceRelations.size() > collapseInterfacesMoreThan;
     }
 
     protected Map<String, Map<Interface, List<Component>>> groupInterfacesByComponents(
@@ -280,7 +283,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
     }
 
-    protected Group groupByUrlParts(Map<HttpMethod, Interface> httpMethods) {
+    protected HttpMethodsGroup groupByUrlParts(Map<HttpMethod, Interface> httpMethods) {
         var rootGroup = newEmptyGroup(null, null);
         //create groups
         for (var httpMethod : httpMethods.keySet()) {
@@ -291,7 +294,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return reducedGroup;
     }
 
-    protected Group reduce(Group group) {
+    protected HttpMethodsGroup reduce(HttpMethodsGroup group) {
         var subGroups = group.getGroups();
         var part = group.getPart();
         var path = group.getPath();
@@ -342,12 +345,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return getElementId(direction, anInterface.getId());
     }
 
-    protected void printPackage(IndentStringAppender out, Package pack) {
+    protected void printPackage(IndentStringAppender out, Package pack, Package parentPackage) {
         var packPath = pack.getPath();
         var style = options.getPackagePathAggregate().apply(packPath);
-        printUnion(out, isPrintBorder(pack) ? pack.getName() : null, packPath, style, () -> {
+        printUnion(out, isPrintBorder(pack, parentPackage) ? pack.getName() : null, packPath, style, () -> {
             var components = pack.getComponents();
-            if (isCollapseComponents(pack)) {
+            if (isCollapseComponents(pack, parentPackage)) {
                 printCollapsedComponents(out, packPath, components);
             } else if (components != null) {
                 for (var component : components) {
@@ -355,29 +358,28 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 }
             }
             var packages = pack.getPackages();
-            if (packages != null) printPackages(out, packages);
+            if (packages != null) printPackages(out, packages, pack);
         });
     }
 
-    protected boolean isPrintBorder(Package pack) {
+    protected boolean isPrintBorder(Package pack, Package parentPackage) {
         return options.isPrintPackageBorder();
     }
 
-    protected boolean isCollapseComponents(Package pack) {
+    protected boolean isCollapseComponents(Package pack, Package parentPackage) {
         var components = pack.getComponents();
-        var collapseComponents = options.collapseComponents.apply(pack);
-        return requireNonNullElseGet(collapseComponents, () -> options.collapseComponentsMoreThan != null
+        return options.collapseComponentsMoreThan != null
                 && components != null
-                && components.size() > options.collapseComponentsMoreThan);
+                && components.size() > options.collapseComponentsMoreThan;
     }
 
-    private void printPackages(IndentStringAppender out, List<Package> packages) {
+    protected void printPackages(IndentStringAppender out, List<Package> packages, Package parentPackage) {
         for (var pack : packages) {
-            printPackage(out, pack);
+            printPackage(out, pack, parentPackage);
         }
     }
 
-    private Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
+    protected Map<String, Package> distinctPackages(String parentPath, Stream<Package> packageStream) {
         return packageStream.map(p -> populatePath(parentPath, p)).collect(toMap(Package::getName, p -> p, (l, r) -> {
             var lName = l.getName();
             var rName = r.getName();
@@ -397,7 +399,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }, LinkedHashMap::new));
     }
 
-    protected void printHttpMethodGroup(IndentStringAppender out, Group group,
+    protected void printHttpMethodGroup(IndentStringAppender out, HttpMethodsGroup group,
                                         UnionStyle style,
                                         Map<Interface, List<Component>> interfaceComponentLink,
                                         Map<HttpMethod, Interface> httpMethods) {
@@ -413,7 +415,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaceAndSubgroups(IndentStringAppender out,
-                                              Group group, UnionStyle style,
+                                              HttpMethodsGroup group, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
 
@@ -705,12 +707,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         Function<String, UnionStyle> packagePathAggregate = path -> newAggregateStyle(pack, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
         Predicate<Type> supportGroups = type -> Set.of(http, jms, ws).contains(type);
+
         @Builder.Default
         Integer collapseComponentsMoreThan = 5;
         @Builder.Default
         Integer collapseInterfacesMoreThan = 5;
-        @Builder.Default
-        Function<Package, Boolean> collapseComponents = pack -> null;
 
         public static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
@@ -750,6 +751,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         public static class UnionStyle {
             UnionBorder unionBorder;
             String style;
+
+            public static UnionStyle newUnionStyle() {
+                return builder().unionBorder(together).build();
+            }
         }
     }
 }
