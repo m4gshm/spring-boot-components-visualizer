@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections;
 
-import io.github.m4gshm.connections.PlantUmlTextFactory.Options.UnionStyle;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Package;
@@ -418,7 +417,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                               HttpMethodsGroup group, UnionStyle style,
                                               Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
-
         var groupMethods = group.getMethods();
         var groupInterfaces = Stream.ofNullable(groupMethods).flatMap(Collection::stream).map(method -> {
             var anInterface = httpMethods.get(method);
@@ -437,7 +435,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         for (var subGroup : group.getGroups().values()) {
             printHttpMethodGroup(out, subGroup, style, interfaceComponentLink, httpMethods);
         }
-
     }
 
     protected void printInterface(IndentStringAppender out, Interface anInterface, Collection<Component> components) {
@@ -610,8 +607,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var lPack = l.build();
             r.packages(singletonList(lPack));
             return r;
-        }).map(Package.PackageBuilder::build).orElse(
-                Package.builder().name(componentPath).components(singletonList(component)).build()
+        }).map(Package.PackageBuilder::build).orElse(Package.builder()
+                .name(componentPath).components(singletonList(component))
+                .build()
         );
     }
 
@@ -675,6 +673,18 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Override
         public String toString() {
             return getCode();
+        }
+    }
+
+    @Data
+    @Builder(toBuilder = true)
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class UnionStyle {
+        UnionBorder unionBorder;
+        String style;
+
+        public static UnionStyle newUnionStyle(UnionBorder unionBorder) {
+            return builder().unionBorder(unionBorder).build();
         }
     }
 
@@ -745,16 +755,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             }
         }
 
-        @Data
-        @Builder(toBuilder = true)
-        @FieldDefaults(makeFinal = true, level = PRIVATE)
-        public static class UnionStyle {
-            UnionBorder unionBorder;
-            String style;
-
-            public static UnionStyle newUnionStyle() {
-                return builder().unionBorder(together).build();
-            }
-        }
     }
+
 }
