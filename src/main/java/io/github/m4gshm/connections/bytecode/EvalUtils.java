@@ -3,15 +3,7 @@ package io.github.m4gshm.connections.bytecode;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.Repository;
-import org.apache.bcel.classfile.BootstrapMethods;
-import org.apache.bcel.classfile.ConstantInvokeDynamic;
-import org.apache.bcel.classfile.ConstantMethodHandle;
-import org.apache.bcel.classfile.ConstantMethodType;
-import org.apache.bcel.classfile.ConstantMethodref;
-import org.apache.bcel.classfile.ConstantNameAndType;
-import org.apache.bcel.classfile.ConstantPool;
-import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.classfile.LocalVariableTable;
+import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEDYNAMIC;
 import org.apache.bcel.generic.InstructionHandle;
@@ -34,20 +26,15 @@ import java.util.stream.IntStream;
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.bytecode.Eval.getInvokeArgs;
-import static io.github.m4gshm.connections.bytecode.EvalResult.notAccessible;
-import static io.github.m4gshm.connections.bytecode.EvalResult.notFound;
-import static io.github.m4gshm.connections.bytecode.EvalResult.success;
+import static io.github.m4gshm.connections.bytecode.EvalResult.*;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.of;
-import static org.apache.bcel.Const.CONSTANT_InvokeDynamic;
-import static org.apache.bcel.Const.CONSTANT_NameAndType;
-import static org.apache.bcel.Const.REF_invokeSpecial;
-import static org.apache.bcel.Const.REF_invokeStatic;
+import static org.apache.bcel.Const.*;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_MethodHandle;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 
@@ -122,7 +109,8 @@ public class EvalUtils {
     static Object callBootstrapMethod(Object object, Object[] arguments, INVOKEDYNAMIC instruction,
                                       ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var cp = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = cp.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
+        var constantInvokeDynamic = cp.getConstant(instruction.getIndex(),
+                CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
         var nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
 
         var constantNameAndType = cp.getConstant(nameAndTypeIndex, ConstantNameAndType.class);
@@ -132,10 +120,13 @@ public class EvalUtils {
 
         int bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
         var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
-        var bootstrapMethodHandle = cp.getConstant(bootstrapMethod.getBootstrapMethodRef(), CONSTANT_MethodHandle, ConstantMethodHandle.class);
-        var bootstrapMethodref = cp.getConstant(bootstrapMethodHandle.getReferenceIndex(), CONSTANT_Methodref, ConstantMethodref.class);
+        var bootstrapMethodHandle = cp.getConstant(bootstrapMethod.getBootstrapMethodRef(),
+                CONSTANT_MethodHandle, ConstantMethodHandle.class);
+        var bootstrapMethodref = cp.getConstant(bootstrapMethodHandle.getReferenceIndex(),
+                CONSTANT_Methodref, ConstantMethodref.class);
 
-        var nameAndType = cp.getConstant(bootstrapMethodref.getNameAndTypeIndex(), CONSTANT_NameAndType, ConstantNameAndType.class);
+        var nameAndType = cp.getConstant(bootstrapMethodref.getNameAndTypeIndex(),
+                CONSTANT_NameAndType, ConstantNameAndType.class);
 
         var lookup = MethodHandles.lookup();
 
@@ -156,13 +147,16 @@ public class EvalUtils {
             }
         }).collect(toList());
 
-        var privateLookup = (Lookup) bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry ? ((Map.Entry) a).getValue() : null)
+        var privateLookup = (Lookup) bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry
+                        ? ((Map.Entry<?, ?>) a).getValue() : null)
                 .filter(Objects::nonNull).findFirst()
                 .orElseThrow(() -> new EvalException("null private lookup of lambda method"));
 
-        bootstrabMethodArguments = bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry ? ((Map.Entry) a).getKey() : a).collect(toList());
+        bootstrabMethodArguments = bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry
+                ? ((Map.Entry<?, ?>) a).getKey() : a).collect(toList());
 
-        bootstrabMethodArguments = concat(of(privateLookup, interfaceMethodName, factoryMethod), bootstrabMethodArguments.stream()).collect(toList());
+        bootstrabMethodArguments = concat(of(privateLookup, interfaceMethodName, factoryMethod),
+                bootstrabMethodArguments.stream()).collect(toList());
 
         CallSite metafactory;
         try {
@@ -190,7 +184,8 @@ public class EvalUtils {
         setAccessibleMethod(targetClass, methodName, methodType);
 
         var privateLookup = getPrivateLookup(targetClass, lookup);
-        return Map.entry(lookupReference(privateLookup, constant.getReferenceKind(), targetClass, methodName, methodType), privateLookup);
+        return entry(lookupReference(privateLookup, constant.getReferenceKind(), targetClass, methodName, methodType),
+                privateLookup);
     }
 
     static Lookup getPrivateLookup(Class<?> targetClass, Lookup lookup) {
@@ -208,6 +203,8 @@ public class EvalUtils {
             return lookupSpecial(lookup, targetClass, methodName, methodType);
         } else if (referenceKind == REF_invokeStatic) {
             return lookupStatic(lookup, targetClass, methodName, methodType);
+        } else if (referenceKind == REF_invokeVirtual) {
+            return lookupVirtual(lookup, targetClass, methodName, methodType);
         } else {
             var message = "unsupported method handle referenceKind " + referenceKind;
             throw new EvalException(message);
@@ -236,6 +233,15 @@ public class EvalUtils {
             methodType) {
         try {
             return lookup.findStatic(targetClass, name, methodType);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new EvalException(e);
+        }
+    }
+
+    private static MethodHandle lookupVirtual(Lookup lookup, Class<?> targetClass, String methodName, MethodType
+            methodType) {
+        try {
+            return lookup.findVirtual(targetClass, methodName, methodType);
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new EvalException(e);
         }

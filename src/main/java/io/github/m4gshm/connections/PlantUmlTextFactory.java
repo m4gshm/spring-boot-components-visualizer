@@ -687,8 +687,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder.Default
         boolean reduceInnerCollapsedElementRelations = true;
         @Builder.Default
-        boolean reduceCollapsedInterfaceRelations = true;
-        @Builder.Default
         boolean printPackageBorder = true;
         //debug option
         @Builder.Default
