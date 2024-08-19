@@ -29,6 +29,7 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.*;
 import static java.util.Map.entry;
+import static java.util.Objects.requireNonNull;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
@@ -341,7 +342,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected String getInterfaceId(Interface anInterface) {
         var direction = getElementId(anInterface.getDirection().name());
-        return getElementId(direction, anInterface.getId());
+        return getElementId(direction, requireNonNull(anInterface.getId()));
     }
 
     protected void printPackage(IndentStringAppender out, Package pack, Package parentPackage) {
@@ -617,8 +618,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var componentName = component.getName();
         var collapsedComponentName = checkCollapsedName(componentName);
         var collapsed = !collapsedComponentName.equals(componentName);
-        for (var dependency : component.getDependencies()) {
-            var dependencyName = checkCollapsedName(dependency);
+        var dependencies = component.getDependencies();
+        if (dependencies != null) for (var dependency : dependencies) {
+            var dependencyName = checkCollapsedName(dependency.getName());
             var selfLink = collapsedComponentName.equals(dependencyName);
             var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
             var alreadyPrinted = printedComponentRelations.getOrDefault(collapsedComponentName, Set.of()).contains(dependencyName);

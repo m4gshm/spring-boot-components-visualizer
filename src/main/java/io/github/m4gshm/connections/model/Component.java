@@ -12,12 +12,22 @@ import static lombok.AccessLevel.PRIVATE;
 @Data
 @Builder(toBuilder = true)
 @FieldDefaults(level = PRIVATE, makeFinal = true)
-public class Component {
+public class Component implements ComponentDependency {
     @EqualsAndHashCode.Include
-    private final String name;
-    private final String path;
-    private final Class<?> type;
-    private final Set<Interface> interfaces;
-    private final Set<String> dependencies;
+    String name;
+    @EqualsAndHashCode.Include
+    Object unmanagedInstance;
+    String path;
+    Class<?> type;
+    Set<Interface> interfaces;
+    Set<Component> dependencies;
 
+    @Override
+    public boolean isManaged() {
+        return unmanagedInstance == null;
+    }
+
+    public String getName() {
+        return isManaged() ? name : unmanagedInstance.getClass().getSimpleName();
+    }
 }

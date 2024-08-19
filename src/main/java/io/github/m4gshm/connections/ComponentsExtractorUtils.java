@@ -5,6 +5,7 @@ import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
+import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.*;
@@ -31,7 +33,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ReflectionUtils.getFieldValue;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static java.lang.reflect.Modifier.isPublic;
@@ -248,20 +249,6 @@ public class ComponentsExtractorUtils {
         }
     }
 
-    static String getComponentPath(boolean cropRootPackagePath, Package rootPackage, Class<?> componentType) {
-        var typePackageName = componentType.getPackage().getName();
-        final String path;
-        if (cropRootPackagePath) {
-            var rootPackageName = Optional.ofNullable(rootPackage).map(Package::getName).orElse("");
-            path = typePackageName.startsWith(rootPackageName)
-                    ? typePackageName.substring(rootPackageName.length())
-                    : typePackageName;
-        } else {
-            path = typePackageName;
-        }
-        return path.startsWith(".") ? path.substring(1) : path;
-    }
-
     static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
         var type = loadedClass(classSupplier);
         return type != null ? dependencies.stream()
@@ -269,4 +256,47 @@ public class ComponentsExtractorUtils {
                 .findFirst().orElse(null) : null;
     }
 
+    public static Field getDeclaredField(String name, Class<?> type) {
+        while (!(type == null || Object.class.equals(type))) try {
+            return type.getDeclaredField(name);
+        } catch (NoSuchFieldException e) {
+            type = type.getSuperclass();
+        }
+        return null;
+    }
+
+    public static Object getFieldValue(Object object, String name) {
+        return getFieldValue(object, name, true);
+    }
+
+    public static Object getFieldValue(Object object, Field field) {
+        return getFieldValue(object, field, true);
+    }
+
+    public static Object getFieldValue(Object object, String name, boolean throwException) {
+        var field = getDeclaredField(name, object.getClass());
+        return field == null ? null : getFieldValue(object, field, throwException);
+    }
+
+    public static Object getFieldValue(Object object, Field field, boolean throwException) {
+        try {
+            field.setAccessible(true);
+            return field.get(object);
+        } catch (Exception e) {
+            //log
+            if (throwException) {
+                throw new EvalException(e);
+            }
+            return null;
+        }
+    }
+
+    public static Method getDeclaredMethod(String name, Class<?> type, Class<?>[] argumentTypes) {
+        while (!(type == null || Object.class.equals(type))) try {
+            return type.getDeclaredMethod(name, argumentTypes);
+        } catch (NoSuchMethodException e) {
+            type = type.getSuperclass();
+        }
+        return null;
+    }
 }

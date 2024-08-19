@@ -23,8 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredField;
-import static io.github.m4gshm.connections.ReflectionUtils.getDeclaredMethod;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.bytecode.EvalResult.*;
 import static java.lang.invoke.MethodHandles.privateLookupIn;

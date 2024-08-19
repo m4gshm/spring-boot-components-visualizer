@@ -23,7 +23,7 @@ public class Interface {
     }
 
     public String getId() {
-        return id != null ? id : core != null ? core.toString() : null;
+        return id != null ? id : core != null ? core.toString() : getName();
     }
 
     @Getter
