@@ -212,14 +212,14 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaces(IndentStringAppender out, String groupName, Map<Interface, List<Component>> interfaceRelations) {
-        if (isConcatenateInterfaces(interfaceRelations)) {
+        if (isCollapseInterfaces(interfaceRelations)) {
             printCollapsedInterfaces(out, groupName, interfaceRelations);
         } else {
             interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
         }
     }
 
-    protected boolean isConcatenateInterfaces(Map<Interface, List<Component>> interfaceRelations) {
+    protected boolean isCollapseInterfaces(Map<Interface, List<Component>> interfaceRelations) {
         var collapseInterfacesMoreThan = options.getConcatenateInterfacesMoreThan();
         return collapseInterfacesMoreThan != null && interfaceRelations.size() > collapseInterfacesMoreThan;
     }
