@@ -49,12 +49,14 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
     public static final String LINE_DOTTED = "line.dotted;";
+    public static final String SHORT_ARROW = "..>";
+    public static final String MIDDLE_ARROW = "....>";
+    public static final String LONG_ARROW = "......>";
 
     protected final String applicationName;
     protected final Options options;
-    protected final Map<String, String> collapsedComponents = new HashMap<>();
-    //    protected final Map<String, String> collapsedInterfaces = new HashMap<>();
-    protected final Map<String, Set<String>> printedCollapsedComponentRelations = new HashMap<>();
+    protected final Map<String, String> concatenatedComponents = new HashMap<>();
+    protected final Map<String, Set<String>> printedConcatenatedComponentRelations = new HashMap<>();
     protected final Map<String, Set<String>> printedInterfaceRelations = new HashMap<>();
     protected final Map<String, Object> uniques = new HashMap<>();
     protected final Set<Component> printedComponents = new LinkedHashSet<>();
@@ -212,16 +214,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaces(IndentStringAppender out, String groupName, Map<Interface, List<Component>> interfaceRelations) {
-        if (isCollapseInterfaces(interfaceRelations)) {
-            printCollapsedInterfaces(out, groupName, interfaceRelations);
+        if (isConcatenateInterfaces(interfaceRelations)) {
+            printConcatenatedInterfaces(out, groupName, interfaceRelations);
         } else {
             interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
         }
     }
 
-    protected boolean isCollapseInterfaces(Map<Interface, List<Component>> interfaceRelations) {
-        var collapseInterfacesMoreThan = options.getConcatenateInterfacesMoreThan();
-        return collapseInterfacesMoreThan != null && interfaceRelations.size() > collapseInterfacesMoreThan;
+    protected boolean isConcatenateInterfaces(Map<Interface, List<Component>> interfaceRelations) {
+        var concatenateInterfacesMoreThan = options.getConcatenateInterfacesMoreThan();
+        return concatenateInterfacesMoreThan != null && interfaceRelations.size() > concatenateInterfacesMoreThan;
     }
 
     protected Map<String, Map<Interface, List<Component>>> groupInterfacesByComponents(
@@ -357,9 +359,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printPackageComponents(IndentStringAppender out, Package pack, Package parentPackage) {
-        var collapseComponentGroup = groupCollapseComponents(pack, parentPackage);
-        printCollapsedComponents(out, pack, collapseComponentGroup.getConcatenation());
-        printDistinctComponents(out, collapseComponentGroup.getDistinct());
+        var concatenateComponentGroup = groupConcatenateComponents(pack, parentPackage);
+        printConcatenatedComponents(out, pack, concatenateComponentGroup.getConcatenation());
+        printDistinctComponents(out, concatenateComponentGroup.getDistinct());
     }
 
     protected void printDistinctComponents(IndentStringAppender out, Collection<Component> components) {
@@ -372,9 +374,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return options.isPrintPackageBorder();
     }
 
-    protected CollapseComponentGroup groupCollapseComponents(Package pack, Package parentPackage) {
+    protected ConcatenateComponentGroup groupConcatenateComponents(Package pack, Package parentPackage) {
         var components = pack.getComponents();
-        var componentGroupBuilder = CollapseComponentGroup.builder();
+        var componentGroupBuilder = ConcatenateComponentGroup.builder();
         var concatenatePackageComponents = options.concatenatePackageComponents;
         var moreThan = concatenatePackageComponents.moreThan;
         if (moreThan != null && components != null && components.size() > moreThan) {
@@ -507,10 +509,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             //log
             return;
         }
-        var collapsedComponentId = checkCollapsedName(componentName);
-        var collapsedComponent = !componentName.equals(collapsedComponentId);
-        var componentId = collapsedComponent ? collapsedComponentId : plantUmlAlias(componentName);
-        var printed = collapsedComponent && printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
+        var concatenatedComponentId = getComponentName(componentName);
+        var concatenatedComponent = !componentName.equals(concatenatedComponentId);
+        var componentId = concatenatedComponent ? concatenatedComponentId : plantUmlAlias(componentName);
+        var printed = concatenatedComponent && printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
         if (printed) {
             return;
         }
@@ -564,33 +566,33 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         printedComponents.add(component);
     }
 
-    protected void printCollapsedComponents(IndentStringAppender out, Package pack, Collection<Component> components) {
+    protected void printConcatenatedComponents(IndentStringAppender out, Package pack, Collection<Component> components) {
         var packageId = pack.getPath();
         if (components == null || components.isEmpty()) {
             return;
         }
         var text = components.stream().map(Component::getName)
                 .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
-        var collapsedComponentsId = getElementId(packageId, "components");
-        checkUniqueId(collapsedComponentsId, "package:" + packageId);
+        var concatenatedComponentsId = getElementId(packageId, "components");
+        checkUniqueId(concatenatedComponentsId, "package:" + packageId);
         for (var component : components) {
-            collapsedComponents.put(component.getName(), collapsedComponentsId);
+            concatenatedComponents.put(component.getName(), concatenatedComponentsId);
         }
         printedComponents.addAll(components);
-        out.append(format("collections \"%s\" as %s\n", text, collapsedComponentsId), false);
+        out.append(format("collections \"%s\" as %s\n", text, concatenatedComponentsId), false);
     }
 
-    protected void printCollapsedInterfaces(IndentStringAppender out, String parentId,
-                                            Map<Interface, List<Component>> interfaces) {
+    protected void printConcatenatedInterfaces(IndentStringAppender out, String parentId,
+                                               Map<Interface, List<Component>> interfaces) {
         if (interfaces == null || interfaces.isEmpty()) {
             return;
         }
         var text = interfaces.keySet().stream().map(Interface::getName)
                 .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
-        var collapsedId = getElementId(parentId, "interfaces");
-        checkUniqueId(collapsedId, "parent:" + parentId);
-        out.append(format("collections \"%s\" as %s\n", text, collapsedId), false);
-        interfaces.forEach((anInterface, components) -> printInterfaceReferences(out, collapsedId, anInterface, components));
+        var concatenatedId = getElementId(parentId, "interfaces");
+        checkUniqueId(concatenatedId, "parent:" + parentId);
+        out.append(format("collections \"%s\" as %s\n", text, concatenatedId), false);
+        interfaces.forEach((anInterface, components) -> printInterfaceReferences(out, concatenatedId, anInterface, components));
     }
 
     protected Stream<Package> mergeSubPack(Package pack) {
@@ -649,39 +651,65 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             //log
             return;
         }
-        var componentName = component.getName();
-        var collapsedComponentName = checkCollapsedName(componentName);
-        var collapsed = !collapsedComponentName.equals(componentName);
+
         var dependencies = component.getDependencies();
         if (dependencies != null) for (var dependency : dependencies) {
-            var dependencyName = checkCollapsedName(dependency.getName());
-            var selfLink = collapsedComponentName.equals(dependencyName);
-            var renderedRelation = renderComponentRelation(collapsedComponentName, dependencyName);
-            var alreadyPrinted = printedCollapsedComponentRelations
-                    .getOrDefault(collapsedComponentName, Set.of())
-                    .contains(dependencyName);
-
-            var render = !collapsed || (
-                    selfLink
-                            ? options.reduceInnerCollapsedElementRelations && !alreadyPrinted
-                            : !(options.reduceCollapsedElementRelations && alreadyPrinted)
-            );
-            if (render) {
-                printedCollapsedComponentRelations
-                        .computeIfAbsent(collapsedComponentName, k -> new HashSet<>())
-                        .add(dependencyName);
-                out.append(renderedRelation);
-            }
+            printComponentReference(out, component, dependency);
         }
     }
 
-    private String renderComponentRelation(String componentName, String dependencyName) {
-        return format("%s ..> %s\n", plantUmlAlias(componentName), plantUmlAlias(dependencyName));
+    protected void printComponentReference(IndentStringAppender out, Component component, Component dependency) {
+        var check = checkComponentName(component);
+        var dependencyName = checkComponentName(dependency).getComponentName();
+        if (isNotRendered(check, dependencyName)) {
+            var finalComponentName = check.getComponentName();
+            printedConcatenatedComponentRelations
+                    .computeIfAbsent(finalComponentName, k -> new HashSet<>())
+                    .add(dependencyName);
+            var arrow = renderComponentRelationArrow(component, dependency);
+            out.append(renderComponentRelation(finalComponentName, arrow, dependencyName));
+        }
     }
 
-    private String checkCollapsedName(String name) {
-        var collapsedName = collapsedComponents.get(name);
-        return collapsedName != null ? collapsedName : name;
+    protected boolean isNotRendered(ComponentNameCheck check, String dependencyName) {
+        var finalComponentName = check.getComponentName();
+        var alreadyPrinted = isAlreadyPrinted(finalComponentName, dependencyName);
+        var selfLink = finalComponentName.equals(dependencyName);
+        return !check.isConcatenated() || (selfLink
+                ? options.reduceInnerConcatenatedElementRelations && !alreadyPrinted
+                : !(options.reduceConcatenatedElementRelations && alreadyPrinted)
+        );
+    }
+
+    protected boolean isAlreadyPrinted(String finalComponentName, String dependencyName) {
+        return printedConcatenatedComponentRelations
+                .getOrDefault(finalComponentName, Set.of())
+                .contains(dependencyName);
+    }
+
+    protected ComponentNameCheck checkComponentName(Component component) {
+        var componentName = component.getName();
+        var finalComponentName = getComponentName(componentName);
+        var concatenated = !finalComponentName.equals(componentName);
+        return new ComponentNameCheck(finalComponentName, concatenated);
+    }
+
+    protected String getComponentName(String name) {
+        var concatenatedName = concatenatedComponents.get(name);
+        return concatenatedName != null ? concatenatedName : name;
+    }
+
+    protected String renderComponentRelationArrow(Component component, Component dependency) {
+//        var componentInterfaces = component.getInterfaces();
+//        var dependencyInterfaces = dependency.getInterfaces();
+//        var noInterfaces = (componentInterfaces == null || componentInterfaces.isEmpty()) &&
+//                (dependencyInterfaces == null || dependencyInterfaces.isEmpty());
+//        return noInterfaces ? SHORT_ARROW : MIDDLE_ARROW;
+        return SHORT_ARROW;
+    }
+
+    private String renderComponentRelation(String componentName, String arrow, String dependencyName) {
+        return format("%s %s %s\n", plantUmlAlias(componentName), arrow, plantUmlAlias(dependencyName));
     }
 
     @Getter
@@ -723,9 +751,15 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     @Data
+    public static class ComponentNameCheck {
+        private final String componentName;
+        private final boolean concatenated;
+    }
+
+    @Data
     @Builder
     @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class CollapseComponentGroup {
+    public static class ConcatenateComponentGroup {
         @Builder.Default
         Collection<Component> concatenation = Set.of();
         @Builder.Default
@@ -751,9 +785,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         public static final Options DEFAULT = Options.builder().build();
         String head, bottom;
         @Builder.Default
-        boolean reduceCollapsedElementRelations = false;
+        boolean reduceConcatenatedElementRelations = false;
         @Builder.Default
-        boolean reduceInnerCollapsedElementRelations = true;
+        boolean reduceInnerConcatenatedElementRelations = true;
         @Builder.Default
         boolean printPackageBorder = true;
         //debug option
