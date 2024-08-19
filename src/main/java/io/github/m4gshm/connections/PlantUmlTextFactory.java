@@ -533,19 +533,19 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected String renderOut(Type type, String interfaceId, String componentId) {
-        return format((type == jms ? "%s ..> %s" : "%s ..( %s") + "\n", componentId, interfaceId);
+        return format((type == jms ? "%s ....> %s" : "%s ....( %s") + "\n", componentId, interfaceId);
     }
 
     protected String renderOutIn(Type type, String interfaceId, String componentId) {
-        return format("%1$s ..> %2$s\n%1$s <.. %2$s\n", componentId, interfaceId);
+        return format("%1$s ....> %2$s\n%1$s <.... %2$s\n", componentId, interfaceId);
     }
 
     protected String renderIn(Type type, String interfaceId, String componentId) {
-        return format("%s )..> %s\n", interfaceId, componentId);
+        return format("%s )....> %s\n", interfaceId, componentId);
     }
 
     protected String renderLink(Type type, String interfaceId, String componentId) {
-        return format("%s .. %s\n", interfaceId, componentId);
+        return format("%s .... %s\n", interfaceId, componentId);
     }
 
     protected Package populatePath(String parentPath, Package pack) {
@@ -646,6 +646,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printComponentReferences(IndentStringAppender out, Component component) {
         if (!printedComponents.contains(component)) {
+            //log
             return;
         }
         var componentName = component.getName();
@@ -655,14 +656,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (dependencies != null) for (var dependency : dependencies) {
             var dependencyName = checkCollapsedName(dependency.getName());
             var selfLink = collapsedComponentName.equals(dependencyName);
-            var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
+            var renderedRelation = renderComponentRelation(collapsedComponentName, dependencyName);
             var alreadyPrinted = printedCollapsedComponentRelations
                     .getOrDefault(collapsedComponentName, Set.of())
                     .contains(dependencyName);
 
-            var render = !collapsed || (selfLink
-                    ? options.reduceInnerCollapsedElementRelations && !alreadyPrinted
-                    : options.reduceCollapsedElementRelations && !alreadyPrinted);
+            var render = !collapsed || (
+                    selfLink
+                            ? options.reduceInnerCollapsedElementRelations && !alreadyPrinted
+                            : !(options.reduceCollapsedElementRelations && alreadyPrinted)
+            );
             if (render) {
                 printedCollapsedComponentRelations
                         .computeIfAbsent(collapsedComponentName, k -> new HashSet<>())
@@ -670,6 +673,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 out.append(renderedRelation);
             }
         }
+    }
+
+    private String renderComponentRelation(String componentName, String dependencyName) {
+        return format("%s ..> %s\n", plantUmlAlias(componentName), plantUmlAlias(dependencyName));
     }
 
     private String checkCollapsedName(String name) {

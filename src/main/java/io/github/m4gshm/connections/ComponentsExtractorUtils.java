@@ -8,6 +8,7 @@ import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
+import io.github.m4gshm.connections.model.Interface;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
@@ -33,60 +34,65 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.ComponentsExtractor.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.Utils.loadedClass;
+import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
+import static io.github.m4gshm.connections.model.Interface.Type.jms;
+import static io.github.m4gshm.connections.model.Interface.Type.ws;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
+import static java.util.Arrays.stream;
+import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
-import static java.util.stream.Stream.of;
-import static java.util.stream.Stream.ofNullable;
+import static java.util.stream.Stream.*;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedRepeatableAnnotations;
 
 @Slf4j
 @UtilityClass
 public class ComponentsExtractorUtils {
-    static boolean hasMainMethod(Class<?> beanType) {
+    public static boolean hasMainMethod(Class<?> beanType) {
         return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
                 && isOnlyOneArgStringArray(method)
                 && method.getReturnType().equals(void.class)
                 && isStatic(method.getModifiers()) && isPublic(method.getModifiers()));
     }
 
-    static boolean isOnlyOneArgStringArray(Method method) {
+    public static boolean isOnlyOneArgStringArray(Method method) {
         var parameterTypes = method.getParameterTypes();
         return parameterTypes.length == 1 && String[].class.equals(parameterTypes[0]);
     }
 
-    static boolean isIncluded(Class<?> type) {
+    public static boolean isIncluded(Class<?> type) {
         return !(isSpringBootTest(type) || (isSpringConfiguration(type))
                 || isVisualizeAPI(type) || isProperties(type));
     }
 
-    private static boolean isProperties(Class<?> beanType) {
+    public static boolean isProperties(Class<?> beanType) {
         return hasAnnotation(beanType, () -> ConfigurationProperties.class);
     }
 
-    static boolean isSpringBootTest(Class<?> beanType) {
+    public static boolean isSpringBootTest(Class<?> beanType) {
         return hasAnnotation(beanType, () -> SpringBootTest.class);
     }
 
-    static boolean isSpringConfiguration(Class<?> beanType) {
+    public static boolean isSpringConfiguration(Class<?> beanType) {
         return hasAnnotation(beanType, () -> Configuration.class);
     }
 
-    static boolean isVisualizeAPI(Class<?> beanType) {
+    public static boolean isVisualizeAPI(Class<?> beanType) {
         return OnApplicationReadyEventSchemaGenerator.Storage.class.isAssignableFrom(beanType);
     }
 
-    static <T extends Annotation> boolean hasAnnotation(Class<?> type, Supplier<Class<T>> annotationSupplier) {
+    public static <T extends Annotation> boolean hasAnnotation(Class<?> type, Supplier<Class<T>> annotationSupplier) {
         return getAnnotation(type, annotationSupplier) != null;
     }
 
-    static <T extends Annotation> T getAnnotation(Class<?> aClass, Supplier<Class<T>> supplier) {
+    public static <T extends Annotation> T getAnnotation(Class<?> aClass, Supplier<Class<T>> supplier) {
         var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return null;
@@ -102,13 +108,13 @@ public class ComponentsExtractorUtils {
 
     }
 
-    static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(
+    public static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
         return getAnnotations(elements, supplier, AnnotatedElementUtils::getAllMergedAnnotations);
     }
 
-    static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
+    public static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
             Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
     ) {
         var annotationClass = loadedClass(supplier);
@@ -121,7 +127,7 @@ public class ComponentsExtractorUtils {
         }
     }
 
-    static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
+    public static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
         var annotationClass = loadedClass(supplier);
@@ -155,25 +161,25 @@ public class ComponentsExtractorUtils {
         }).collect(toCollection(LinkedHashSet::new));
     }
 
-    private static Collection<String> getPaths(RequestMapping requestMapping) {
+    public static Collection<String> getPaths(RequestMapping requestMapping) {
         var path = List.of(requestMapping.path());
         return path.isEmpty() ? List.of("") : path;
     }
 
-    private static List<String> getHttpMethods(RequestMapping requestMapping) {
+    public static List<String> getHttpMethods(RequestMapping requestMapping) {
         var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
         return methods.isEmpty() ? List.of("*") : methods;
     }
 
-    private static String concatPath(String path, String root) {
+    public static String concatPath(String path, String root) {
         return (root.endsWith("/") || path.startsWith("/")) ? root + path : root + "/" + path;
     }
 
-    static boolean isSpringBootMainClass(Class<?> beanType) {
+    public static boolean isSpringBootMainClass(Class<?> beanType) {
         return beanType != null && hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
     }
 
-    static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
+    public static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
@@ -185,7 +191,7 @@ public class ComponentsExtractorUtils {
                 .collect(toList());
     }
 
-    static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
+    public static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
         try {
             var bean = context.getBean(name);
             if (!isProxyClass(bean.getClass())) {
@@ -249,7 +255,7 @@ public class ComponentsExtractorUtils {
         }
     }
 
-    static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
+    public static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
         var type = loadedClass(classSupplier);
         return type != null ? dependencies.stream()
                 .filter(component -> type.isAssignableFrom(component.getType()))
@@ -298,5 +304,108 @@ public class ComponentsExtractorUtils {
             type = type.getSuperclass();
         }
         return null;
+    }
+
+    public static Interface newInterface(JmsClient jmsClient) {
+        return Interface.builder().direction(jmsClient.getDirection()).type(jms).name(jmsClient.getDestination()).core(
+                JmsClient.Destination.builder().destination(jmsClient.getDestination()).direction(jmsClient.getDirection()).build()
+        ).build();
+    }
+
+    public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
+        if (rootPackageName != null) {
+            var relatedType = Stream.ofNullable(type)
+                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass)
+                            .map(c -> entry(c, c.getPackage()))))
+                    .filter(e -> e.getValue().getName().startsWith(rootPackageName)).findFirst().orElse(null);
+            if (relatedType != null) {
+                log.debug("type is related to root package. type: {}, related by {}", type, relatedType.getKey());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static Stream<Class<?>> getInterfaces(Class<?> aClass) {
+        return stream(aClass.getInterfaces()).flatMap(i -> concat(Stream.of(i), getInterfaces(i))).distinct();
+    }
+
+    public static Package getPackage(Component component) {
+        return component != null ? component.getType().getPackage() : null;
+    }
+
+    @SafeVarargs
+    public static Map<ComponentsExtractor.ComponentKey, Component> mergeComponents(Collection<Component>... components) {
+        return of(components).flatMap(Collection::stream).collect(toMap(ComponentsExtractor.ComponentKey::newComponentKey, c -> c, (l, r) -> {
+            var lInterfaces = l.getInterfaces();
+            var lDependencies = l.getDependencies();
+            var rInterfaces = r.getInterfaces();
+            var rDependencies = r.getDependencies();
+            var dependencies = new LinkedHashSet<>(lDependencies);
+            dependencies.addAll(rDependencies);
+            var interfaces = mergeInterfaces(lInterfaces, rInterfaces);
+            return l.toBuilder().dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies))).interfaces(unmodifiableSet(interfaces)).build();
+        }, LinkedHashMap::new));
+    }
+
+    @SafeVarargs
+    public static LinkedHashSet<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
+        return of(interfaces).flatMap(Collection::stream).collect(toLinkedHashSet());
+    }
+
+    public static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {
+        return isMatchAny(type.getPackage().getName(), regExps);
+    }
+
+    public static boolean isMatchAny(String value, Set<String> regExps) {
+        return regExps.stream().anyMatch(value::matches);
+    }
+
+    public static Stream<String> toFilteredByName(Set<String> excludeBeanNames, Stream<String> beanDefinitionNames) {
+        if (!excludeBeanNames.isEmpty()) {
+            beanDefinitionNames = beanDefinitionNames.filter(beanName -> {
+                //log
+                return !isMatchAny(beanName, excludeBeanNames);
+            });
+        }
+        return beanDefinitionNames;
+    }
+
+    public static void handleError(String errMsg, String componentName, EvalException e, boolean failFast) {
+        if (failFast) {
+            log.error("{} {}", errMsg, componentName, e);
+            throw e;
+        } else if (log.isDebugEnabled()) {
+            log.debug("{} {}", errMsg, componentName, e);
+        } else {
+            log.info("{} {}, message '{}'", errMsg, componentName, e.getLocalizedMessage());
+        }
+    }
+
+    public static Stream<Component> flatDependencies(Component component) {
+        var dependencies = component.getDependencies();
+        return concat(Stream.of(component), dependencies != null ? dependencies.stream() : empty());
+    }
+
+    public static Component getComponentWithFilteredDependencies(Component component,
+                                                                 Map<ComponentsExtractor.ComponentKey, Component> componentsPerName) {
+        var dependencies = component.getDependencies();
+        return dependencies != null && !dependencies.isEmpty() ? component.toBuilder()
+                .dependencies(dependencies.stream()
+                        .filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency)))
+                        .collect(toLinkedHashSet()))
+                .build() : component;
+    }
+
+    public static Component newManagedDependency(String oName) {
+        return Component.builder().name(oName).build();
+    }
+
+    public static String getWebsocketInterfaceId(Interface.Direction direction, String uri) {
+        return direction + ":" + ws + ":" + uri;
+    }
+
+    public static Package getFieldType(Class<?> type) {
+        return type.isArray() ? getFieldType(type.getComponentType()) : type.getPackage();
     }
 }

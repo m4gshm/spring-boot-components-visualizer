@@ -32,7 +32,6 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ComponentsExtractor.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
@@ -63,109 +62,6 @@ public class ComponentsExtractor {
     public ComponentsExtractor(ConfigurableApplicationContext context, Options options) {
         this.context = context;
         this.options = options != null ? options : Options.DEFAULT;
-    }
-
-    public static Interface newInterface(JmsClient jmsClient) {
-        return Interface.builder().direction(jmsClient.direction).type(jms).name(jmsClient.destination).core(
-                JmsClient.Destination.builder().destination(jmsClient.destination).direction(jmsClient.direction).build()
-        ).build();
-    }
-
-    public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
-        if (rootPackageName != null) {
-            var relatedType = Stream.ofNullable(type)
-                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass)
-                            .map(c -> entry(c, c.getPackage()))))
-                    .filter(e -> e.getValue().getName().startsWith(rootPackageName)).findFirst().orElse(null);
-            if (relatedType != null) {
-                log.debug("type is related to root package. type: {}, related by {}", type, relatedType.getKey());
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static Stream<Class<?>> getInterfaces(Class<?> aClass) {
-        return stream(aClass.getInterfaces()).flatMap(i -> concat(Stream.of(i), getInterfaces(i))).distinct();
-    }
-
-    public static Package getPackage(Component component) {
-        return component != null ? component.getType().getPackage() : null;
-    }
-
-    @SafeVarargs
-    public static Map<ComponentKey, Component> mergeComponents(Collection<Component>... components) {
-        return of(components).flatMap(Collection::stream).collect(toMap(ComponentKey::newComponentKey, c -> c, (l, r) -> {
-            var lInterfaces = l.getInterfaces();
-            var lDependencies = l.getDependencies();
-            var rInterfaces = r.getInterfaces();
-            var rDependencies = r.getDependencies();
-            var dependencies = new LinkedHashSet<>(lDependencies);
-            dependencies.addAll(rDependencies);
-            var interfaces = mergeInterfaces(lInterfaces, rInterfaces);
-            return l.toBuilder().dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies))).interfaces(unmodifiableSet(interfaces)).build();
-        }, LinkedHashMap::new));
-    }
-
-    @SafeVarargs
-    public static LinkedHashSet<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
-        return of(interfaces).flatMap(Collection::stream).collect(toLinkedHashSet());
-    }
-
-    public static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {
-        return isMatchAny(type.getPackage().getName(), regExps);
-    }
-
-    public static boolean isMatchAny(String value, Set<String> regExps) {
-        return regExps.stream().anyMatch(value::matches);
-    }
-
-    public static Stream<String> toFilteredByName(Set<String> excludeBeanNames, Stream<String> beanDefinitionNames) {
-        if (!excludeBeanNames.isEmpty()) {
-            beanDefinitionNames = beanDefinitionNames.filter(beanName -> {
-                //log
-                return !isMatchAny(beanName, excludeBeanNames);
-            });
-        }
-        return beanDefinitionNames;
-    }
-
-    public static void handleError(String errMsg, String componentName, EvalException e, boolean failFast) {
-        if (failFast) {
-            log.error("{} {}", errMsg, componentName, e);
-            throw e;
-        } else if (log.isDebugEnabled()) {
-            log.debug("{} {}", errMsg, componentName, e);
-        } else {
-            log.info("{} {}, message '{}'", errMsg, componentName, e.getLocalizedMessage());
-        }
-    }
-
-    public static Stream<Component> flatDependencies(Component component) {
-        var dependencies = component.getDependencies();
-        return concat(Stream.of(component), dependencies != null ? dependencies.stream() : empty());
-    }
-
-    private static Component getComponentWithFilteredDependencies(Component component,
-                                                                  Map<ComponentKey, Component> componentsPerName) {
-        var dependencies = component.getDependencies();
-        return dependencies != null && !dependencies.isEmpty() ? component.toBuilder()
-                .dependencies(dependencies.stream()
-                        .filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency)))
-                        .collect(toLinkedHashSet()))
-                .build() : component;
-    }
-
-    private static Component newManagedDependency(String oName) {
-        return Component.builder().name(oName).build();
-    }
-
-    protected static String getWebsocketInterfaceId(Direction direction, String uri) {
-        return direction + ":" + ws + ":" + uri;
-    }
-
-    private static Package getFieldType(Class<?> type) {
-        return type.isArray() ? getFieldType(type.getComponentType()) : type.getPackage();
     }
 
     public Components getComponents() {
@@ -264,7 +160,7 @@ public class ComponentsExtractor {
 
             //log
             var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
-                    .stream().map(ComponentsExtractor::newInterface).collect(toList());
+                    .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 
             //log
             var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
@@ -413,7 +309,7 @@ public class ComponentsExtractor {
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(componentName, componentType, context);
 
-            return jmsClients.stream().map(ComponentsExtractor::newInterface).collect(toLinkedHashSet());
+            return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
 
         } catch (EvalException e) {
             handleError("jms client getting error, component", componentName, e, options.failFast);
