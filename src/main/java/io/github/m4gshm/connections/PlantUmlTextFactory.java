@@ -23,6 +23,7 @@ import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
 import static io.github.m4gshm.connections.UriUtils.subURI;
+import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -211,15 +212,15 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaces(IndentStringAppender out, String groupName, Map<Interface, List<Component>> interfaceRelations) {
-        if (isCollapseInterfaces(interfaceRelations)) {
+        if (isConcatenateInterfaces(interfaceRelations)) {
             printCollapsedInterfaces(out, groupName, interfaceRelations);
         } else {
             interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
         }
     }
 
-    protected boolean isCollapseInterfaces(Map<Interface, List<Component>> interfaceRelations) {
-        var collapseInterfacesMoreThan = options.getCollapseInterfacesMoreThan();
+    protected boolean isConcatenateInterfaces(Map<Interface, List<Component>> interfaceRelations) {
+        var collapseInterfacesMoreThan = options.getConcatenateInterfacesMoreThan();
         return collapseInterfacesMoreThan != null && interfaceRelations.size() > collapseInterfacesMoreThan;
     }
 
@@ -356,13 +357,14 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printPackageComponents(IndentStringAppender out, Package pack, Package parentPackage) {
-        var components = pack.getComponents();
-        if (isCollapseComponents(pack, parentPackage)) {
-            printCollapsedComponents(out, pack.getPath(), components);
-        } else if (components != null) {
-            for (var component : components) {
-                printComponent(out, component);
-            }
+        var collapseComponentGroup = groupCollapseComponents(pack, parentPackage);
+        printCollapsedComponents(out, pack, collapseComponentGroup.getConcatenation());
+        printDistinctComponents(out, collapseComponentGroup.getDistinct());
+    }
+
+    protected void printDistinctComponents(IndentStringAppender out, Collection<Component> components) {
+        if (components != null) for (var component : components) {
+            printComponent(out, component);
         }
     }
 
@@ -370,11 +372,29 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return options.isPrintPackageBorder();
     }
 
-    protected boolean isCollapseComponents(Package pack, Package parentPackage) {
+    protected CollapseComponentGroup groupCollapseComponents(Package pack, Package parentPackage) {
         var components = pack.getComponents();
-        return options.collapseComponentsMoreThan != null
-                && components != null
-                && components.size() > options.collapseComponentsMoreThan;
+        var componentGroupBuilder = CollapseComponentGroup.builder();
+        var concatenatePackageComponents = options.concatenatePackageComponents;
+        var moreThan = concatenatePackageComponents.moreThan;
+        if (moreThan != null && components != null && components.size() > moreThan) {
+            var ignoreInterfaceRelated = concatenatePackageComponents.ignoreInterfaceRelated;
+            if (ignoreInterfaceRelated) {
+                var grouped = components.stream().collect(groupingBy(c -> {
+                    var interfaces = c.getInterfaces();
+                    return !(interfaces == null || interfaces.isEmpty());
+                }, toLinkedHashSet()));
+                var distinct = grouped.get(true);
+                var concatenation = grouped.get(false);
+                componentGroupBuilder.distinct(distinct != null ? distinct : Set.of());
+                componentGroupBuilder.concatenation(concatenation != null ? concatenation : Set.of());
+            } else {
+                componentGroupBuilder.concatenation(components);
+            }
+        } else {
+            componentGroupBuilder.distinct(components);
+        }
+        return componentGroupBuilder.build();
     }
 
     protected void printPackages(IndentStringAppender out, List<Package> packages, Package parentPackage) {
@@ -544,8 +564,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         printedComponents.add(component);
     }
 
-    protected void printCollapsedComponents(IndentStringAppender out, String packageId,
-                                            Collection<Component> components) {
+    protected void printCollapsedComponents(IndentStringAppender out, Package pack, Collection<Component> components) {
+        var packageId = pack.getPath();
         if (components == null || components.isEmpty()) {
             return;
         }
@@ -556,6 +576,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         for (var component : components) {
             collapsedComponents.put(component.getName(), collapsedComponentsId);
         }
+        printedComponents.addAll(components);
         out.append(format("collections \"%s\" as %s\n", text, collapsedComponentsId), false);
     }
 
@@ -695,6 +716,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     @Data
+    @Builder
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class CollapseComponentGroup {
+        @Builder.Default
+        Collection<Component> concatenation = Set.of();
+        @Builder.Default
+        Collection<Component> distinct = Set.of();
+    }
+
+    @Data
     @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class UnionStyle {
@@ -737,9 +768,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         Predicate<Type> supportGroups = type -> Set.of(http, jms, ws).contains(type);
 
         @Builder.Default
-        Integer collapseComponentsMoreThan = 5;
+        ConcatenatePackageComponentsOptions concatenatePackageComponents = ConcatenatePackageComponentsOptions.DEFAULT;
         @Builder.Default
-        Integer collapseInterfacesMoreThan = 5;
+        Integer concatenateInterfacesMoreThan = 5;
 
         public static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
@@ -771,6 +802,17 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 default:
                     return direction.name();
             }
+        }
+
+        @Data
+        @Builder(toBuilder = true)
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
+        public static class ConcatenatePackageComponentsOptions {
+            public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder().build();
+            @Builder.Default
+            Integer moreThan = 5;
+            @Builder.Default
+            boolean ignoreInterfaceRelated = true;
         }
 
     }
