@@ -28,6 +28,6 @@ public class Component implements ComponentDependency {
     }
 
     public String getName() {
-        return isManaged() ? name : unmanagedInstance.getClass().getSimpleName();
+        return isManaged() ? name : /*todo must be unique, make incremental int sequence*/unmanagedInstance.getClass().getSimpleName();
     }
 }

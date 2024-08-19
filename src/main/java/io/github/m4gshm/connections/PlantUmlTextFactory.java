@@ -48,14 +48,15 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
     public static final String LINE_DOTTED = "line.dotted;";
-    private final String applicationName;
-    private final Options options;
-    @Getter
-    private final Map<String, String> collapsedComponents = new HashMap<>();
-    //    private final Map<String, String> collapsedInterfaces = new HashMap<>();
-    private final Map<String, Set<String>> printedComponentRelations = new HashMap<>();
-    private final Map<String, Set<String>> printedInterfaceRelations = new HashMap<>();
-    private final Map<String, Object> uniques = new HashMap<>();
+
+    protected final String applicationName;
+    protected final Options options;
+    protected final Map<String, String> collapsedComponents = new HashMap<>();
+    //    protected final Map<String, String> collapsedInterfaces = new HashMap<>();
+    protected final Map<String, Set<String>> printedCollapsedComponentRelations = new HashMap<>();
+    protected final Map<String, Set<String>> printedInterfaceRelations = new HashMap<>();
+    protected final Map<String, Object> uniques = new HashMap<>();
+    protected final Set<Component> printedComponents = new LinkedHashSet<>();
 
     public PlantUmlTextFactory(String applicationName) {
         this(applicationName, null);
@@ -346,20 +347,23 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printPackage(IndentStringAppender out, Package pack, Package parentPackage) {
-        var packPath = pack.getPath();
-        var style = options.getPackagePathAggregate().apply(packPath);
-        printUnion(out, isPrintBorder(pack, parentPackage) ? pack.getName() : null, packPath, style, () -> {
-            var components = pack.getComponents();
-            if (isCollapseComponents(pack, parentPackage)) {
-                printCollapsedComponents(out, packPath, components);
-            } else if (components != null) {
-                for (var component : components) {
-                    printComponent(out, component);
-                }
-            }
+        var style = options.getPackagePathAggregate().apply(pack.getPath());
+        printUnion(out, isPrintBorder(pack, parentPackage) ? pack.getName() : null, pack.getPath(), style, () -> {
+            printPackageComponents(out, pack, parentPackage);
             var packages = pack.getPackages();
             if (packages != null) printPackages(out, packages, pack);
         });
+    }
+
+    protected void printPackageComponents(IndentStringAppender out, Package pack, Package parentPackage) {
+        var components = pack.getComponents();
+        if (isCollapseComponents(pack, parentPackage)) {
+            printCollapsedComponents(out, pack.getPath(), components);
+        } else if (components != null) {
+            for (var component : components) {
+                printComponent(out, component);
+            }
+        }
     }
 
     protected boolean isPrintBorder(Package pack, Package parentPackage) {
@@ -479,6 +483,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                            Interface anInterface, Component component) {
         var type = anInterface.getType();
         var componentName = component.getName();
+        if (!printedComponents.contains(component)) {
+            //log
+            return;
+        }
         var collapsedComponentId = checkCollapsedName(componentName);
         var collapsedComponent = !componentName.equals(collapsedComponentId);
         var componentId = collapsedComponent ? collapsedComponentId : plantUmlAlias(componentName);
@@ -533,6 +541,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var componentId = plantUmlAlias(componentName);
         checkUniqueId(componentId, component);
         out.append(format("component %s as %s\n", componentName, componentId));
+        printedComponents.add(component);
     }
 
     protected void printCollapsedComponents(IndentStringAppender out, String packageId,
@@ -615,6 +624,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printComponentReferences(IndentStringAppender out, Component component) {
+        if (!printedComponents.contains(component)) {
+            return;
+        }
         var componentName = component.getName();
         var collapsedComponentName = checkCollapsedName(componentName);
         var collapsed = !collapsedComponentName.equals(componentName);
@@ -623,13 +635,17 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var dependencyName = checkCollapsedName(dependency.getName());
             var selfLink = collapsedComponentName.equals(dependencyName);
             var renderedRelation = format("%s ..> %s\n", plantUmlAlias(collapsedComponentName), plantUmlAlias(dependencyName));
-            var alreadyPrinted = printedComponentRelations.getOrDefault(collapsedComponentName, Set.of()).contains(dependencyName);
+            var alreadyPrinted = printedCollapsedComponentRelations
+                    .getOrDefault(collapsedComponentName, Set.of())
+                    .contains(dependencyName);
 
             var render = !collapsed || (selfLink
                     ? options.reduceInnerCollapsedElementRelations && !alreadyPrinted
                     : options.reduceCollapsedElementRelations && !alreadyPrinted);
             if (render) {
-                printedComponentRelations.computeIfAbsent(collapsedComponentName, k -> new HashSet<>()).add(dependencyName);
+                printedCollapsedComponentRelations
+                        .computeIfAbsent(collapsedComponentName, k -> new HashSet<>())
+                        .add(dependencyName);
                 out.append(renderedRelation);
             }
         }
