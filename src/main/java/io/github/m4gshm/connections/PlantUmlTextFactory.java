@@ -57,6 +57,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected final String applicationName;
     protected final Options options;
     protected final Map<String, String> concatenatedComponents = new HashMap<>();
+    protected final Map<String, String> concatenatedInterfaces = new HashMap<>();
     protected final Map<String, Set<String>> printedConcatenatedComponentRelations = new HashMap<>();
     protected final Map<String, Set<String>> printedInterfaceRelations = new HashMap<>();
     protected final Map<String, Object> uniques = new HashMap<>();
@@ -154,7 +155,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaces(IndentStringAppender out, String directionName, String directionGroupTypeId, Type type,
-                                 Map<Interface, List<Component>> interfaceRelations) {
+                                   Map<Interface, List<Component>> interfaceRelations) {
         var group = isInterfacesSupportGroups(directionName, type);
         if (group) {
             if (type == http && options.htmlGroupByUrlPath) {
@@ -164,7 +165,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
                 printHttpMethodGroup(out, directionGroupTypeId, finalGroup, unionStyle, interfaceRelations, httpMethods);
             } else {
-                printGroupedInterfaces(out, directionName, type, interfaceRelations);
+                printGroupedInterfaces(out, directionName, type, groupInterfacesByComponents(interfaceRelations));
             }
         } else {
             printInterfaces(out, directionGroupTypeId, interfaceRelations);
@@ -176,11 +177,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printGroupedInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
-                                          Map<Interface, List<Component>> interfaceRelations) {
+                                          Map<String, Map<Interface, List<Component>>> groupedInterfaceRelations) {
         var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
-        var groupedInterfaces = groupInterfacesByComponents(interfaceRelations);
-        groupedInterfaces.forEach((group, interfaceRelationsOfGroup) -> {
-            var groupName = interfaceRelationsOfGroup.size() > 1 ? group : null;
+        groupedInterfaceRelations.forEach((groupName, interfaceRelationsOfGroup) -> {
             var groupId = getElementId(directionGroupTypeId, type.code, groupName);
             printUnion(out, groupName, groupId, unionStyle, () -> {
                 printInterfaces(out, groupName, interfaceRelationsOfGroup);
@@ -322,11 +321,17 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printPackage(IndentStringAppender out, Package pack, Package parentPackage) {
         var style = options.getPackagePathAggregate().apply(pack.getPath());
-        printUnion(out, isPrintBorder(pack, parentPackage) ? pack.getName() : null, pack.getPath(), style, () -> {
+        final Runnable printRoutine = () -> {
             printPackageComponents(out, pack, parentPackage);
             var packages = pack.getPackages();
             if (packages != null) printPackages(out, packages, pack);
-        });
+        };
+        var printBorder = isPrintBorder(pack, parentPackage);
+        if (printBorder) {
+            printUnion(out, pack.getName(), pack.getPath(), style, printRoutine);
+        } else {
+            printRoutine.run();
+        }
     }
 
     protected void printPackageComponents(IndentStringAppender out, Package pack, Package parentPackage) {
@@ -494,7 +499,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var concatenatedComponentId = getComponentName(componentName);
         var concatenatedComponent = !componentName.equals(concatenatedComponentId);
         var componentId = concatenatedComponent ? concatenatedComponentId : plantUmlAlias(componentName);
-        var printed = concatenatedComponent && printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
+        var printed = options.reduceDuplicatedElementRelations && printedInterfaceRelations
+                .getOrDefault(componentId, Set.of()).contains(interfaceId);
         if (printed) {
             return;
         }
@@ -573,9 +579,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var text = interfaces.keySet().stream().map(Interface::getName)
                 .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
         var concatenatedId = getElementId(parentId, "interfaces");
-        checkUniqueId(concatenatedId, "parent:" + parentId);
+
+        checkUniqueId(concatenatedId, "interfaces of " + parentId);
         out.append(format("collections \"%s\" as %s\n", text, concatenatedId), false);
-        interfaces.forEach((anInterface, components) -> printInterfaceReferences(out, anInterface, concatenatedId, components));
+
+        interfaces.forEach((anInterface, components) -> {
+            var interfaceId = getInterfaceId(anInterface);
+            //todo may be deleted
+            concatenatedInterfaces.put(interfaceId, concatenatedId);
+            printInterfaceReferences(out, anInterface, concatenatedId, components);
+        });
     }
 
     protected Stream<Package> mergeSubPack(Package pack) {
@@ -648,7 +661,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected void printComponentReference(IndentStringAppender out, Component component, Component dependency) {
         var check = checkComponentName(component);
         var dependencyName = checkComponentName(dependency).getComponentName();
-        if (isNotRendered(check, dependencyName)) {
+        if (canRenderRelation(check.getComponentName(), dependencyName)) {
             var finalComponentName = check.getComponentName();
             printedConcatenatedComponentRelations
                     .computeIfAbsent(finalComponentName, k -> new HashSet<>())
@@ -658,14 +671,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    protected boolean isNotRendered(ComponentNameCheck check, String dependencyName) {
-        var finalComponentName = check.getComponentName();
-        var alreadyPrinted = isAlreadyPrinted(finalComponentName, dependencyName);
-        var selfLink = finalComponentName.equals(dependencyName);
-        return !check.isConcatenated() || (selfLink
-                ? options.reduceInnerConcatenatedElementRelations && !alreadyPrinted
-                : !(options.reduceConcatenatedElementRelations && alreadyPrinted)
-        );
+    protected boolean canRenderRelation(String componentName, String dependencyName) {
+        return !(options.reduceDuplicatedElementRelations && isAlreadyPrinted(componentName, dependencyName));
     }
 
     protected boolean isAlreadyPrinted(String finalComponentName, String dependencyName) {
@@ -772,9 +779,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         public static final Options DEFAULT = Options.builder().build();
         String head, bottom;
         @Builder.Default
-        boolean reduceConcatenatedElementRelations = false;
-        @Builder.Default
-        boolean reduceInnerConcatenatedElementRelations = true;
+        boolean reduceDuplicatedElementRelations = false;
         @Builder.Default
         boolean printPackageBorder = true;
         //debug option
@@ -843,7 +848,5 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             @Builder.Default
             boolean ignoreInterfaceRelated = true;
         }
-
     }
-
 }
