@@ -27,8 +27,8 @@ service2FeignClient" as service1.service.external.rest.components
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component userRepository as userRepository
       component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository
@@ -44,12 +44,12 @@ coreService ..> documentRepository
 jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
-    note right of internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.: auth.user
-    internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .... userRepository
     entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
     note right of internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.: simple_entity
     internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .... simpleEntityRepository
+    entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+    note right of internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.: auth.user
+    internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .... userRepository
     entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
     note right of internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.: documentEntity
     internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .... documentRepository

@@ -15,7 +15,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.util.function.Function;
 
+import static io.github.m4gshm.connections.PlantUmlTextFactory.HtmlMethodsGroupBy.path;
 import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
@@ -50,10 +52,7 @@ public class SchemaGeneratorTest {
                             .moreThan(2)
                             .ignoreInterfaceRelated(false)
                             .build())
-//                    .concatenateInterfacesMoreThan(3)
-                    .htmlGroupByUrlPath(true)
-//                    .groupPackages(false)
-//                    .head("skinparam linetype polyline\n")
+                    .htmlMethodsGroupBy(directionGroup -> path)
                     .build();
         }
 

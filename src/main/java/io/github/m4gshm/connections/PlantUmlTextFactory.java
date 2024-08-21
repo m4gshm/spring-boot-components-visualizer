@@ -13,12 +13,14 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -127,25 +129,24 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                         .flatMap(Collection::stream)
                         .map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component)))
                 )
-                .collect(groupingBy(directionEntryEntry -> options.directionName.apply(directionEntryEntry.getKey()),
+                .collect(groupingBy(directionEntryEntry -> options.directionGroup.apply(directionEntryEntry.getKey()),
                         mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
                                 groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList()))))
                 ));
 
-        var directionNames = stream(Direction.values()).map(options.getDirectionName()).distinct().collect(toList());
-        for (var directionName : directionNames) {
-            var byType = groupedInterfaces.getOrDefault(directionName, Map.of());
+        var directionGroups = stream(Direction.values()).map(options.getDirectionGroup()).distinct().collect(toList());
+        for (var directionGroup : directionGroups) {
+            var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
             if (!byType.isEmpty()) {
-                var directionGroupStyle = options.getDirectionGroupAggregate().apply(directionName);
-                var directionGroupPackageName = directionName.isBlank() ? null : directionName;
-                printUnion(out, directionGroupPackageName, directionName, directionGroupStyle, () -> {
+                var directionGroupStyle = options.getDirectionGroupAggregate().apply(directionGroup);
+                var directionGroupName = directionGroup == null ? null : directionGroup.name();
+                printUnion(out, directionGroupName, directionGroupName, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
                         var interfaceRelations = Optional.<Map<Interface, List<Component>>>ofNullable(
                                 byType.get(type)).orElse(Map.of());
                         if (!interfaceRelations.isEmpty()) {
-                            var directionGroupTypeId = getElementId(directionName, type.code);
-                            printUnion(out, type.code, directionGroupTypeId, options.getInterfaceAggregate().apply(type), () -> {
-                                printInterfaces(out, directionName, directionGroupTypeId, type, interfaceRelations);
+                            printUnion(out, type.code, getDirectionGroupTypeId(directionGroup, type), options.getInterfaceAggregate().apply(directionGroup, type), () -> {
+                                printInterfaces(out, directionGroup, type, interfaceRelations);
                             });
                         }
                     }
@@ -154,43 +155,48 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    protected void printInterfaces(IndentStringAppender out, String directionName, String directionGroupTypeId, Type type,
+    protected String getDirectionGroupTypeId(DirectionGroup directionGroup, Type type) {
+        return getElementId(directionGroup == null ? null : directionGroup.name(), type.code);
+    }
+
+    protected void printInterfaces(IndentStringAppender out, DirectionGroup directionGroup, Type type,
                                    Map<Interface, List<Component>> interfaceRelations) {
-        var group = isInterfacesSupportGroups(directionName, type);
+        var directionGroupTypeId = getDirectionGroupTypeId(directionGroup, type);
+        var group = isInterfacesSupportGroups(directionGroup, type);
         if (group) {
-            if (type == http && options.htmlGroupByUrlPath) {
+            if (type == http && options.htmlMethodsGroupBy.apply(directionGroup) == HtmlMethodsGroupBy.path) {
                 //merge by url parts
                 var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations);
                 var finalGroup = groupByUrlParts(httpMethods);
-                var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
+                var unionStyle = options.getInterfaceSubgroupAggregate().apply(directionGroup, type);
                 printHttpMethodGroup(out, directionGroupTypeId, finalGroup, unionStyle, interfaceRelations, httpMethods);
             } else {
-                printGroupedInterfaces(out, directionName, type, groupInterfacesByComponents(interfaceRelations));
+                printGroupedInterfaces(out, directionGroup, type, groupInterfacesByComponents(interfaceRelations));
             }
         } else {
             printInterfaces(out, directionGroupTypeId, interfaceRelations);
         }
     }
 
-    protected boolean isInterfacesSupportGroups(String directionName, Type type) {
-        return options.supportGroups.test(directionName, type);
+    protected boolean isInterfacesSupportGroups(DirectionGroup directionGroup, Type type) {
+        return options.supportGroups.test(directionGroup, type);
     }
 
-    protected void printGroupedInterfaces(IndentStringAppender out, String directionGroupTypeId, Type type,
+    protected void printGroupedInterfaces(IndentStringAppender out, DirectionGroup directionGroup, Type type,
                                           Map<String, Map<Interface, List<Component>>> groupedInterfaceRelations) {
-        var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
+        var unionStyle = options.getInterfaceSubgroupAggregate().apply(directionGroup, type);
         groupedInterfaceRelations.forEach((groupName, interfaceRelationsOfGroup) -> {
-            var groupId = getElementId(directionGroupTypeId, type.code, groupName);
+            var groupId = getElementId(getDirectionGroupTypeId(directionGroup, type), groupName);
             printUnion(out, groupName, groupId, unionStyle, () -> {
                 printInterfaces(out, groupName, interfaceRelationsOfGroup);
             });
         });
     }
 
-    protected void printInterfaces(IndentStringAppender out, String groupName,
+    protected void printInterfaces(IndentStringAppender out, String parentId,
                                    Map<Interface, List<Component>> interfaceRelations) {
         if (isConcatenateInterfaces(interfaceRelations)) {
-            printConcatenatedInterfaces(out, groupName, interfaceRelations);
+            printConcatenatedInterfaces(out, parentId, interfaceRelations);
         } else {
             interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
         }
@@ -436,7 +442,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             );
         }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
 
-        printInterfaces(out, group.getName(), groupInterfaces);
+        printInterfaces(out, groupId, groupInterfaces);
 
         var subGroups = group.getGroups();
         if (subGroups != null) for (var subGroup : subGroups.values()) {
@@ -708,6 +714,18 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     @Getter
     @RequiredArgsConstructor
+    public enum HtmlMethodsGroupBy {
+        path, component
+    }
+
+    @Getter
+    @RequiredArgsConstructor
+    public enum DirectionGroup {
+        input, output, internal
+    }
+
+    @Getter
+    @RequiredArgsConstructor
     public enum UnionBorder {
         rectangle,
         pack("package"),
@@ -788,19 +806,19 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder.Default
         Map<String, List<String>> idCharReplaces = DEFAULT_ESCAPES;
         @Builder.Default
-        Function<Direction, String> directionName = Options::defaultDirectionName;
+        Function<Direction, DirectionGroup> directionGroup = Options::defaultDirectionName;
         @Builder.Default
-        Function<String, UnionStyle> directionGroupAggregate = directionGroup -> newAggregateStyle(cloud, LINE_DOTTED_LINE_GRAY);
+        Function<DirectionGroup, UnionStyle> directionGroupAggregate = directionGroup -> newAggregateStyle(cloud, LINE_DOTTED_LINE_GRAY);
         @Builder.Default
-        Function<Type, UnionStyle> interfaceAggregate = type -> newAggregateStyle(getAggregate(type));
+        BiFunction<DirectionGroup, Type, UnionStyle> interfaceAggregate = (directionGroup, type) -> newAggregateStyle(getAggregate(type));
         @Builder.Default
-        Function<Type, UnionStyle> interfaceSubgroupAggregate = type -> newAggregateStyle(frame, LINE_DOTTED_TEXT_GRAY);
+        BiFunction<DirectionGroup, Type, UnionStyle> interfaceSubgroupAggregate = (directionGroup, type) -> newAggregateStyle(frame, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
         Function<String, UnionStyle> packagePathAggregate = path -> newAggregateStyle(pack, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
-        BiPredicate<String, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
+        BiPredicate<DirectionGroup, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
         @Builder.Default
-        boolean htmlGroupByUrlPath = true;
+        Function<DirectionGroup, HtmlMethodsGroupBy> htmlMethodsGroupBy = directionGroup -> HtmlMethodsGroupBy.path;
         @Builder.Default
         ConcatenatePackageComponentsOptions concatenatePackageComponents = ConcatenatePackageComponentsOptions.DEFAULT;
         @Builder.Default
@@ -824,17 +842,17 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return rectangle;
         }
 
-        public static String defaultDirectionName(Direction direction) {
+        public static DirectionGroup defaultDirectionName(Direction direction) {
             switch (direction) {
                 case in:
-                    return DIRECTION_INPUT;
+                    return input;
                 case out:
                 case outIn:
-                    return DIRECTION_OUTPUT;
+                    return output;
                 case undefined:
-                    return "";
+                    return null;
                 default:
-                    return direction.name();
+                    return internal;
             }
         }
 
