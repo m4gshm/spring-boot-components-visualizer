@@ -404,10 +404,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                         Map<HttpMethod, Interface> httpMethods) {
         var methods = group.getMethods();
         var subGroups = group.getGroups();
+        var groupId = getElementId(parentGroupId, group.getName());
         if ((subGroups == null || subGroups.isEmpty()) && methods != null && methods.size() == 1) {
-            printInterfaceAndSubgroups(out, parentGroupId, group, style, interfaceComponentLink, httpMethods);
+            printInterfaceAndSubgroups(out, groupId, group, style, interfaceComponentLink, httpMethods);
         } else {
-            var groupId = getElementId(parentGroupId, group.getName(), "group");
             printUnion(out, group.getName(), groupId, style, () -> printInterfaceAndSubgroups(
                     out, groupId, group, style, interfaceComponentLink, httpMethods)
             );
