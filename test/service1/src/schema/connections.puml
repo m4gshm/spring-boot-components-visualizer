@@ -27,38 +27,43 @@ service2FeignClient" as service1.service.external.rest.components
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component userRepository as userRepository
       component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository
     }
   }
 }
-mainController ....> coreService
-coreService ....> service1.service.external.rest.components
-coreService ....> service1.service.external.rest.components
-coreService ....> service1.service.external.rest.components
-coreService ....> simpleEntityRepository
-coreService ....> documentRepository
-jmsQueueListener ....> coreService
+mainController ..> coreService
+coreService ..> service1.service.external.rest.components
+coreService ..> service1.service.external.rest.components
+coreService ..> service1.service.external.rest.components
+coreService ..> simpleEntityRepository
+coreService ..> documentRepository
+jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    collections "service1.db.jpa.model.UserEntity\n\
-service1.db.jpa.model.SimpleEntity\n\
-service1.db.mongo.model.DocumentEntity" as internal.storage.interfaces
-    internal.storage.interfaces .... userRepository
-    internal.storage.interfaces .... simpleEntityRepository
-    internal.storage.interfaces .... documentRepository
+    entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+    note right of internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.: simple_entity
+    internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .... simpleEntityRepository
+    entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+    note right of internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.: auth.user
+    internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .... userRepository
+    entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+    note right of internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.: documentEntity
+    internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .... documentRepository
   }
 }
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
-    frame "/api/v1" #line.dotted;text:gray {
-      interface "*:/" as in....api.v1.
+    frame "/api/v1" as .api.v1 #line.dotted;text:gray {
+      interface "*:" as in....api.v1.
       in....api.v1. )....> mainController
-      interface "GET:/req" as in.GET..api.v1.req
-      in.GET..api.v1.req )....> mainController
+      interface "GET:/load" as in.GET..api.v1.load
+      in.GET..api.v1.load )....> mainController
+      interface "POST:/put" as in.POST..api.v1.put
+      in.POST..api.v1.put )....> mainController
     }
   }
   rectangle "web socket" as input.websocket {
@@ -69,35 +74,35 @@ cloud "input" as input #line.dotted;line:gray; {
     interface "default" as in.default.in
     in.default.in )....> jmsQueueService
     frame "jmsQueueListener" as input.jms.jms.jmsQueueListener #line.dotted;text:gray {
-      interface "queue2" as in.queue2.in
-      in.queue2.in )....> jmsQueueListener
       interface "queue1" as in.queue1.in
       in.queue1.in )....> jmsQueueListener
+      interface "queue2" as in.queue2.in
+      in.queue2.in )....> jmsQueueListener
     }
   }
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:standalone-service2/{id}" as out.GET.standalone.service2..id.
+    interface "GET:/standalone-service2" as out.GET.standalone.service2..id.
     service1.service.external.rest.components ....( out.GET.standalone.service2..id.
-    frame "http://service2" #line.dotted;text:gray {
-      interface "GET:/{id}" as out.GET.http...service2..id.
-      service1.service.external.rest.components ....( out.GET.http...service2..id.
+    frame "http://service2" as http...service2 #line.dotted;text:gray {
       interface "GET:" as out.GET.http...service2
       service1.service.external.rest.components ....( out.GET.http...service2
+      interface "GET:/{id}" as out.GET.http...service2..id.
+      service1.service.external.rest.components ....( out.GET.http...service2..id.
     }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://service-property-injected\n\
-ws://defaultURI-static\n\
-ws://currentURI-supplier\n\
-ws://currentURI-method\n\
-ws://service2-value-inject\n\
+      collections "ws://service-template\n\
 ws://service-template/{id}/\n\
-ws://service3\n\
 ws://service2\n\
-ws://service-template" as service2StreamClientImpl.interfaces
+ws://service3\n\
+ws://service2-value-inject\n\
+ws://defaultURI-static\n\
+ws://currentURI-method\n\
+ws://currentURI-supplier\n\
+ws://service-property-injected" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
@@ -111,15 +116,15 @@ ws://service-template" as service2StreamClientImpl.interfaces
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jms.jmsQueueService #line.dotted;text:gray {
-      collections "jmsQueue\n\
-jms-private-queue\n\
-jmsQueueEvents\n\
-jmsQueueEvents2" as jmsQueueService.interfaces
-      jmsQueueService ....> jmsQueueService.interfaces
-      jmsQueueService <.... jmsQueueService.interfaces
-      jmsQueueService ....> jmsQueueService.interfaces
-      jmsQueueService ....> jmsQueueService.interfaces
-      jmsQueueService ....> jmsQueueService.interfaces
+      interface "jmsQueue" as outIn.jmsQueue.outIn
+      jmsQueueService ....> outIn.jmsQueue.outIn
+      jmsQueueService <.... outIn.jmsQueue.outIn
+      interface "jmsQueueEvents" as out.jmsQueueEvents.out
+      jmsQueueService ....> out.jmsQueueEvents.out
+      interface "jmsQueueEvents2" as out.jmsQueueEvents2.out
+      jmsQueueService ....> out.jmsQueueEvents2.out
+      interface "jms-private-queue" as out.jms.private.queue.out
+      jmsQueueService ....> out.jms.private.queue.out
     }
   }
 }

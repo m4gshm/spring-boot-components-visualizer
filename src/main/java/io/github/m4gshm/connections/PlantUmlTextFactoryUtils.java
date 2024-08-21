@@ -10,10 +10,9 @@ import java.util.List;
 @UtilityClass
 public class PlantUmlTextFactoryUtils {
 
-    public static HttpMethodsGroup newEmptyGroup(String part, String path) {
+    public static HttpMethodsGroup newEmptyGroup(String name) {
         return HttpMethodsGroup.builder()
-                .part(part)
-                .path(path)
+                .name(name)
                 .groups(new LinkedHashMap<>())
                 .build();
     }

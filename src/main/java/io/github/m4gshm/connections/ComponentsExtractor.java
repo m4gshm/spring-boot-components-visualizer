@@ -180,9 +180,10 @@ public class ComponentsExtractor {
                     .flatMap(client -> ofNullable(client.getHttpMethods()).filter(Objects::nonNull)
                             .flatMap(Collection::stream).map(httpMethod -> {
                                 var clientUrl = client.getUrl();
-                                var methodUrl = httpMethod.getUrl();
+                                var methodUrl = httpMethod.getPath();
                                 if (clientUrl != null && !clientUrl.startsWith(methodUrl)) {
-                                    httpMethod = httpMethod.toBuilder().url(joinURI(clientUrl, methodUrl)).build();
+                                    var joinURI = joinURI(clientUrl, methodUrl);
+                                    httpMethod = httpMethod.toBuilder().path(joinURI).build();
                                 }
                                 return Interface.builder().direction(out).type(http).core(httpMethod).build();
                             })).collect(toList());
@@ -392,7 +393,6 @@ public class ComponentsExtractor {
 
     protected Stream<Component> getWebsocketComponents(String wsUrl, Object wsHandler, Package rootPackage,
                                                        Map<String, Set<Component>> cache) {
-
         var anInterface = Interface.builder()
                 .direction(in)
                 .type(ws)
@@ -455,7 +455,6 @@ public class ComponentsExtractor {
 
     protected Set<Component> getUnmanagedDependencies(Class<?> componentType, Object unmanagedInstance,
                                                       Map<Object, Set<Component>> touched) {
-
         if (isIgnoreUnmanagedTypes(componentType)) {
             //log trace
             return Set.of();

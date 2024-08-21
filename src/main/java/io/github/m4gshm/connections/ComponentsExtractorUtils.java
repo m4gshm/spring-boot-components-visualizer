@@ -157,7 +157,7 @@ public class ComponentsExtractorUtils {
         return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream().flatMap(requestMapping -> {
             var methods = getHttpMethods(requestMapping);
             return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
-                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().url(path).method(method).build()));
+                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().path(path).method(method).build()));
         }).collect(toCollection(LinkedHashSet::new));
     }
 
@@ -239,7 +239,7 @@ public class ComponentsExtractorUtils {
                 var template = metadata.template();
                 var method = template.method();
                 var url = template.url();
-                return HttpMethod.builder().method(method).url(url).build();
+                return HttpMethod.builder().method(method).path(url).build();
             }).collect(toList());
 
             var type = target.type();

@@ -80,7 +80,7 @@ public class RestOperationsUtils {
         }
 
         var url = String.valueOf(arguments[0].getResult());
-        return HttpMethod.builder().method(httpMethod).url(url).build();
+        return HttpMethod.builder().method(httpMethod).path(url).build();
     }
 
     private static String getHttpMethod(String methodName) {
