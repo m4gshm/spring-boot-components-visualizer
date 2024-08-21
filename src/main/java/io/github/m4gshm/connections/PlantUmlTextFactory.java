@@ -153,24 +153,21 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    private void printInterfaces(IndentStringAppender out, String directionName, String groupName, Type type,
+    protected void printInterfaces(IndentStringAppender out, String directionName, String directionGroupTypeId, Type type,
                                  Map<Interface, List<Component>> interfaceRelations) {
         var group = isInterfacesSupportGroups(directionName, type);
-        if (type == http) {
-            if (group) {
+        if (group) {
+            if (type == http && options.htmlGroupByUrlPath) {
                 //merge by url parts
                 var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations);
-                var finalGroup = options.htmlGroupBy == Options.HtmlGroupBy.url
-                        ? groupByUrlParts(httpMethods) : groupByUrlParts(httpMethods);
+                var finalGroup = groupByUrlParts(httpMethods);
                 var unionStyle = options.getInterfaceSubgroupAggregate().apply(type);
-                printHttpMethodGroup(out, null, finalGroup, unionStyle, interfaceRelations, httpMethods);
+                printHttpMethodGroup(out, directionGroupTypeId, finalGroup, unionStyle, interfaceRelations, httpMethods);
             } else {
-                printInterfaces(out, groupName, interfaceRelations);
+                printGroupedInterfaces(out, directionName, type, interfaceRelations);
             }
-        } else if (group) {
-            printGroupedInterfaces(out, groupName, type, interfaceRelations);
         } else {
-            printInterfaces(out, groupName, interfaceRelations);
+            printInterfaces(out, directionGroupTypeId, interfaceRelations);
         }
     }
 
@@ -191,7 +188,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         });
     }
 
-    protected void printInterfaces(IndentStringAppender out, String groupName, Map<Interface, List<Component>> interfaceRelations) {
+    protected void printInterfaces(IndentStringAppender out, String groupName,
+                                   Map<Interface, List<Component>> interfaceRelations) {
         if (isConcatenateInterfaces(interfaceRelations)) {
             printConcatenatedInterfaces(out, groupName, interfaceRelations);
         } else {
@@ -252,20 +250,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             out.append("}\n");
         }
     }
-
-//    protected HttpMethodsGroup groupByComponents(Map<Interface, List<Component>> interfaceRelations, Map<HttpMethod, Interface> httpMethods) {
-//        var groupedByComponents = httpMethods.entrySet().stream().collect(groupingBy(e -> {
-//            return interfaceRelations.get(e.getValue());
-//        }, mapping(Entry::getKey, toLinkedHashSet())));
-//
-//        var rootGroup = HttpMethodsGroup.builder().groups(groupedByComponents.entrySet().stream().map(e -> {
-//            var components = e.getKey();
-//            var groupPath = components.stream().map(Component::getName).reduce("", (l, r) -> (l.isBlank() ? "" : l + ",") + r);
-//            var value = e.getValue();
-//            return HttpMethodsGroup.builder().path(groupPath).methods(value).build();
-//        }).collect(toMap(HttpMethodsGroup::getPath, g -> g))).build();
-//        return rootGroup;
-//    }
 
     protected Map<HttpMethod, Interface> extractHttpMethodsFromInterfaces(Map<Interface, List<Component>> interfaceRelations) {
         return interfaceRelations.keySet().stream().map(anInterface -> {
@@ -420,12 +404,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                         Map<HttpMethod, Interface> httpMethods) {
         var methods = group.getMethods();
         var subGroups = group.getGroups();
-        if (subGroups.isEmpty() && methods != null && methods.size() == 1) {
+        if ((subGroups == null || subGroups.isEmpty()) && methods != null && methods.size() == 1) {
             printInterfaceAndSubgroups(out, parentGroupId, group, style, interfaceComponentLink, httpMethods);
         } else {
-            var groupId = getElementId(parentGroupId, group.getName());
-            printUnion(out, group.getName(), groupId, style,
-                    () -> printInterfaceAndSubgroups(out, groupId, group, style, interfaceComponentLink, httpMethods)
+            var groupId = getElementId(parentGroupId, group.getName(), "group");
+            printUnion(out, group.getName(), groupId, style, () -> printInterfaceAndSubgroups(
+                    out, groupId, group, style, interfaceComponentLink, httpMethods)
             );
         }
     }
@@ -449,7 +433,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
         printInterfaces(out, group.getName(), groupInterfaces);
 
-        for (var subGroup : group.getGroups().values()) {
+        var subGroups = group.getGroups();
+        if (subGroups != null) for (var subGroup : subGroups.values()) {
             printHttpMethodGroup(out, groupId, subGroup, style, interfaceComponentLink, httpMethods);
         }
     }
@@ -810,7 +795,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder.Default
         BiPredicate<String, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
         @Builder.Default
-        HtmlGroupBy htmlGroupBy = HtmlGroupBy.url;
+        boolean htmlGroupByUrlPath = true;
         @Builder.Default
         ConcatenatePackageComponentsOptions concatenatePackageComponents = ConcatenatePackageComponentsOptions.DEFAULT;
         @Builder.Default
@@ -846,10 +831,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 default:
                     return direction.name();
             }
-        }
-
-        public enum HtmlGroupBy {
-            component, url
         }
 
         @Data

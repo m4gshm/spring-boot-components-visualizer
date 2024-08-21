@@ -4,7 +4,6 @@ import io.github.m4gshm.connections.ComponentsExtractor;
 import io.github.m4gshm.connections.OnApplicationReadyEventSchemaGenerator;
 import io.github.m4gshm.connections.PlantUmlTextFactory;
 import io.github.m4gshm.connections.PlantUmlTextFactory.Options.ConcatenatePackageComponentsOptions;
-import io.github.m4gshm.connections.PlantUmlTextFactory.Options.HtmlGroupBy;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -52,7 +51,7 @@ public class SchemaGeneratorTest {
                             .ignoreInterfaceRelated(false)
                             .build())
 //                    .concatenateInterfacesMoreThan(3)
-//                    .htmlGroupBy(HtmlGroupBy.component)
+                    .htmlGroupByUrlPath(true)
 //                    .groupPackages(false)
 //                    .head("skinparam linetype polyline\n")
                     .build();
