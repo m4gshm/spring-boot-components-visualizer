@@ -13,17 +13,17 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
     Object core;
-    String name;
+    CharSequence name;
     String id;
     Direction direction;
     Type type;
 
-    public String getName() {
-        return name != null ? name : core != null ? core.toString() : null;
+    public CharSequence getName() {
+        return name != null ? name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
     }
 
     public String getId() {
-        return id != null ? id : core != null ? core.toString() : getName();
+        return id != null ? id : core != null ? core.toString() : getName().toString();
     }
 
     @Getter

@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.model.HttpMethod.ALL;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Type.jms;
 import static io.github.m4gshm.connections.model.Interface.Type.ws;
@@ -55,6 +56,7 @@ import static org.springframework.core.annotation.AnnotatedElementUtils.getMerge
 @Slf4j
 @UtilityClass
 public class ComponentsExtractorUtils {
+
     public static boolean hasMainMethod(Class<?> beanType) {
         return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
                 && isOnlyOneArgStringArray(method)
@@ -168,7 +170,7 @@ public class ComponentsExtractorUtils {
 
     public static List<String> getHttpMethods(RequestMapping requestMapping) {
         var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
-        return methods.isEmpty() ? List.of("*") : methods;
+        return methods.isEmpty() ? List.of(ALL) : methods;
     }
 
     public static String concatPath(String path, String root) {

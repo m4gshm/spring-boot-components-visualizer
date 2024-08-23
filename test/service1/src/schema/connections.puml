@@ -16,9 +16,9 @@ package "service1" as service1 #line.dotted;text:gray {
         component jmsQueueService as jmsQueueService
       }
       package "rest" as service1.service.external.rest #line.dotted;text:gray {
-        collections "service2LegacyImpl\n\
-standaloneService2Api\n\
-service2FeignClient" as service1.service.external.rest.components
+        collections "<#transparent,transparent>|service2LegacyImpl|\n\
+<#transparent,transparent>|standaloneService2Api|\n\
+<#transparent,transparent>|service2FeignClient|" as service1.service.external.rest.components
       }
       package "ws" as service1.service.external.ws #line.dotted;text:gray {
         component service2StreamClientImpl as service2StreamClientImpl
@@ -44,26 +44,23 @@ coreService ..> documentRepository
 jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
-    note right of internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.: simple_entity
-    internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .... simpleEntityRepository
-    entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
-    note right of internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.: auth.user
-    internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .... userRepository
-    entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
-    note right of internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.: documentEntity
-    internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .... documentRepository
+    collections "<#transparent,transparent>|service1.db.jpa.model.SimpleEntity|\n\
+<#transparent,transparent>|service1.db.jpa.model.UserEntity|\n\
+<#transparent,transparent>|service1.db.mongo.model.DocumentEntity|" as internal.storage.interfaces
+    internal.storage.interfaces .... simpleEntityRepository
+    internal.storage.interfaces .... userRepository
+    internal.storage.interfaces .... documentRepository
   }
 }
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
-      interface "*:" as in....api.v1.
-      in....api.v1. )....> mainController
-      interface "GET:/load" as in.GET..api.v1.load
-      in.GET..api.v1.load )....> mainController
-      interface "POST:/put" as in.POST..api.v1.put
-      in.POST..api.v1.put )....> mainController
+      collections "<#transparent,transparent>|*|:|\n\
+<#transparent,transparent>|GET|:/load|\n\
+<#transparent,transparent>|POST|:/put|" as input.http..api.v1.interfaces
+      input.http..api.v1.interfaces )....> mainController
+      input.http..api.v1.interfaces )....> mainController
+      input.http..api.v1.interfaces )....> mainController
     }
   }
   rectangle "web socket" as input.websocket {
@@ -99,15 +96,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "ws://service-template\n\
-ws://service-template/{id}/\n\
-ws://service2\n\
-ws://service3\n\
-ws://service2-value-inject\n\
-ws://defaultURI-static\n\
-ws://currentURI-method\n\
-ws://currentURI-supplier\n\
-ws://service-property-injected" as service2StreamClientImpl.interfaces
+      collections "<#transparent,transparent>|ws://service-template|\n\
+<#transparent,transparent>|ws://service-template/{id}/|\n\
+<#transparent,transparent>|ws://service2|\n\
+<#transparent,transparent>|ws://service3|\n\
+<#transparent,transparent>|ws://service2-value-inject|\n\
+<#transparent,transparent>|ws://defaultURI-static|\n\
+<#transparent,transparent>|ws://currentURI-method|\n\
+<#transparent,transparent>|ws://currentURI-supplier|\n\
+<#transparent,transparent>|ws://service-property-injected|" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
@@ -121,15 +118,15 @@ ws://service-property-injected" as service2StreamClientImpl.interfaces
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService #line.dotted;text:gray {
-      interface "jmsQueue" as outIn.jmsQueue.outIn
-      jmsQueueService ....> outIn.jmsQueue.outIn
-      jmsQueueService <.... outIn.jmsQueue.outIn
-      interface "jmsQueueEvents" as out.jmsQueueEvents.out
-      jmsQueueService ....> out.jmsQueueEvents.out
-      interface "jmsQueueEvents2" as out.jmsQueueEvents2.out
-      jmsQueueService ....> out.jmsQueueEvents2.out
-      interface "jms-private-queue" as out.jms.private.queue.out
-      jmsQueueService ....> out.jms.private.queue.out
+      collections "<#transparent,transparent>|jmsQueue|\n\
+<#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents2|\n\
+<#transparent,transparent>|jms-private-queue|" as jmsQueueService.interfaces
+      jmsQueueService ....> jmsQueueService.interfaces
+      jmsQueueService <.... jmsQueueService.interfaces
+      jmsQueueService ....> jmsQueueService.interfaces
+      jmsQueueService ....> jmsQueueService.interfaces
+      jmsQueueService ....> jmsQueueService.interfaces
     }
   }
 }

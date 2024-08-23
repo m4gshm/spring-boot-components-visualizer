@@ -10,11 +10,14 @@ import static lombok.AccessLevel.PRIVATE;
 @Builder(toBuilder = true)
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class HttpMethod {
-    String path;
+    public static final String ALL = "*";
+
     String method;
+    String path;
 
     @Override
     public String toString() {
         return method + ':' + path;
     }
+
 }

@@ -21,6 +21,7 @@ import java.util.stream.Stream;
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.HttpMethodName.newMethodName;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -55,6 +56,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String SHORT_ARROW = "..>";
     public static final String MIDDLE_ARROW = "....>";
     public static final String LONG_ARROW = "......>";
+    public static final String TABLE_TRANSPARENT = "<#transparent,transparent>";
 
     protected final String applicationName;
     protected final Options options;
@@ -435,7 +437,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var groupHttpMethod = e.getKey();
             var origHttpMethod = e.getValue();
             var anInterface = httpMethods.get(origHttpMethod);
-            var groupedInterface = anInterface.toBuilder().name(groupHttpMethod.toString()).build();
+            var groupedInterface = anInterface.toBuilder().name(newMethodName(groupHttpMethod)).build();
             return entry(
                     groupedInterface,
                     interfaceComponentLink.get(anInterface)
@@ -473,7 +475,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected String renderInterfaceName(Interface anInterface) {
-        var name = anInterface.getName();
+        var name = anInterface.getName().toString();
         if (anInterface.getType() == storage) {
             var lasted = name.lastIndexOf(".");
             return lasted > 0 ? name.substring(lasted + 1) : null;
@@ -566,8 +568,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (components == null || components.isEmpty()) {
             return;
         }
-        var text = components.stream().map(Component::getName)
-                .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+        var text = renderConcatenatedComponentsText(components);
         var concatenatedComponentsId = getElementId(packageId, "components");
         checkUniqueId(concatenatedComponentsId, "package:" + packageId);
         for (var component : components) {
@@ -577,13 +578,20 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         out.append(format("collections \"%s\" as %s\n", text, concatenatedComponentsId), false);
     }
 
+    protected String renderConcatenatedComponentsText(Collection<Component> components) {
+        return components.stream().map(this::getTextForConcatenating).reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+    }
+
+    protected String getTextForConcatenating(Component component) {
+        return renderTableRow(component.getName());
+    }
+
     protected void printConcatenatedInterfaces(IndentStringAppender out, String parentId,
                                                Map<Interface, List<Component>> interfaces) {
         if (interfaces == null || interfaces.isEmpty()) {
             return;
         }
-        var text = interfaces.keySet().stream().map(Interface::getName)
-                .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+        var text = renderConcatenatedInterfacesText(interfaces);
         var concatenatedId = getElementId(parentId, "interfaces");
 
         checkUniqueId(concatenatedId, "interfaces of " + parentId);
@@ -595,6 +603,30 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             concatenatedInterfaces.put(interfaceId, concatenatedId);
             printInterfaceReferences(out, anInterface, concatenatedId, components);
         });
+    }
+
+    protected String renderConcatenatedInterfacesText(Map<Interface, List<Component>> interfaces) {
+        return interfaces.keySet().stream().map(this::getTextForConcatenating)
+                .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+    }
+
+    protected String getTextForConcatenating(Interface anInterface) {
+        var interfaceName = anInterface.getName();
+        if (interfaceName instanceof HttpMethodName) {
+            var httpMethodName = (HttpMethodName) interfaceName;
+            var method = httpMethodName.getMethod();
+            var path = httpMethodName.getPath();
+            return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
+        }
+        var name = anInterface.getName();
+        return renderTableRow(name);
+    }
+
+    protected String renderTableRow(CharSequence... cells) {
+        var cell = Stream.of(cells)
+                .map(c -> c == null ? "" : c.toString())
+                .reduce("", (l, r) -> l + (r.isEmpty() ? " " : r) + "|");
+        return cell.isEmpty() ? null : TABLE_TRANSPARENT + "|" + cell;
     }
 
     protected Stream<Package> mergeSubPack(Package pack) {
@@ -865,6 +897,45 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             Integer moreThan = 5;
             @Builder.Default
             boolean ignoreInterfaceRelated = true;
+        }
+    }
+
+    @Data
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class HttpMethodName implements CharSequence {
+        String method;
+        String path;
+        String string;
+
+        public HttpMethodName(String method, String path) {
+            this.path = path;
+            this.method = method;
+            this.string = method + ':' + path;
+        }
+
+        public static HttpMethodName newMethodName(HttpMethod httpMethod) {
+            return new HttpMethodName(httpMethod.getMethod(), httpMethod.getPath());
+        }
+
+
+        @Override
+        public String toString() {
+            return string;
+        }
+
+        @Override
+        public int length() {
+            return string.length();
+        }
+
+        @Override
+        public char charAt(int index) {
+            return string.charAt(index);
+        }
+
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return string.subSequence(start, end);
         }
     }
 }

@@ -1,5 +1,6 @@
 package service1;
 
+import com.plantuml.api.cheerpj.v1.Svg;
 import io.github.m4gshm.connections.ComponentsExtractor;
 import io.github.m4gshm.connections.OnApplicationReadyEventSchemaGenerator;
 import io.github.m4gshm.connections.PlantUmlTextFactory;
@@ -15,9 +16,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.util.function.Function;
 
 import static io.github.m4gshm.connections.PlantUmlTextFactory.HtmlMethodsGroupBy.path;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
 @SpringBootTest(classes = {
@@ -52,6 +53,7 @@ public class SchemaGeneratorTest {
                             .moreThan(2)
                             .ignoreInterfaceRelated(false)
                             .build())
+                    .concatenateInterfacesMoreThan(2)
                     .htmlMethodsGroupBy(directionGroup -> path)
                     .build();
         }
@@ -62,12 +64,24 @@ public class SchemaGeneratorTest {
                 var envName = "CONNECTIONS_VISUALIZE_PLANTUML_OUT";
                 var outFileName = requireNonNull(System.getenv(envName), envName);
                 var file = new File(outFileName);
+
                 var parentFile = file.getParentFile();
                 if (!parentFile.exists()) {
                     parentFile.mkdirs();
                 }
                 try (var writer = new OutputStreamWriter(new FileOutputStream(file))) {
                     writer.write(content);
+                    writer.flush();
+
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+
+                var svg = Svg.convert(null, content);
+                var extensionDelim = outFileName.lastIndexOf(".");
+                var svgOutFile = (extensionDelim != -1 ? outFileName.substring(0, extensionDelim) : outFileName) + ".svg";
+                try (var writer = new FileOutputStream(svgOutFile)) {
+                    writer.write(svg.toString().getBytes(UTF_8));
                     writer.flush();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
