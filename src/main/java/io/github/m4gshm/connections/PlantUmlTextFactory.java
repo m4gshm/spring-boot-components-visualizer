@@ -612,10 +612,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected String getTextForConcatenating(Interface anInterface) {
         var interfaceName = anInterface.getName();
+        var core = anInterface.getCore();
         if (interfaceName instanceof HttpMethodName) {
             var httpMethodName = (HttpMethodName) interfaceName;
             var method = httpMethodName.getMethod();
             var path = httpMethodName.getPath();
+            return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
+        } else if (core instanceof HttpMethod) {
+            var httpMethod = (HttpMethod) core;
+            var method = httpMethod.getMethod();
+            var path = httpMethod.getPath();
             return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
         }
         var name = anInterface.getName();
