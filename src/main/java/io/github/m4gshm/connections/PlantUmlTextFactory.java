@@ -24,15 +24,13 @@ import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
-import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
-import static io.github.m4gshm.connections.Utils.warnDuplicated;
+import static io.github.m4gshm.connections.Utils.*;
 import static io.github.m4gshm.connections.model.HttpMethodsGroup.makeGroupsHierarchyByHttpMethodUrl;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.*;
-import static java.util.Comparator.comparing;
 import static java.util.Map.entry;
 import static java.util.Objects.requireNonNull;
 import static java.util.Optional.ofNullable;
@@ -114,15 +112,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printBody(StringBuilder dest, Collection<Component> components) {
         var out = new IndentStringAppender(dest, INDENT);
-
         var packages = toPackagesHierarchy(components);
-
         printPackages(out, packages, null);
-
         for (var component : components) {
             printComponentReferences(out, component);
         }
-
         printInterfaces(out, components);
     }
 
@@ -912,17 +906,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
-            Comparator<Component> components = comparing(Component::getPath);
-            Comparator<Component> dependencies = comparing(Component::getName);
+            Comparator<Component> components = (o1, o2) -> compareNullable(o1.getPath(), o2.getPath());
+            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName());
             Comparator<Interface> interfaces = (o1, o2) -> {
                 var name1 = o1.getName();
                 var name2 = o2.getName();
-                if (name1 instanceof Comparable<?> && name2 instanceof Comparable<?>) {
-                    var c1 = (Comparable) name1;
-                    var c2 = (Comparable) name2;
-                    return c1.compareTo(c2);
-                }
-                return name1.toString().compareTo(name2.toString());
+                return name1 instanceof Comparable<?> && name2 instanceof Comparable<?>
+                        ? ((Comparable) name1).compareTo(name2)
+                        : compareNullable(name1 != null
+                        ? name1.toString()
+                        : null, name2 != null ? name2.toString() : null);
             };
         }
 

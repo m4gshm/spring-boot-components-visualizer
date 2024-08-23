@@ -48,4 +48,8 @@ public class Utils {
             return l;
         };
     }
+
+    public static <T extends Comparable<T>> int compareNullable(T o1, T o2) {
+        return o1 == null && o2 == null ? 0 : o1 == null ? -1 : o2 == null ? 1 : o1.compareTo(o2);
+    }
 }
