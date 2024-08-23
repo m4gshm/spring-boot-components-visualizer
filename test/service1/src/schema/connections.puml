@@ -8,6 +8,15 @@ package "service1" as service1 #line.dotted;text:gray {
       component eventsHandler as eventsHandler
     }
   }
+  package "db" as service1.db #line.dotted;text:gray {
+    package "jpa" as service1.db.jpa #line.dotted;text:gray {
+      component userRepository as userRepository
+      component simpleEntityRepository as simpleEntityRepository
+    }
+    package "mongo" as service1.db.mongo #line.dotted;text:gray {
+      component documentRepository as documentRepository
+    }
+  }
   package "service" as service1.service #line.dotted;text:gray {
     component coreService as coreService
     package "external" as service1.service.external #line.dotted;text:gray {
@@ -25,22 +34,13 @@ package "service1" as service1 #line.dotted;text:gray {
       }
     }
   }
-  package "db" as service1.db #line.dotted;text:gray {
-    package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component simpleEntityRepository as simpleEntityRepository
-      component userRepository as userRepository
-    }
-    package "mongo" as service1.db.mongo #line.dotted;text:gray {
-      component documentRepository as documentRepository
-    }
-  }
 }
 mainController ..> coreService
-coreService ..> service1.service.external.rest.components
+coreService ..> documentRepository
 coreService ..> service1.service.external.rest.components
 coreService ..> service1.service.external.rest.components
 coreService ..> simpleEntityRepository
-coreService ..> documentRepository
+coreService ..> service1.service.external.rest.components
 jmsQueueListener ..> coreService
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
@@ -96,15 +96,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl #line.dotted;text:gray {
-      collections "<#transparent,transparent>|ws://service-template|\n\
+      collections "<#transparent,transparent>|ws://currentURI-method|\n\
+<#transparent,transparent>|ws://currentURI-supplier|\n\
+<#transparent,transparent>|ws://defaultURI-static|\n\
+<#transparent,transparent>|ws://service-property-injected|\n\
+<#transparent,transparent>|ws://service-template|\n\
 <#transparent,transparent>|ws://service-template/{id}/|\n\
 <#transparent,transparent>|ws://service2|\n\
-<#transparent,transparent>|ws://service3|\n\
 <#transparent,transparent>|ws://service2-value-inject|\n\
-<#transparent,transparent>|ws://defaultURI-static|\n\
-<#transparent,transparent>|ws://currentURI-method|\n\
-<#transparent,transparent>|ws://currentURI-supplier|\n\
-<#transparent,transparent>|ws://service-property-injected|" as service2StreamClientImpl.interfaces
+<#transparent,transparent>|ws://service3|" as service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
       service2StreamClientImpl ....( service2StreamClientImpl.interfaces
@@ -118,13 +118,13 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService #line.dotted;text:gray {
-      collections "<#transparent,transparent>|jmsQueue|\n\
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
-<#transparent,transparent>|jmsQueueEvents2|\n\
-<#transparent,transparent>|jms-private-queue|" as jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueueEvents2|" as jmsQueueService.interfaces
+      jmsQueueService ....> jmsQueueService.interfaces
       jmsQueueService ....> jmsQueueService.interfaces
       jmsQueueService <.... jmsQueueService.interfaces
-      jmsQueueService ....> jmsQueueService.interfaces
       jmsQueueService ....> jmsQueueService.interfaces
       jmsQueueService ....> jmsQueueService.interfaces
     }

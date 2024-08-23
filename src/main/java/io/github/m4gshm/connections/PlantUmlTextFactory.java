@@ -21,7 +21,6 @@ import java.util.stream.Stream;
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
-import static io.github.m4gshm.connections.PlantUmlTextFactory.HttpMethodName.newMethodName;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -33,6 +32,7 @@ import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.*;
+import static java.util.Comparator.comparing;
 import static java.util.Map.entry;
 import static java.util.Objects.requireNonNull;
 import static java.util.Optional.ofNullable;
@@ -48,8 +48,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             "", List.of(" "),
             ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]", "#", "\"", "'")
     );
-    public static final String DIRECTION_INPUT = "input";
-    public static final String DIRECTION_OUTPUT = "output";
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
     public static final String LINE_DOTTED = "line.dotted;";
@@ -89,7 +87,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
 //        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
-        printBody(out, components.getComponents());
+        var componentComparator = options.getSort().getComponents();
+        printBody(out, componentComparator != null
+                ? components.getComponents().stream().sorted(componentComparator).collect(toList())
+                : components.getComponents());
         var bottom = options.getBottom();
         if (bottom != null) {
             out.append(bottom);
@@ -133,7 +134,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 )
                 .collect(groupingBy(directionEntryEntry -> options.directionGroup.apply(directionEntryEntry.getKey()),
                         mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(),
-                                groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList()))))
+                                groupingBy(Entry::getKey, () -> {
+                                    return Optional.ofNullable(options.getSort().getInterfaces())
+                                            .map(c -> (Map<Interface, List<Component>>) new TreeMap<Interface, List<Component>>(c))
+                                            .orElseGet(LinkedHashMap::new);
+                                }, mapping(Entry::getValue, toList()))))
                 ));
 
         var directionGroups = stream(Direction.values()).map(options.getDirectionGroup()).distinct().collect(toList());
@@ -437,7 +442,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             var groupHttpMethod = e.getKey();
             var origHttpMethod = e.getValue();
             var anInterface = httpMethods.get(origHttpMethod);
-            var groupedInterface = anInterface.toBuilder().name(newMethodName(groupHttpMethod)).build();
+            var groupedInterface = anInterface.toBuilder().name(groupHttpMethod).build();
             return entry(
                     groupedInterface,
                     interfaceComponentLink.get(anInterface)
@@ -613,19 +618,19 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected String getTextForConcatenating(Interface anInterface) {
         var interfaceName = anInterface.getName();
         var core = anInterface.getCore();
-        if (interfaceName instanceof HttpMethodName) {
-            var httpMethodName = (HttpMethodName) interfaceName;
-            var method = httpMethodName.getMethod();
-            var path = httpMethodName.getPath();
-            return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
+        if (interfaceName instanceof HttpMethod) {
+            return getTextForConcatenating((HttpMethod) interfaceName);
         } else if (core instanceof HttpMethod) {
-            var httpMethod = (HttpMethod) core;
-            var method = httpMethod.getMethod();
-            var path = httpMethod.getPath();
-            return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
+            return getTextForConcatenating((HttpMethod) core);
         }
         var name = anInterface.getName();
         return renderTableRow(name);
+    }
+
+    protected String getTextForConcatenating(HttpMethod httpMethod) {
+        var method = httpMethod.getMethod();
+        var path = httpMethod.getPath();
+        return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
     }
 
     protected String renderTableRow(CharSequence... cells) {
@@ -696,9 +701,15 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return;
         }
 
-        var dependencies = component.getDependencies();
-        if (dependencies != null) for (var dependency : dependencies) {
-            printComponentReference(out, component, dependency);
+        Collection<Component> dependencies = component.getDependencies();
+        if (dependencies != null) {
+            var componentComparator = options.getSort().getDependencies();
+            if (componentComparator != null) {
+                dependencies = dependencies.stream().sorted(componentComparator).collect(toList());
+            }
+            for (var dependency : dependencies) {
+                printComponentReference(out, component, dependency);
+            }
         }
     }
 
@@ -862,6 +873,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder.Default
         Integer concatenateInterfacesMoreThan = 5;
 
+        @Builder.Default
+        Sort sort = Sort.builder().build();
+
         public static UnionStyle newAggregateStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
         }
@@ -897,51 +911,30 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
+        public static class Sort {
+            Comparator<Component> components = comparing(Component::getPath);
+            Comparator<Component> dependencies = comparing(Component::getName);
+            Comparator<Interface> interfaces = (o1, o2) -> {
+                var name1 = o1.getName();
+                var name2 = o2.getName();
+                if (name1 instanceof Comparable<?> && name2 instanceof Comparable<?>) {
+                    var c1 = (Comparable) name1;
+                    var c2 = (Comparable) name2;
+                    return c1.compareTo(c2);
+                }
+                return name1.toString().compareTo(name2.toString());
+            };
+        }
+
+        @Data
+        @Builder(toBuilder = true)
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class ConcatenatePackageComponentsOptions {
             public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder().build();
             @Builder.Default
             Integer moreThan = 5;
             @Builder.Default
             boolean ignoreInterfaceRelated = true;
-        }
-    }
-
-    @Data
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class HttpMethodName implements CharSequence {
-        String method;
-        String path;
-        String string;
-
-        public HttpMethodName(String method, String path) {
-            this.path = path;
-            this.method = method;
-            this.string = method + ':' + path;
-        }
-
-        public static HttpMethodName newMethodName(HttpMethod httpMethod) {
-            return new HttpMethodName(httpMethod.getMethod(), httpMethod.getPath());
-        }
-
-
-        @Override
-        public String toString() {
-            return string;
-        }
-
-        @Override
-        public int length() {
-            return string.length();
-        }
-
-        @Override
-        public char charAt(int index) {
-            return string.charAt(index);
-        }
-
-        @Override
-        public CharSequence subSequence(int start, int end) {
-            return string.subSequence(start, end);
         }
     }
 }
