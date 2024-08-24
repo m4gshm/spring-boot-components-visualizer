@@ -67,3 +67,4 @@ include::../../../test/service1/src/test/java/service1/SchemaGeneratorTest.java[
 
 Runs gradle build `gradle test`
 
+Generated files will be located in the `$projectDir/src/schema/` directory.

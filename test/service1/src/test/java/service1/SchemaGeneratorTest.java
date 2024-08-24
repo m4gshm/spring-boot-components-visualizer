@@ -27,17 +27,16 @@ public class SchemaGeneratorTest {
 
     @Test
     public void generatePlantUml() {
-        var content = schemaFactory.create(extractor.getComponents());
+        var schema = schemaFactory.create(extractor.getComponents());
         var envName = "CONNECTIONS_VISUALIZE_PLANTUML_OUT";
-        var outPlantUmlFileName = requireNonNull(System.getenv(envName), envName);
-        writeTextFile(outPlantUmlFileName, content);
-        writeSwgFile(outPlantUmlFileName, content);
+        var plantUmlOutFileName = requireNonNull(System.getenv(envName), envName);
+        writeTextFile(plantUmlOutFileName, schema);
+        writeSwgFile(getSvgOutFile(plantUmlOutFileName), schema);
     }
 
-    private void writeSwgFile(String fileName, String content) {
+    private void writeSwgFile(String svgOutFile, String content) {
         var svg = Svg.convert(null, content);
-        var extensionDelim = fileName.lastIndexOf(".");
-        var svgOutFile = (extensionDelim != -1 ? fileName.substring(0, extensionDelim) : fileName) + ".svg";
+
         try (var writer = new FileOutputStream(svgOutFile)) {
             writer.write(svg.toString().getBytes(UTF_8));
             writer.flush();
@@ -61,4 +60,8 @@ public class SchemaGeneratorTest {
         }
     }
 
+    private String getSvgOutFile(String plantUmlOutFileName) {
+        var extensionDelim = plantUmlOutFileName.lastIndexOf(".");
+        return (extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg";
+    }
 }
