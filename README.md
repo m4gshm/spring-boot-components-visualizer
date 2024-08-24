@@ -5,16 +5,59 @@ application.
 
 By default, generates a PlantUML schema with Spring components,
 relations and interfaces like mvc controllers, websocket services, jms
-and so on
+and so on.
 
 Inspired by Spring REST Docs.
 
 Requires Java 11 or higher.
 
+## Schema example
+
+[puml](./test/service1/src/schema/connections.puml),
+[svg](./test/service1/src/schema/connections.svg)
+
 <figure>
 <img src="./test/service1/src/schema/connections.svg"
 alt="connections" />
 </figure>
+
+## Supported interfaces
+
+- Beans with dependency relations
+
+- Sprint Mvc controllers
+
+- Spring Data repositories
+
+- WebSocketHandler
+
+- WebSocketClient
+
+- @JmsListener
+
+- JmsTemplate based clients
+
+- @FeignClient
+
+- Standalone Feign client
+
+- RestTemplate based clients
+
+## Planned to support
+
+- @Scheduled
+
+- TaskScheduler
+
+- @KafkaListener
+
+- KafkaTemplate
+
+- GRPC
+
+- Minio
+
+- Spring Webflux (controllers, routers)
 
 ## How to use
 

@@ -4,13 +4,38 @@
 
 A tool to visualize external and internal connections of a Sprint Boot application.
 
-By default, generates a PlantUML schema with Spring components, relations and interfaces like mvc controllers, websocket services, jms and so on
+By default, generates a PlantUML schema with Spring components, relations and interfaces like mvc controllers, websocket services, jms and so on.
 
 Inspired by Spring REST Docs.
 
 Requires Java 11 or higher.
 
-image::../../../test/service1/src/schema/connections.svg[]
+=== Schema example
+link:./test/service1/src/schema/connections.puml[puml],
+link:./test/service1/src/schema/connections.svg[svg]
+
+image::./test/service1/src/schema/connections.svg[]
+
+=== Supported interfaces
+- Beans with dependency relations
+- Sprint Mvc controllers
+- Spring Data repositories
+- WebSocketHandler
+- WebSocketClient
+- @JmsListener
+- JmsTemplate based clients
+- @FeignClient
+- Standalone Feign client
+- RestTemplate based clients
+
+=== Planned to support
+- @Scheduled
+- TaskScheduler
+- @KafkaListener
+- KafkaTemplate
+- GRPC
+- Minio
+- Spring Webflux (controllers, routers)
 
 === How to use
 ==== Gradle (Kotlin  syntax)
