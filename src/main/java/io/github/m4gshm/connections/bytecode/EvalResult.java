@@ -6,6 +6,7 @@ import lombok.Getter;
 import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 import static io.github.m4gshm.connections.bytecode.EvalResult.Status.notAccessible;
@@ -14,14 +15,18 @@ import static io.github.m4gshm.connections.bytecode.EvalResult.Status.notFound;
 @Data
 @Builder
 public class EvalResult<T> {
-    private final T result;
+    private final List<T> result;
     private final Set<Status> status;
     private final Object source;
     private final InstructionHandle callInstruction;
     private final InstructionHandle lastInstruction;
 
+    public static <T> EvalResult<T> success(List<T> values, InstructionHandle callInstruction, InstructionHandle lastInstruction) {
+        return EvalResult.<T>builder().result(values).callInstruction(callInstruction).lastInstruction(lastInstruction).build();
+    }
+
     public static <T> EvalResult<T> success(T value, InstructionHandle callInstruction, InstructionHandle lastInstruction) {
-        return EvalResult.<T>builder().result(value).callInstruction(callInstruction).lastInstruction(lastInstruction).build();
+        return EvalResult.<T>builder().result(List.of(value)).callInstruction(callInstruction).lastInstruction(lastInstruction).build();
     }
 
     public static <T> EvalResult<T> notAccessible(Object source, InstructionHandle callInstruction) {
@@ -33,6 +38,10 @@ public class EvalResult<T> {
     }
 
     public T getResult() {
+        return getResults().get(0);
+    }
+
+    public List<T> getResults() {
         throwResultExceptionIfInvalidStatus();
         return result;
     }

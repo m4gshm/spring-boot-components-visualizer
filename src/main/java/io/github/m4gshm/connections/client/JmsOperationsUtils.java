@@ -6,13 +6,9 @@ import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.LocalVariableTable;
-import org.apache.bcel.generic.ConstantPoolGen;
-import org.apache.bcel.generic.INVOKEINTERFACE;
-import org.apache.bcel.generic.INVOKEVIRTUAL;
-import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.InstructionList;
-import org.apache.bcel.generic.InvokeInstruction;
+import org.apache.bcel.generic.*;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
@@ -22,15 +18,13 @@ import javax.jms.Queue;
 import javax.jms.Topic;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static io.github.m4gshm.connections.bytecode.EvalUtils.eval;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.lookupClass;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
-import static io.github.m4gshm.connections.model.Interface.Direction.in;
-import static io.github.m4gshm.connections.model.Interface.Direction.out;
-import static io.github.m4gshm.connections.model.Interface.Direction.outIn;
-import static io.github.m4gshm.connections.model.Interface.Direction.undefined;
+import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -54,7 +48,7 @@ public class JmsOperationsUtils {
             var localVariableTable = method.getLocalVariableTable();
             var instructionList = new InstructionList(code.getCode());
 
-            var values = StreamSupport.stream(instructionList.spliterator(), false).map(instructionHandle -> {
+            var values = StreamSupport.stream(instructionList.spliterator(), false).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType =
                         instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
@@ -63,20 +57,20 @@ public class JmsOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(context.getBean(componentName), instructionHandle, localVariableTable,
-                        constantPoolGen, bootstrapMethods)
-                        : null;
+                        constantPoolGen, bootstrapMethods, code).stream()
+                        : Stream.of();
             }).filter(Objects::nonNull).collect(toList());
 
             return values.stream();
         }).filter(Objects::nonNull).collect(toList());
     }
 
-    private static JmsClient extractJmsClients(
+    private static List<JmsClient> extractJmsClients(
             Object object, InstructionHandle instructionHandle,
             LocalVariableTable localVariableTable,
             ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods
-    ) {
+            BootstrapMethods bootstrapMethods,
+            Code code) {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
@@ -85,24 +79,39 @@ public class JmsOperationsUtils {
 
         var direction = getJmsDirection(methodName);
         if (direction == undefined) {
-            return null;
+            return List.of();
         } else {
             var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
-            var arguments = new EvalResult[argumentTypes.length];
+            var arguments = newEvalResults(argumentTypes);
             for (int i = argumentTypes.length; i > 0; i--) {
-                var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods);
+                var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods, code);
                 arguments[i - 1] = evalResult;
                 onEval = evalResult.getLastInstruction().getPrev();
             }
 
-            var destination = arguments.length > 0 ? getDestination(arguments[0].getResult()) : DEFAULT_DESTINATION;
-
-            return JmsClient.builder()
-                    .destination(destination)
-                    .direction(direction)
-                    .name(methodName)
-                    .build();
+            if (arguments.length > 0) {
+                var firstArg = arguments[0];
+                var results = firstArg.getResults();
+                return results.stream().map(JmsOperationsUtils::getDestination)
+                        .map(destination -> newJmsClient(destination, direction, methodName)
+                        ).collect(toList());
+            } else {
+                return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
+            }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> EvalResult<T>[] newEvalResults(Type[] argumentTypes) {
+        return new EvalResult[argumentTypes.length];
+    }
+
+    private static JmsClient newJmsClient(String destination, Direction direction, String methodName) {
+        return JmsClient.builder()
+                .destination(destination)
+                .direction(direction)
+                .name(methodName)
+                .build();
     }
 
     private static String getDestination(Object firstArg) {

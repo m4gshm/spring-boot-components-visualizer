@@ -16,22 +16,26 @@ public class JmsQueueService extends AbstractJmsQueueService {
     private final JmsOperations jmsOperations;
 
     public final void sendMessage(String message, String message2, String message3) {
-        jmsTemplate.sendAndReceive(wrap("jmsQueue"), session -> session.createTextMessage(message3));
+        var jmsQueue1 = wrap("jmsQueue1");
+        var jmsQueue2 = wrap("jmsQueue2");
+        if (message3 != null)
+            jmsTemplate.sendAndReceive(jmsQueue1, session -> session.createTextMessage(message3 != null ? message3 : message2));
+        else
+            jmsTemplate.sendAndReceive(jmsQueue2, session -> session.createTextMessage(message3 != null ? message3 : message2));
         jmsTemplate.send(new StringBuilder("jmsQueueEvents").toString(), session -> getMessage(message3, session));
-        jmsTemplate.send(super.getJmsQueueEvents2(), session -> getMessage(message3, session));
+        String jmsQueueEvents2;
+        if (message2 != null) {
+            jmsQueueEvents2 = wrap("jmsQueueEvents3");
+        } else {
+            jmsQueueEvents2 = super.getJmsQueueEvents2();
+        }
+        jmsTemplate.send(jmsQueueEvents2, session -> getMessage(message3, session));
         jmsTemplate.send(new PrivateQueueFactory().getQueue(), session -> getMessage(message3, session));
     }
 
     @Override
     protected String getJmsQueueEvents2() {
         throw new UnsupportedOperationException("getJmsQueueEvents2");
-    }
-
-
-    private class PrivateQueueFactory {
-        private String getQueue() {
-            return "jms-private-queue";
-        }
     }
 
     private TextMessage getMessage(String message3, Session session) throws JMSException {
@@ -50,6 +54,12 @@ public class JmsQueueService extends AbstractJmsQueueService {
             throw new RuntimeException("message is null");
         } else {
             throw new UnsupportedOperationException(message.getClass().getName());
+        }
+    }
+
+    private class PrivateQueueFactory {
+        private String getQueue() {
+            return "jms-private-queue";
         }
     }
 }

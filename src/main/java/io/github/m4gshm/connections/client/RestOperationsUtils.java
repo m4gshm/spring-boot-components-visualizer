@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.bytecode.EvalResult;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.LocalVariableTable;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
@@ -46,7 +47,7 @@ public class RestOperationsUtils {
 
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractHttpMethod(context.getBean(componentName), instructionHandle, constantPoolGen, localVariableTable, bootstrapMethods)
+                        ? extractHttpMethod(context.getBean(componentName), instructionHandle, constantPoolGen, localVariableTable, bootstrapMethods, code)
                         : null;
             }).filter(Objects::nonNull).collect(toList());
 
@@ -61,8 +62,8 @@ public class RestOperationsUtils {
 
     private static HttpMethod extractHttpMethod(
             Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            LocalVariableTable localVariableTable, BootstrapMethods bootstrapMethods
-    ) {
+            LocalVariableTable localVariableTable, BootstrapMethods bootstrapMethods,
+            Code code) {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
@@ -74,7 +75,7 @@ public class RestOperationsUtils {
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var arguments = new EvalResult[argumentTypes.length];
         for (int i = argumentTypes.length; i > 0; i--) {
-            var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods);
+            var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods, code);
             arguments[i - 1] = evalResult;
             onEval = evalResult.getLastInstruction().getPrev();
         }

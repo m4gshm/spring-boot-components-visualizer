@@ -36,7 +36,6 @@ public class SchemaGeneratorTest {
 
     private void writeSwgFile(String svgOutFile, String content) {
         var svg = Svg.convert(null, content);
-
         try (var writer = new FileOutputStream(svgOutFile)) {
             writer.write(svg.toString().getBytes(UTF_8));
             writer.flush();

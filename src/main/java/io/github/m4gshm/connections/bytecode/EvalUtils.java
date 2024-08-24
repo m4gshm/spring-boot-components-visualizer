@@ -65,8 +65,8 @@ public class EvalUtils {
 
     public static EvalResult<Object> eval(Object object, InstructionHandle instructionHandle,
                                           ConstantPoolGen constantPoolGen, LocalVariableTable localVariableTable,
-                                          BootstrapMethods bootstrapMethods) {
-        return new Eval(constantPoolGen, localVariableTable, bootstrapMethods).eval(object, instructionHandle);
+                                          BootstrapMethods bootstrapMethods, Code code) {
+        return new Eval(constantPoolGen, localVariableTable, bootstrapMethods, code).eval(object, instructionHandle);
     }
 
     static Object invoke(MethodHandle methodHandle, List<Object> arguments) {

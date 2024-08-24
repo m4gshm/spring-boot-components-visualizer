@@ -3,46 +3,23 @@ package io.github.m4gshm.connections.bytecode;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.classfile.LocalVariableTable;
-import org.apache.bcel.generic.AASTORE;
-import org.apache.bcel.generic.ALOAD;
-import org.apache.bcel.generic.ANEWARRAY;
-import org.apache.bcel.generic.ASTORE;
-import org.apache.bcel.generic.CHECKCAST;
-import org.apache.bcel.generic.ConstantPoolGen;
-import org.apache.bcel.generic.ConstantPushInstruction;
-import org.apache.bcel.generic.DUP;
-import org.apache.bcel.generic.GETFIELD;
-import org.apache.bcel.generic.INVOKEDYNAMIC;
-import org.apache.bcel.generic.INVOKEINTERFACE;
-import org.apache.bcel.generic.INVOKESPECIAL;
-import org.apache.bcel.generic.INVOKESTATIC;
-import org.apache.bcel.generic.INVOKEVIRTUAL;
-import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.InvokeInstruction;
-import org.apache.bcel.generic.LDC;
-import org.apache.bcel.generic.Type;
+import org.apache.bcel.generic.*;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.List;
 
 import static io.github.m4gshm.connections.bytecode.EvalException.newInvalidEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalException.newUnsupportedEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalResult.success;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.callBootstrapMethod;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.callMethod;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.getArgumentTypes;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.getClassByName;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.getFieldValue;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.getMethodHandle;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.getPrivateLookup;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.instantiateObject;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.invoke;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.*;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
-import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Stream.of;
 
 @Slf4j
@@ -52,6 +29,8 @@ public class Eval {
     private final ConstantPoolGen constantPoolGen;
     private final LocalVariableTable localVariableTable;
     private final BootstrapMethods bootstrapMethods;
+    //only for debug
+    private final Code code;
 
     static ArrayList<Object> getInvokeArgs(Object object, Object[] arguments) {
         var invokeArgs = new ArrayList<>(arguments.length);
@@ -70,23 +49,47 @@ public class Eval {
             var aload = (ALOAD) instruction;
             var aloadIndex = aload.getIndex();
             var localVariableTable = of(this.localVariableTable.getLocalVariableTable())
-                    .collect(toMap(LocalVariable::getIndex, e -> e));
-            var localVariable = localVariableTable.get(aloadIndex);
+                    .collect(groupingBy(LocalVariable::getIndex));
+            var localVariables = localVariableTable.getOrDefault(aloadIndex, List.of());
+            var position = instructionHandle.getPosition();
+
+            var localVariable = localVariables.stream().filter(v -> {
+                int startPC = v.getStartPC();
+                var endPC = startPC + v.getLength();
+                return startPC <= position && position <= endPC;
+            }).findFirst().orElseGet(() -> {
+                if (localVariables.isEmpty()) {
+                    //log
+                    return null;
+                }
+                //log
+                return localVariables.get(0);
+            });
+
             var name = localVariable != null ? localVariable.getName() : null;
             if ("this".equals(name)) {
                 return success(object, instructionHandle, instructionHandle);
             }
 
             var prev = instructionHandle.getPrev();
-            while (prev != null) {
-                if (prev.getInstruction() instanceof ASTORE) {
-                    var astore = (ASTORE) prev.getInstruction();
-                    if (astore.getIndex() == aloadIndex) {
-                        var storedInLocal = eval(object, prev);
-                        return success(storedInLocal.getResult(), instructionHandle, instructionHandle);
+            var aStoreResults = new ArrayList<Object>(localVariables.size());
+            for (var variable : localVariables) {
+                inner: while (prev != null) {
+                    if (prev.getInstruction() instanceof ASTORE) {
+                        var astore = (ASTORE) prev.getInstruction();
+                        if (astore.getIndex() == aloadIndex) {
+                            var storedInLocal = eval(object, prev);
+                            var result = storedInLocal.getResult();
+                            aStoreResults.add(result);
+                            prev = prev.getPrev();
+                            break inner;
+                        }
                     }
+                    prev = prev.getPrev();
                 }
-                prev = prev.getPrev();
+            }
+            if (!aStoreResults.isEmpty()) {
+                return success(aStoreResults, instructionHandle, instructionHandle);
             }
             if (log.isDebugEnabled()) {
                 var description = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
@@ -180,10 +183,10 @@ public class Eval {
     private EvalResult<Object> getMethodResult(
             Object object, InstructionHandle instructionHandle, InvokeInstruction instruction
     ) {
-//        if (log.isTraceEnabled()) {
-        var instructionText = instruction.toString(constantPoolGen.getConstantPool());
-        log.trace("eval {}", instructionText);
-//        }
+        if (log.isTraceEnabled()) {
+            var instructionText = instruction.toString(constantPoolGen.getConstantPool());
+            log.trace("eval {}", instructionText);
+        }
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
         var evalArgumentsResult = evalArguments(object, instructionHandle, argumentTypes.length);
