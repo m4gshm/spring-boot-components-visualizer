@@ -1,8 +1,7 @@
 plugins {
     `java-library`
     `maven-publish`
-//    signing
-//    id("com.gradleup.nmcp").version("0.0.4")
+    id("org.asciidoctor.jvm.convert") version "4.0.1"
 }
 
 group = "github.m4gshm"
@@ -54,6 +53,26 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.asciidoctor {
+    dependsOn(project(":test:service1").tasks.build)
+    baseDirFollowsSourceFile()
+    outputOptions {
+        backends("docbook")
+    }
+}
+
+tasks.create<Exec>("pandoc") {
+    dependsOn("asciidoctor")
+    group = "documentation"
+    commandLine = "pandoc -f docbook -t gfm $buildDir/docs/asciidoc/readme.xml -o $rootDir/README.md".split(" ")
+}
+
+tasks.build {
+    if (properties["no-pandoc"] == null) {
+        dependsOn("pandoc")
+    }
 }
 
 java {

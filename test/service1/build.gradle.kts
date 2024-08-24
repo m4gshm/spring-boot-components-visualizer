@@ -30,12 +30,15 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb:$springBootVer")
     implementation("javax.persistence:javax.persistence-api:2.2")
     implementation("com.h2database:h2:2.3.230")
-    implementation("net.sourceforge.plantuml:plantuml-mit:1.2024.6")
+
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVer")
+
     testRuntimeOnly("org.apache.commons:commons-lang3:3.15.0")
+    testImplementation("net.sourceforge.plantuml:plantuml-mit:1.2024.6")
 
 }
 

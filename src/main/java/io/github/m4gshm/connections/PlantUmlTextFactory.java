@@ -840,7 +840,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         public static final Options DEFAULT = Options.builder().build();
         String head, bottom;
         @Builder.Default
-        boolean reduceDuplicatedElementRelations = false;
+        boolean reduceDuplicatedElementRelations = true;
         @Builder.Default
         boolean printPackageBorder = true;
         //debug option
@@ -923,7 +923,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class ConcatenatePackageComponentsOptions {
-            public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder().build();
+            public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder()
+                    .build();
             @Builder.Default
             Integer moreThan = 5;
             @Builder.Default

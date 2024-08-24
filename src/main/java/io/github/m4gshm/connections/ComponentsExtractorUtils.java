@@ -70,8 +70,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static boolean isIncluded(Class<?> type) {
-        return !(isSpringBootTest(type) || (isSpringConfiguration(type))
-                || isVisualizeAPI(type) || isProperties(type));
+        return !(isSpringBootTest(type) || (isSpringConfiguration(type)) || isProperties(type));
     }
 
     public static boolean isProperties(Class<?> beanType) {
@@ -84,10 +83,6 @@ public class ComponentsExtractorUtils {
 
     public static boolean isSpringConfiguration(Class<?> beanType) {
         return hasAnnotation(beanType, () -> Configuration.class);
-    }
-
-    public static boolean isVisualizeAPI(Class<?> beanType) {
-        return OnApplicationReadyEventSchemaGenerator.Storage.class.isAssignableFrom(beanType);
     }
 
     public static <T extends Annotation> boolean hasAnnotation(Class<?> type, Supplier<Class<T>> annotationSupplier) {

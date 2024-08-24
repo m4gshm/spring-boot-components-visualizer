@@ -17,8 +17,8 @@ import service1.db.mongo.DocumentRepository;
 @EnableMongoRepositories(basePackageClasses = DocumentRepository.class)
 @EntityScan(basePackageClasses = SimpleEntity.class)
 @SpringBootApplication(proxyBeanMethods = false)
-public class Service1Application {
+public class YourSprintBootApplication {
     public static void main(String[] args) {
-        SpringApplication.run(Service1Application.class, args);
+        SpringApplication.run(YourSprintBootApplication.class, args);
     }
 }
