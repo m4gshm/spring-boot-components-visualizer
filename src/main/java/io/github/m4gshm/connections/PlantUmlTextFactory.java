@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.PlantUmlTextFactory.Options.Layout;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Package;
@@ -21,6 +22,8 @@ import java.util.stream.Stream;
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.HtmlMethodsGroupBy.path;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.Options.Layout.vertical;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
@@ -71,6 +74,36 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public PlantUmlTextFactory(String applicationName, Options options) {
         this.applicationName = applicationName;
         this.options = options != null ? options : Options.DEFAULT;
+    }
+
+    protected static <T> Collection<T> orderForLayout(Layout layout, int columns, Collection<T> elements) {
+        var rows = elements.size() / columns;
+
+        final Collection<T> tableOrdered;
+        if (layout == vertical && columns > 1) {
+            tableOrdered = new ArrayList<T>();
+            var ordered = new ArrayList<>(elements);
+            for (var row = 0; row < rows; ++row) {
+                for (var column = 0; column < columns; ++column) {
+                    var i = row + column * rows;
+                    if (i < ordered.size()) {
+                        tableOrdered.add(ordered.get(i));
+                    }
+                }
+            }
+        } else {
+            tableOrdered = elements;
+        }
+        return tableOrdered;
+    }
+
+    private static int getColumns(int concatenateOptions) {
+        var columns = concatenateOptions;
+
+        if (columns < 1) {
+            columns = 1;
+        }
+        return columns;
     }
 
     @Override
@@ -166,7 +199,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var directionGroupTypeId = getDirectionGroupTypeId(directionGroup, type);
         var group = isInterfacesSupportGroups(directionGroup, type);
         if (group) {
-            if (type == http && options.htmlMethodsGroupBy.apply(directionGroup) == HtmlMethodsGroupBy.path) {
+            if (type == http && options.htmlMethodsGroupBy.apply(directionGroup) == path) {
                 //merge by url parts
                 var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations);
                 var finalGroup = groupByUrlParts(httpMethods);
@@ -197,16 +230,21 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printInterfaces(IndentStringAppender out, String parentId,
                                    Map<Interface, List<Component>> interfaceRelations) {
-        if (isConcatenateInterfaces(interfaceRelations)) {
-            printConcatenatedInterfaces(out, parentId, interfaceRelations);
-        } else {
-            interfaceRelations.forEach((anInterface, components) -> printInterface(out, anInterface, components));
-        }
+        var interfaces = groupConcatenatedInterfaces(interfaceRelations);
+        printConcatenatedInterfaces(out, parentId, interfaces.getConcatenation());
+        interfaces.getDistinct().forEach((anInterface, components) -> printInterface(out, anInterface, components));
     }
 
-    protected boolean isConcatenateInterfaces(Map<Interface, List<Component>> interfaceRelations) {
-        var concatenateInterfacesMoreThan = options.getConcatenateInterfacesMoreThan();
-        return concatenateInterfacesMoreThan != null && interfaceRelations.size() > concatenateInterfacesMoreThan;
+    protected ConcatenatedInterfacesGroup groupConcatenatedInterfaces(Map<Interface, List<Component>> interfaceRelations) {
+        var concatenateInterfacesMoreThan = options.getConcatenateComponents().getMoreThan();
+        var concatenate = concatenateInterfacesMoreThan != null && interfaceRelations.size() > concatenateInterfacesMoreThan;
+        var builder = ConcatenatedInterfacesGroup.builder();
+        if (concatenate) {
+            builder.concatenation(interfaceRelations);
+        } else {
+            builder.distinct(interfaceRelations);
+        }
+        return builder.build();
     }
 
     protected Map<String, Map<Interface, List<Component>>> groupInterfacesByComponents(
@@ -342,7 +380,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printPackageComponents(IndentStringAppender out, Package pack, Package parentPackage) {
-        var concatenateComponentGroup = groupConcatenateComponents(pack, parentPackage);
+        var concatenateComponentGroup = groupConcatenatedComponents(pack, parentPackage);
         printConcatenatedComponents(out, pack, concatenateComponentGroup.getConcatenation());
         printDistinctComponents(out, concatenateComponentGroup.getDistinct());
     }
@@ -357,10 +395,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return options.isPrintPackageBorder();
     }
 
-    protected ConcatenateComponentGroup groupConcatenateComponents(Package pack, Package parentPackage) {
+    protected ConcatenatedComponentGroup groupConcatenatedComponents(Package pack, Package parentPackage) {
         var components = pack.getComponents();
-        var componentGroupBuilder = ConcatenateComponentGroup.builder();
-        var concatenatePackageComponents = options.concatenatePackageComponents;
+        var componentGroupBuilder = ConcatenatedComponentGroup.builder();
+        var concatenatePackageComponents = options.concatenateComponents;
         var moreThan = concatenatePackageComponents.moreThan;
         if (moreThan != null && components != null && components.size() > moreThan) {
             var ignoreInterfaceRelated = concatenatePackageComponents.ignoreInterfaceRelated;
@@ -566,7 +604,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (components == null || components.isEmpty()) {
             return;
         }
-        var text = renderConcatenatedComponentsText(components, getConcatenatedComponentColumns(pack, components));
+        var text = renderConcatenatedComponentsText(pack, components);
         var concatenatedComponentsId = getElementId(packageId, "components");
         checkUniqueId(concatenatedComponentsId, "package:" + packageId);
         for (var component : components) {
@@ -576,29 +614,24 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         out.append(format("collections \"%s\" as %s\n", text, concatenatedComponentsId), false);
     }
 
-    protected int getConcatenatedComponentColumns(Package pack, Collection<Component> components) {
-        return options.getConcatenatePackageComponents().columns;
+    protected String renderConcatenatedComponentsText(Package pack, Collection<Component> components) {
+        var columns = getColumns(options.getConcatenateComponents().getColumns());
+
+        var layout = options.getConcatenateComponents().getLayout();
+        return renderTable(true, layout, columns, components.stream().map(Component::getName).collect(toList()));
     }
 
-    protected String renderConcatenatedComponentsText(Collection<Component> components, int columns) {
-        if (columns < 1) {
-            columns = 1;
-        }
-
+    protected String renderTable(boolean space, Layout layout, int columns, Collection<String> values) {
+        var ordered = orderForLayout(layout, columns, values);
+        var iterator = ordered.iterator();
         var result = new StringBuilder();
-        var iterator = components.iterator();
         while (iterator.hasNext()) {
             var cells = new String[columns];
             for (var c = 0; c < columns; c++) {
-                var cellVal = " ";
-                if (iterator.hasNext()) {
-                    var component = iterator.next();
-                    var componentName = component.getName();
-                    cellVal = c == 0 ? componentName : " " + componentName;
-                }
+                var cellVal = iterator.hasNext() ? iterator.next() : " ";
                 cells[c] = cellVal;
             }
-            var tableRow = renderTableRow(cells);
+            var tableRow = renderTableRow(space, cells);
             if (result.length() != 0) {
                 result.append("\\n\\\n");
             }
@@ -608,8 +641,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return result.toString();
     }
 
-    protected String getTextForConcatenating(Component component) {
-        return renderTableRow(component.getName());
+    protected String renderTableRow(boolean space, String[] cells) {
+        return TABLE_TRANSPARENT + "|" + renderTableCells(space, cells) + "|";
     }
 
     protected void printConcatenatedInterfaces(IndentStringAppender out, String parentId,
@@ -632,33 +665,39 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected String renderConcatenatedInterfacesText(Map<Interface, List<Component>> interfaces) {
-        return interfaces.keySet().stream().map(this::getTextForConcatenating)
-                .reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+        var concatenateOptions = options.getConcatenateInterfaces();
+        var layout = concatenateOptions.getLayout();
+        var columns = getColumns(concatenateOptions.getColumns());
+
+        return renderTable(true, layout, columns, interfaces.keySet().stream().map(this::toTableCell).collect(toList()));
     }
 
-    protected String getTextForConcatenating(Interface anInterface) {
+    protected String toTableCell(Interface anInterface) {
         var interfaceName = anInterface.getName();
         var core = anInterface.getCore();
         if (interfaceName instanceof HttpMethod) {
-            return getTextForConcatenating((HttpMethod) interfaceName);
+            return toTableCell((HttpMethod) interfaceName);
         } else if (core instanceof HttpMethod) {
-            return getTextForConcatenating((HttpMethod) core);
+            return toTableCell((HttpMethod) core);
         }
-        var name = anInterface.getName();
-        return renderTableRow(name);
+        return renderTableCells(anInterface.getName());
     }
 
-    protected String getTextForConcatenating(HttpMethod httpMethod) {
+    protected String toTableCell(HttpMethod httpMethod) {
         var method = httpMethod.getMethod();
         var path = httpMethod.getPath();
-        return renderTableRow("<r>" + method, /*ALL.equals(method) ? path : */":" + path);
+        return renderTableCells("<r>" + method + ":", path);
     }
 
-    protected String renderTableRow(CharSequence... cells) {
-        var cell = Stream.of(cells)
+    protected String renderTableCells(CharSequence... cells) {
+        return renderTableCells(false, cells);
+    }
+
+    protected String renderTableCells(boolean space, CharSequence... cells) {
+        return Stream.of(cells)
                 .map(c -> c == null ? "" : c.toString())
-                .reduce("", (l, r) -> l + (r.isEmpty() ? " " : r) + "|");
-        return cell.isEmpty() ? null : TABLE_TRANSPARENT + "|" + cell;
+                .map(s -> s.isEmpty() ? " " : s)
+                .reduce("", (l, r) -> (l.isEmpty() ? "" : l + (space ? " " : "") + "|") + r);
     }
 
     protected Stream<Package> mergeSubPack(Package pack) {
@@ -840,11 +879,21 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     @Data
     @Builder
     @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class ConcatenateComponentGroup {
+    public static class ConcatenatedComponentGroup {
         @Builder.Default
         Collection<Component> concatenation = Set.of();
         @Builder.Default
         Collection<Component> distinct = Set.of();
+    }
+
+    @Data
+    @Builder
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class ConcatenatedInterfacesGroup {
+        @Builder.Default
+        Map<Interface, List<Component>> concatenation = Map.of();
+        @Builder.Default
+        Map<Interface, List<Component>> distinct = Map.of();
     }
 
     @Data
@@ -887,11 +936,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder.Default
         BiPredicate<DirectionGroup, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
         @Builder.Default
-        Function<DirectionGroup, HtmlMethodsGroupBy> htmlMethodsGroupBy = directionGroup -> HtmlMethodsGroupBy.path;
+        Function<DirectionGroup, HtmlMethodsGroupBy> htmlMethodsGroupBy = directionGroup -> path;
         @Builder.Default
-        ConcatenatePackageComponentsOptions concatenatePackageComponents = ConcatenatePackageComponentsOptions.DEFAULT;
+        ConcatenateComponentsOptions concatenateComponents = ConcatenateComponentsOptions.DEFAULT;
         @Builder.Default
-        Integer concatenateInterfacesMoreThan = 5;
+        ConcatenateInterfacesOptions concatenateInterfaces = ConcatenateInterfacesOptions.DEFAULT;
 
         @Builder.Default
         Sort sort = Sort.builder().build();
@@ -928,6 +977,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             }
         }
 
+        public enum Layout {
+            vertical, horizontal;
+        }
+
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
@@ -948,16 +1001,32 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        public static class ConcatenatePackageComponentsOptions {
-            public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder()
+        public static class ConcatenateComponentsOptions {
+            public static ConcatenateComponentsOptions DEFAULT = ConcatenateComponentsOptions.builder()
                     .build();
             @Builder.Default
             Integer moreThan = 3;
             @Builder.Default
             int columns = 1;
+            @Builder.Default
+            Layout layout = vertical;
 
             @Builder.Default
             boolean ignoreInterfaceRelated = true;
+        }
+
+        @Data
+        @Builder(toBuilder = true)
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
+        public static class ConcatenateInterfacesOptions {
+            public static ConcatenateInterfacesOptions DEFAULT = ConcatenateInterfacesOptions.builder()
+                    .build();
+            @Builder.Default
+            Integer moreThan = 3;
+            @Builder.Default
+            int columns = 1;
+            @Builder.Default
+            Layout layout = vertical;
         }
     }
 }
