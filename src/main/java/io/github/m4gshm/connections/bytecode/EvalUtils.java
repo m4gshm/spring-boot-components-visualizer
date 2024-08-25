@@ -57,7 +57,6 @@ public class EvalUtils {
         }
         var springProxyClass = loadedClass(() -> SpringProxy.class);
         if (springProxyClass != null && componentType.getName().contains("$$") && springProxyClass.isAssignableFrom(componentType)) {
-            //log
             componentType = componentType.getSuperclass();
         }
         return componentType;
@@ -101,7 +100,6 @@ public class EvalUtils {
             throw new EvalException(e);
         }
         else {
-            //log
             return notAccessible(constructor, instructionHandle);
         }
     }

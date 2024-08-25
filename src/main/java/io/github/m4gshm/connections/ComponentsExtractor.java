@@ -70,7 +70,7 @@ public class ComponentsExtractor {
 
         var allBeans = getFilteredBeanNameWithType(beanDefinitionNames.stream())
                 .collect(toMap(Entry::getKey, Entry::getValue, (l, r) -> {
-                    //log
+                    log.trace("duplicated components {}", l.getName());
                     return l;
                 }, LinkedHashMap::new));
 
@@ -116,10 +116,10 @@ public class ComponentsExtractor {
     protected Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String componentName, Set<String> excludePackages) {
         var componentType = getComponentType(componentName);
         if (componentType == null) {
-            //log
+            log.warn("null type for component {}", componentName);
             return empty();
         } else if (isPackageMatchAny(componentType, excludePackages)) {
-            //log
+            log.info("component is excluded by package, component {}, type {}", componentName, componentType.getName());
             return empty();
         } else {
             return Stream.of(entry(componentName, componentType));
@@ -138,13 +138,11 @@ public class ComponentsExtractor {
                                               Package rootPackage, Map<String, Set<Component>> cache) {
         var cached = cache.get(componentName);
         if (cached != null) {
-            //log
             return cached.stream();
         }
 
         var feignClient = extractFeignClient(componentName, context);
         if (feignClient != null) {
-            //log
             componentType = feignClient.getType();
         }
 
@@ -158,24 +156,18 @@ public class ComponentsExtractor {
         } else {
             var result = new ArrayList<Component>();
 
-            //log
             var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                     .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 
-            //log
             var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
 
             var dependencies = feignClient == null
                     ? getDependencies(componentName, rootPackage, cache)
                     : Set.<Component>of();
 
-            //log
             var outJmsInterfaces = getOutJmsInterfaces(componentName, componentType, dependencies);
-            //log
             var outWsInterfaces = getOutWsInterfaces(componentName, componentType, dependencies);
-            //log
             var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(componentName, componentType, dependencies);
-            //log
             var outFeignHttpInterface = ofNullable(feignClient)
                     .flatMap(client -> ofNullable(client.getHttpMethods()).filter(Objects::nonNull)
                             .flatMap(Collection::stream).map(httpMethod -> {
@@ -188,14 +180,12 @@ public class ComponentsExtractor {
                                 return Interface.builder().direction(out).type(http).core(httpMethod).build();
                             })).collect(toList());
 
-            //log
             var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                     .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
                     .collect(toList());
 
             var name = feignClient != null && !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
 
-            //log
             var component = Component.builder().name(name)
                     .path(getComponentPath(componentType, rootPackage))
                     .type(componentType)
@@ -231,7 +221,7 @@ public class ComponentsExtractor {
         var repositoryEntities = new ArrayList<Interface>();
         var repositoryClass = loadedClass(() -> Repository.class);
         if (repositoryClass == null) {
-            //log
+            log.info("Sprint Data Repository is not supported");
         } else if (repositoryClass.isAssignableFrom(componentType)) {
             var factoryComponentName = FACTORY_BEAN_PREFIX + componentName;
             Object factory;
@@ -268,7 +258,7 @@ public class ComponentsExtractor {
                                                 .build())
                                         .build());
                             } else {
-                                //log
+                                log.warn("null entityPersister for entityClass {}", entityClassName);
                             }
                         }
                     } else if (entityInformation instanceof MongoEntityInformation) {
@@ -298,7 +288,7 @@ public class ComponentsExtractor {
         try {
             componentType = context.getType(beanName);
         } catch (NoSuchBeanDefinitionException e) {
-            //log
+            log.trace("getComponentType", e);
             componentType = null;
         }
         return unproxy(componentType);
@@ -366,7 +356,7 @@ public class ComponentsExtractor {
                                                                Package rootPackage, Map<String, Set<Component>> cache) {
         var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
         if (webSocketConfigClass == null) {
-            //log
+            log.info("Sprint Websocket WebSocketConfigurationSupport is not supported");
         } else if (webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {
@@ -405,7 +395,6 @@ public class ComponentsExtractor {
             var webSocketHttpRequestHandler = (WebSocketHttpRequestHandler) wsHandler;
             var webSocketHandler = webSocketHttpRequestHandler.getWebSocketHandler();
             if (webSocketHandler instanceof WebSocketHandlerDecorator) {
-                //log
                 webSocketHandler = ((WebSocketHandlerDecorator) webSocketHandler).getLastHandler();
             }
             var webSocketHandlerName = findBeanName(webSocketHandler, WebSocketHandler.class);
@@ -416,7 +405,8 @@ public class ComponentsExtractor {
                 cached = cached.stream().map(component -> {
                     var interfaces = component.getInterfaces();
                     if (!interfaces.contains(anInterface)) {
-                        //log
+                        log.trace("update cached component by interface, component {}, interface {}",
+                                component.getName(), anInterface);
                         var newInterfaces = new LinkedHashSet<>(interfaces);
                         newInterfaces.add(anInterface);
                         return component.toBuilder().interfaces(unmodifiableSet(newInterfaces)).build();
@@ -456,7 +446,7 @@ public class ComponentsExtractor {
     protected Set<Component> getUnmanagedDependencies(Class<?> componentType, Object unmanagedInstance,
                                                       Map<Object, Set<Component>> touched) {
         if (isIgnoreUnmanagedTypes(componentType)) {
-            //log trace
+            log.trace("ignore unmanaged component type {}", componentType);
             return Set.of();
         }
         var dependencies = new LinkedHashSet<Component>();
@@ -472,20 +462,18 @@ public class ComponentsExtractor {
                                 (type.equals(Objects.class) || !typePackage.equals(String.class.getPackage()));
                     })
                     .map(field -> {
-                        //log
+                        log.trace("read field {} of object {}", field.getName(), unmanagedInstance);
                         return getFieldValue(unmanagedInstance, field, options.failFast);
                     })
                     .filter(Objects::nonNull).forEach(value -> {
                         var alreadyTouched = touched.get(value);
                         if (alreadyTouched != null) {
-                            //log
                             dependencies.addAll(alreadyTouched);
                         } else {
                             var managedDependencyName = findBeanName(value);
                             if (managedDependencyName != null && isUnmanaged) {
                                 dependencies.add(newManagedDependency(managedDependencyName));
                             } else if (value instanceof Collection<?>) {
-                                //log
                                 var collection = (Collection<?>) value;
                                 var aggregated = collection.stream().map(o -> {
                                     var oName = findBeanName(value);
@@ -529,7 +517,7 @@ public class ComponentsExtractor {
                 var bean = context.getBean(name);
                 return object == bean;
             } catch (NoSuchBeanDefinitionException e) {
-                //log
+                log.trace("findBeanName", e);
                 return false;
             }
         }).findFirst().orElse(null);

@@ -56,7 +56,7 @@ public class JmsOperationsUtils {
 
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(context.getBean(componentName), instructionHandle, localVariableTable,
+                        ? extractJmsClients(componentName, context.getBean(componentName), instructionHandle, localVariableTable,
                         constantPoolGen, bootstrapMethods, code).stream()
                         : Stream.of();
             }).filter(Objects::nonNull).collect(toList());
@@ -66,11 +66,12 @@ public class JmsOperationsUtils {
     }
 
     private static List<JmsClient> extractJmsClients(
-            Object object, InstructionHandle instructionHandle,
+            String componentName, Object object, InstructionHandle instructionHandle,
             LocalVariableTable localVariableTable,
             ConstantPoolGen constantPoolGen,
             BootstrapMethods bootstrapMethods,
             Code code) {
+        log.trace("extractJmsClients, componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);

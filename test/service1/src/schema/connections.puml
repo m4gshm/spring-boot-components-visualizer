@@ -10,8 +10,8 @@ package "service1" as service1 #line.dotted;text:gray {
   }
   package "db" as service1.db #line.dotted;text:gray {
     package "jpa" as service1.db.jpa #line.dotted;text:gray {
-      component userRepository as userRepository
       component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
     }
     package "mongo" as service1.db.mongo #line.dotted;text:gray {
       component documentRepository as documentRepository

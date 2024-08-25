@@ -1,14 +1,11 @@
 package io.github.m4gshm.connections.client;
 
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.LocalVariableTable;
-import org.apache.bcel.generic.ConstantPoolGen;
-import org.apache.bcel.generic.INVOKEINTERFACE;
-import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.InstructionList;
-import org.apache.bcel.generic.InvokeInstruction;
+import org.apache.bcel.generic.*;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.socket.client.WebSocketClient;
 
@@ -25,6 +22,7 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 
+@Slf4j
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(String componentName, Class<?> componentType,
@@ -48,7 +46,7 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        return getDoHandshakeUri(context.getBean(componentName), instructionHandle,
+                        return getDoHandshakeUri(componentName, context.getBean(componentName), instructionHandle,
                                 constantPoolGen, localVariableTable, bootstrapMethods, code);
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -67,24 +65,24 @@ public class WebsocketClientUtils {
     }
 
     private static String getDoHandshakeUri(
-            Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
+            String componentName, Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
             LocalVariableTable localVariableTable,
             BootstrapMethods bootstrapMethods,
             Code code) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        log.trace("getDoHandshakeUri componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         if (argumentTypes.length != 3) {
-            //log
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            var value = eval(object, instructionHandle.getPrev(), constantPoolGen, localVariableTable, bootstrapMethods, code);
+            var value = eval(object, instructionHandle.getPrev(), constantPoolGen,
+                    localVariableTable, bootstrapMethods, code);
             var result = value.getResult();
             if (result instanceof URI) {
                 var uri = (URI) result;
                 return uri.toString();
             } else {
-                //log
                 return result != null ? result.toString() : null;
             }
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
@@ -92,7 +90,6 @@ public class WebsocketClientUtils {
             var utiTemplate = eval(object, uriTemplates.getLastInstruction().getPrev(), constantPoolGen, localVariableTable, bootstrapMethods, code);
             return String.valueOf(utiTemplate.getResult());
         } else {
-            //log
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }

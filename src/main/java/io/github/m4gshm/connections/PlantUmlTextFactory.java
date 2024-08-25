@@ -263,7 +263,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             if (core instanceof HttpMethod) {
                 return entry((HttpMethod) core, anInterface);
             } else {
-                //log
                 return null;
             }
         }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
@@ -500,7 +499,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var type = anInterface.getType();
         var componentName = component.getName();
         if (!printedComponents.contains(component)) {
-            //log
             return;
         }
         var concatenatedComponentId = getComponentName(componentName);
@@ -691,7 +689,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printComponentReferences(IndentStringAppender out, Component component) {
         if (!printedComponents.contains(component)) {
-            //log
             return;
         }
 

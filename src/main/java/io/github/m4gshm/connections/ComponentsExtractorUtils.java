@@ -58,10 +58,7 @@ import static org.springframework.core.annotation.AnnotatedElementUtils.getMerge
 public class ComponentsExtractorUtils {
 
     public static boolean hasMainMethod(Class<?> beanType) {
-        return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main")
-                && isOnlyOneArgStringArray(method)
-                && method.getReturnType().equals(void.class)
-                && isStatic(method.getModifiers()) && isPublic(method.getModifiers()));
+        return of(beanType.getMethods()).anyMatch(method -> method.getName().equals("main") && isOnlyOneArgStringArray(method) && method.getReturnType().equals(void.class) && isStatic(method.getModifiers()) && isPublic(method.getModifiers()));
     }
 
     public static boolean isOnlyOneArgStringArray(Method method) {
@@ -105,39 +102,29 @@ public class ComponentsExtractorUtils {
 
     }
 
-    public static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(
-            Collection<E> elements, Supplier<Class<A>> supplier
-    ) {
+    public static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(Collection<E> elements, Supplier<Class<A>> supplier) {
         return getAnnotations(elements, supplier, AnnotatedElementUtils::getAllMergedAnnotations);
     }
 
-    public static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(
-            Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
-    ) {
+    public static <A extends Annotation, E extends AnnotatedElement> Set<A> getAnnotations(Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor) {
         var annotationClass = loadedClass(supplier);
         if (annotationClass == null) {
             return Set.of();
         } else {
-            return elements.stream()
-                    .map(element -> extractor.apply(element, annotationClass)).flatMap(Collection::stream)
-                    .collect(toCollection(LinkedHashSet::new));
+            return elements.stream().map(element -> extractor.apply(element, annotationClass)).flatMap(Collection::stream).collect(toCollection(LinkedHashSet::new));
         }
     }
 
-    public static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
-            Collection<E> elements, Supplier<Class<A>> supplier
-    ) {
+    public static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(Collection<E> elements, Supplier<Class<A>> supplier) {
         var annotationClass = loadedClass(supplier);
-        return annotationClass == null ? Map.of() : elements.stream()
-                .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
+        return annotationClass == null ? Map.of() : elements.stream().collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
 
     }
 
     public static Collection<Method> getMethods(Class<?> type) {
         var methods = new LinkedHashSet<>(Arrays.asList(type.getMethods()));
         var superclass = type.getSuperclass();
-        var superMethods = (superclass != null && !Object.class.equals(superclass)) ?
-                getMethods(superclass) : List.<Method>of();
+        var superMethods = (superclass != null && !Object.class.equals(superclass)) ? getMethods(superclass) : List.<Method>of();
 
         methods.addAll(superMethods);
         return methods;
@@ -148,13 +135,10 @@ public class ComponentsExtractorUtils {
         if (restController == null) {
             return List.of();
         }
-        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
-                .map(RequestMapping::path)
-                .flatMap(Arrays::stream).findFirst().orElse("");
+        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class)).map(RequestMapping::path).flatMap(Arrays::stream).findFirst().orElse("");
         return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream().flatMap(requestMapping -> {
             var methods = getHttpMethods(requestMapping);
-            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
-                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder().path(path).method(method).build()));
+            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath)).flatMap(path -> methods.stream().map(method -> HttpMethod.builder().path(path).method(method).build()));
         }).collect(toCollection(LinkedHashSet::new));
     }
 
@@ -178,14 +162,7 @@ public class ComponentsExtractorUtils {
 
     public static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
-        return annotationMap.entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
-                .map(entry -> JmsClient.builder()
-                        .direction(in)
-                        .name(entry.getKey().getName())
-                        .destination(beanFactory.resolveEmbeddedValue(entry.getValue().destination()))
-                        .build())
-                .collect(toList());
+        return annotationMap.entrySet().stream().flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation))).map(entry -> JmsClient.builder().direction(in).name(entry.getKey().getName()).destination(beanFactory.resolveEmbeddedValue(entry.getValue().destination())).build()).collect(toList());
     }
 
     public static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
@@ -214,23 +191,25 @@ public class ComponentsExtractorUtils {
 
                     handler = Proxy.getInvocationHandler(target);
                     handlerClass = handler.getClass();
+                } else if (advised == null) {
+                    log.info("advised is null");
                 } else {
-                    //log
+                    log.info("unexpected advised type {}", advised.getClass());
                 }
             }
             if (!"FeignInvocationHandler".equals(handlerClass.getSimpleName())) {
+                log.info("unexpected feign invocation handler type {}", handlerClass.getSimpleName());
                 return null;
             }
 
             var target = (Target<?>) getFieldValue(handler, "target");
             if (target == null) {
-                //log
+                log.info("FeignInvocationHandler target is null, handler instance {}", handler);
                 return null;
             }
             var rootUrl = target.url();
 
-            var httpMethods = ((Collection<?>) ((Map<?, ?>) getFieldValue(handler, "dispatch")).values()
-            ).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
+            var httpMethods = ((Collection<?>) ((Map<?, ?>) getFieldValue(handler, "dispatch")).values()).stream().map(value -> (InvocationHandlerFactory.MethodHandler) value).map(value -> {
                 var buildTemplateFromArgs = getFieldValue(value, "buildTemplateFromArgs");
                 var metadata = (MethodMetadata) getFieldValue(buildTemplateFromArgs, "metadata");
                 var template = metadata.template();
@@ -240,12 +219,7 @@ public class ComponentsExtractorUtils {
             }).collect(toList());
 
             var type = target.type();
-            return FeignClient.builder()
-                    .type(type)
-                    .name(target.name())
-                    .url(rootUrl)
-                    .httpMethods(httpMethods)
-                    .build();
+            return FeignClient.builder().type(type).name(target.name()).url(rootUrl).httpMethods(httpMethods).build();
         } catch (NoSuchBeanDefinitionException e) {
             log.debug("extractFeignClient bean {}", name, e);
             return null;
@@ -254,9 +228,7 @@ public class ComponentsExtractorUtils {
 
     public static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
         var type = loadedClass(classSupplier);
-        return type != null ? dependencies.stream()
-                .filter(component -> type.isAssignableFrom(component.getType()))
-                .findFirst().orElse(null) : null;
+        return type != null ? dependencies.stream().filter(component -> type.isAssignableFrom(component.getType())).findFirst().orElse(null) : null;
     }
 
     public static Field getDeclaredField(String name, Class<?> type) {
@@ -286,10 +258,10 @@ public class ComponentsExtractorUtils {
             field.setAccessible(true);
             return field.get(object);
         } catch (Exception e) {
-            //log
             if (throwException) {
                 throw new EvalException(e);
             }
+            log.debug("eval getFieldValue {}, of object type {}", field, object != null ? object.getClass() : null, e);
             return null;
         }
     }
@@ -304,17 +276,12 @@ public class ComponentsExtractorUtils {
     }
 
     public static Interface newInterface(JmsClient jmsClient) {
-        return Interface.builder().direction(jmsClient.getDirection()).type(jms).name(jmsClient.getDestination()).core(
-                JmsClient.Destination.builder().destination(jmsClient.getDestination()).direction(jmsClient.getDirection()).build()
-        ).build();
+        return Interface.builder().direction(jmsClient.getDirection()).type(jms).name(jmsClient.getDestination()).core(JmsClient.Destination.builder().destination(jmsClient.getDestination()).direction(jmsClient.getDirection()).build()).build();
     }
 
     public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
         if (rootPackageName != null) {
-            var relatedType = Stream.ofNullable(type)
-                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass)
-                            .map(c -> entry(c, c.getPackage()))))
-                    .filter(e -> e.getValue().getName().startsWith(rootPackageName)).findFirst().orElse(null);
+            var relatedType = Stream.ofNullable(type).flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass).map(c -> entry(c, c.getPackage())))).filter(e -> e.getValue().getName().startsWith(rootPackageName)).findFirst().orElse(null);
             if (relatedType != null) {
                 log.debug("type is related to root package. type: {}, related by {}", type, relatedType.getKey());
                 return true;
@@ -361,8 +328,11 @@ public class ComponentsExtractorUtils {
     public static Stream<String> toFilteredByName(Set<String> excludeBeanNames, Stream<String> beanDefinitionNames) {
         if (!excludeBeanNames.isEmpty()) {
             beanDefinitionNames = beanDefinitionNames.filter(beanName -> {
-                //log
-                return !isMatchAny(beanName, excludeBeanNames);
+                var exclude = isMatchAny(beanName, excludeBeanNames);
+                if (exclude) {
+                    log.debug("component exclude by name '{}", beanName);
+                }
+                return !exclude;
             });
         }
         return beanDefinitionNames;
@@ -384,14 +354,9 @@ public class ComponentsExtractorUtils {
         return concat(Stream.of(component), dependencies != null ? dependencies.stream() : empty());
     }
 
-    public static Component getComponentWithFilteredDependencies(Component component,
-                                                                 Map<ComponentsExtractor.ComponentKey, Component> componentsPerName) {
+    public static Component getComponentWithFilteredDependencies(Component component, Map<ComponentsExtractor.ComponentKey, Component> componentsPerName) {
         var dependencies = component.getDependencies();
-        return dependencies != null && !dependencies.isEmpty() ? component.toBuilder()
-                .dependencies(dependencies.stream()
-                        .filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency)))
-                        .collect(toLinkedHashSet()))
-                .build() : component;
+        return dependencies != null && !dependencies.isEmpty() ? component.toBuilder().dependencies(dependencies.stream().filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency))).collect(toLinkedHashSet())).build() : component;
     }
 
     public static Component newManagedDependency(String oName) {

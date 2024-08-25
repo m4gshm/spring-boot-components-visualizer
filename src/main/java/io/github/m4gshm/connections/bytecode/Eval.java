@@ -53,16 +53,15 @@ public class Eval {
             var localVariables = localVariableTable.getOrDefault(aloadIndex, List.of());
             var position = instructionHandle.getPosition();
 
-            var localVariable = localVariables.stream().filter(v -> {
-                int startPC = v.getStartPC();
-                var endPC = startPC + v.getLength();
+            var localVariable = localVariables.stream().filter(variable -> {
+                int startPC = variable.getStartPC();
+                var endPC = startPC + variable.getLength();
                 return startPC <= position && position <= endPC;
             }).findFirst().orElseGet(() -> {
                 if (localVariables.isEmpty()) {
-                    //log
+                    log.warn("no matched local variables for instruction {} ", instructionHandle);
                     return null;
                 }
-                //log
                 return localVariables.get(0);
             });
 
@@ -152,7 +151,7 @@ public class Eval {
     }
 
     private Object getDefaultValue(Class<?> type) {
-        //log
+        log.trace("getDefaultValue type {}", type);
         if (type == null) {
             return null;
         } else if (void.class.isAssignableFrom(type)) {

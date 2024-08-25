@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.client;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.bytecode.EvalResult;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.LocalVariableTable;
@@ -26,6 +27,7 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 
+@Slf4j
 @UtilityClass
 public class RestOperationsUtils {
     public static List<HttpMethod> extractRestOperationsUris(String componentName, Class<?> componentType,
@@ -47,7 +49,8 @@ public class RestOperationsUtils {
 
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractHttpMethod(context.getBean(componentName), instructionHandle, constantPoolGen, localVariableTable, bootstrapMethods, code)
+                        ? extractHttpMethod(componentName, context.getBean(componentName), instructionHandle,
+                        constantPoolGen, localVariableTable, bootstrapMethods, code)
                         : null;
             }).filter(Objects::nonNull).collect(toList());
 
@@ -61,9 +64,10 @@ public class RestOperationsUtils {
     }
 
     private static HttpMethod extractHttpMethod(
-            Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
+            String componentName, Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
             LocalVariableTable localVariableTable, BootstrapMethods bootstrapMethods,
             Code code) {
+        log.trace("extractHttpMethod componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
@@ -75,7 +79,8 @@ public class RestOperationsUtils {
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var arguments = new EvalResult[argumentTypes.length];
         for (int i = argumentTypes.length; i > 0; i--) {
-            var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods, code);
+            var evalResult = eval(object, onEval, constantPoolGen, localVariableTable,
+                    bootstrapMethods, code);
             arguments[i - 1] = evalResult;
             onEval = evalResult.getLastInstruction().getPrev();
         }
