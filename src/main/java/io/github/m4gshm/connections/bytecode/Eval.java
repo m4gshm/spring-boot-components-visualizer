@@ -104,22 +104,18 @@ public class Eval {
             }
 
             var prev = instructionHandle.getPrev();
-            var aStoreResults = new ArrayList<Object>(localVariables.size());
-            for (var variable : localVariables) {
-                inner:
-                while (prev != null) {
-                    if (prev.getInstruction() instanceof ASTORE) {
-                        var astore = (ASTORE) prev.getInstruction();
-                        if (astore.getIndex() == aloadIndex) {
-                            var storedInLocal = eval(object, prev);
-                            var result = storedInLocal.getResult();
-                            aStoreResults.add(result);
-                            prev = prev.getPrev();
-                            break inner;
-                        }
+            var aStoreResults = new ArrayList<>(localVariables.size());
+            while (prev != null) {
+                if (prev.getInstruction() instanceof ASTORE) {
+                    var astore = (ASTORE) prev.getInstruction();
+                    if (astore.getIndex() == aloadIndex) {
+                        var storedInLocal = eval(object, prev);
+                        var result = storedInLocal.getResult();
+                        aStoreResults.add(result);
+                        prev = prev.getPrev();
                     }
-                    prev = prev.getPrev();
                 }
+                prev = prev.getPrev();
             }
             if (!aStoreResults.isEmpty()) {
                 return success(aStoreResults, instructionHandle, instructionHandle);
