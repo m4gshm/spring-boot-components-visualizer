@@ -566,7 +566,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (components == null || components.isEmpty()) {
             return;
         }
-        var text = renderConcatenatedComponentsText(components);
+        var text = renderConcatenatedComponentsText(components, getConcatenatedComponentColumns(pack, components));
         var concatenatedComponentsId = getElementId(packageId, "components");
         checkUniqueId(concatenatedComponentsId, "package:" + packageId);
         for (var component : components) {
@@ -576,8 +576,36 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         out.append(format("collections \"%s\" as %s\n", text, concatenatedComponentsId), false);
     }
 
-    protected String renderConcatenatedComponentsText(Collection<Component> components) {
-        return components.stream().map(this::getTextForConcatenating).reduce("", (l, r) -> (l.isBlank() ? "" : l + "\\n\\\n") + r);
+    protected int getConcatenatedComponentColumns(Package pack, Collection<Component> components) {
+        return options.getConcatenatePackageComponents().columns;
+    }
+
+    protected String renderConcatenatedComponentsText(Collection<Component> components, int columns) {
+        if (columns < 1) {
+            columns = 1;
+        }
+
+        var result = new StringBuilder();
+        var iterator = components.iterator();
+        while (iterator.hasNext()) {
+            var cells = new String[columns];
+            for (var c = 0; c < columns; c++) {
+                var cellVal = " ";
+                if (iterator.hasNext()) {
+                    var component = iterator.next();
+                    var componentName = component.getName();
+                    cellVal = c == 0 ? componentName : " " + componentName;
+                }
+                cells[c] = cellVal;
+            }
+            var tableRow = renderTableRow(cells);
+            if (result.length() != 0) {
+                result.append("\\n\\\n");
+            }
+            result.append(tableRow);
+        }
+
+        return result.toString();
     }
 
     protected String getTextForConcatenating(Component component) {
@@ -623,7 +651,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected String getTextForConcatenating(HttpMethod httpMethod) {
         var method = httpMethod.getMethod();
         var path = httpMethod.getPath();
-        return renderTableRow(method, /*ALL.equals(method) ? path : */":" + path);
+        return renderTableRow("<r>" + method, /*ALL.equals(method) ? path : */":" + path);
     }
 
     protected String renderTableRow(CharSequence... cells) {
@@ -924,7 +952,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             public static ConcatenatePackageComponentsOptions DEFAULT = ConcatenatePackageComponentsOptions.builder()
                     .build();
             @Builder.Default
-            Integer moreThan = 5;
+            Integer moreThan = 3;
+            @Builder.Default
+            int columns = 1;
+
             @Builder.Default
             boolean ignoreInterfaceRelated = true;
         }
