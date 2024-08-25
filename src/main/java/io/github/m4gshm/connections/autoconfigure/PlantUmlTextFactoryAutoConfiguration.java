@@ -11,7 +11,7 @@ import org.springframework.core.env.Environment;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.*;
 import static io.github.m4gshm.connections.Utils.getApplicationName;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class PlantUmlTextFactoryAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(SchemaFactory.class)

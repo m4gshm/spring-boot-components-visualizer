@@ -10,8 +10,7 @@ import org.apache.bcel.generic.*;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import static io.github.m4gshm.connections.bytecode.EvalException.newInvalidEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalException.newUnsupportedEvalException;
@@ -37,6 +36,40 @@ public class Eval {
         invokeArgs.add(object);
         invokeArgs.addAll(asList(arguments));
         return invokeArgs;
+    }
+
+    private static Object defVal(Class<?> type) {
+        if (type == null) {
+            return null;
+        } else if (void.class.equals(type)) {
+            return null;
+        } else if (boolean.class.equals(type)) {
+            return false;
+        } else if (byte.class.equals(type)) {
+            return (byte) 0;
+        } else if (short.class.equals(type)) {
+            return (short) 0;
+        } else if (int.class.equals(type)) {
+            return 0;
+        } else if (long.class.equals(type)) {
+            return 0L;
+        } else if (float.class.equals(type)) {
+            return 0F;
+        } else if (double.class.equals(type)) {
+            return 0D;
+        } else if (char.class.equals(type)) {
+            return (char) 0;
+        } else if (String.class.equals(type)) {
+            return "";
+        } else if (Collection.class.equals(type) || List.class.equals(type)) {
+            return List.of();
+        } else if (Set.class.equals(type)) {
+            return Set.of();
+        } else if (Map.class.equals(type)) {
+            return Map.of();
+        } else {
+            return null;
+        }
     }
 
     public EvalResult<Object> eval(Object object, InstructionHandle instructionHandle) {
@@ -73,7 +106,8 @@ public class Eval {
             var prev = instructionHandle.getPrev();
             var aStoreResults = new ArrayList<Object>(localVariables.size());
             for (var variable : localVariables) {
-                inner: while (prev != null) {
+                inner:
+                while (prev != null) {
                     if (prev.getInstruction() instanceof ASTORE) {
                         var astore = (ASTORE) prev.getInstruction();
                         if (astore.getIndex() == aloadIndex) {
@@ -151,32 +185,9 @@ public class Eval {
     }
 
     private Object getDefaultValue(Class<?> type) {
-        log.trace("getDefaultValue type {}", type);
-        if (type == null) {
-            return null;
-        } else if (void.class.isAssignableFrom(type)) {
-            return null;
-        } else if (boolean.class.isAssignableFrom(type)) {
-            return false;
-        } else if (byte.class.isAssignableFrom(type)) {
-            return (byte) 0;
-        } else if (short.class.isAssignableFrom(type)) {
-            return (short) 0;
-        } else if (int.class.isAssignableFrom(type)) {
-            return 0;
-        } else if (long.class.isAssignableFrom(type)) {
-            return 0L;
-        } else if (float.class.isAssignableFrom(type)) {
-            return 0F;
-        } else if (double.class.isAssignableFrom(type)) {
-            return 0D;
-        } else if (char.class.isAssignableFrom(type)) {
-            return (char) 0;
-        } else if (String.class.isAssignableFrom(type)) {
-            return "";
-        } else {
-            return null;
-        }
+        var val = defVal(type);
+        log.trace("getDefaultValue type {} is {}", type, val);
+        return val;
     }
 
     private EvalResult<Object> getMethodResult(

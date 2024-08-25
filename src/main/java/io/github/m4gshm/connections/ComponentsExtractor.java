@@ -116,7 +116,7 @@ public class ComponentsExtractor {
     protected Stream<Entry<String, Class<?>>> withTypeFilteredByPackage(String componentName, Set<String> excludePackages) {
         var componentType = getComponentType(componentName);
         if (componentType == null) {
-            log.warn("null type for component {}", componentName);
+            log.trace("null type for component {}", componentName);
             return empty();
         } else if (isPackageMatchAny(componentType, excludePackages)) {
             log.info("component is excluded by package, component {}, type {}", componentName, componentType.getName());

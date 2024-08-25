@@ -44,7 +44,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String INDENT = "  ";
     public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
             "", List.of(" "),
-            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]", "#", "\"", "'")
+            ".", List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]", "#",
+                    "\"", "'", "%")
     );
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";

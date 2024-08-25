@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.Getter;
 import org.apache.bcel.generic.InstructionHandle;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -26,7 +27,9 @@ public class EvalResult<T> {
     }
 
     public static <T> EvalResult<T> success(T value, InstructionHandle callInstruction, InstructionHandle lastInstruction) {
-        return EvalResult.<T>builder().result(List.of(value)).callInstruction(callInstruction).lastInstruction(lastInstruction).build();
+        ArrayList<T> nullSupporting = new ArrayList<>();
+        nullSupporting.add(value);
+        return EvalResult.<T>builder().result(nullSupporting).callInstruction(callInstruction).lastInstruction(lastInstruction).build();
     }
 
     public static <T> EvalResult<T> notAccessible(Object source, InstructionHandle callInstruction) {
