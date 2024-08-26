@@ -156,7 +156,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 var directionGroupName = directionGroup == null ? null : directionGroup.name();
                 printUnion(out, directionGroupName, directionGroupName, directionGroupStyle, () -> {
                     for (var type : Type.values()) {
-                        var interfaceRelations = Optional.<Map<Interface, List<Component>>>ofNullable(byType.get(type)).orElse(Map.of());
+                        var interfaceRelations = Optional.ofNullable(byType.get(type)).orElse(Map.of());
                         if (!interfaceRelations.isEmpty()) {
                             printUnion(out, type.code, getDirectionGroupTypeId(directionGroup, type), options.getInterfaceAggregate().apply(directionGroup, type), () -> {
                                 printInterfaces(out, directionGroup, type, interfaceRelations);
@@ -211,7 +211,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected ConcatenatedInterfacesGroup groupConcatenatedInterfaces(Map<Interface, List<Component>> interfaceRelations) {
-        var concatenateInterfacesMoreThan = options.getConcatenateComponents().getMoreThan();
+        var concatenateInterfacesMoreThan = options.getConcatenateInterfaces().getMoreThan();
         var concatenate = concatenateInterfacesMoreThan != null && interfaceRelations.size() > concatenateInterfacesMoreThan;
         var builder = ConcatenatedInterfacesGroup.builder();
         if (concatenate) {
@@ -449,7 +449,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return format(renderAs(anInterface.getType()) + " \"%s\" as %s\n", renderInterfaceName(anInterface), interfaceId);
     }
 
-    protected void printInterfaceReferences(IndentStringAppender out, Interface anInterface, String interfaceId, Collection<Component> components) {
+    protected void printInterfaceReferences(IndentStringAppender out, Interface anInterface, String interfaceId,
+                                            Collection<Component> components) {
         for (var component : components) {
             printInterfaceReference(out, anInterface, interfaceId, component);
         }
@@ -473,10 +474,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected String renderStorage(Storage storage, String interfaceId) {
         var storedTo = storage.getStoredTo();
         var tables = storedTo.stream().reduce("", (l, r) -> (l.isBlank() ? "" : l + "\n") + r);
-        return format("note right of %s: %s\n", interfaceId, tables);
+        var noteId = getElementId(interfaceId, "table_name");
+        return format("note \"%1$s\" as %2$s\n%2$s .. %3$s\n", tables, noteId, interfaceId);
     }
 
-    protected void printInterfaceReference(IndentStringAppender out, Interface anInterface, String interfaceId, Component component) {
+    protected void printInterfaceReference(IndentStringAppender out, Interface anInterface, String interfaceId,
+                                           Component component) {
         var type = anInterface.getType();
         var componentName = component.getName();
         if (!printedComponents.contains(component)) {
@@ -485,7 +488,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var concatenatedComponentId = getComponentName(componentName);
         var concatenatedComponent = !componentName.equals(concatenatedComponentId);
         var componentId = concatenatedComponent ? concatenatedComponentId : plantUmlAlias(componentName);
-        var printed = options.reduceDuplicatedElementRelations && printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
+        var printed = options.reduceDuplicatedElementRelations &&
+                printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
         if (printed) {
             return;
         }
@@ -500,6 +504,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 break;
             case outIn:
                 out.append(renderOutIn(type, interfaceId, componentId));
+                break;
+            case internal:
+                out.append(renderInternal(type, interfaceId, componentId));
                 break;
             default:
                 out.append(renderLink(type, interfaceId, componentId));
@@ -517,6 +524,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected String renderIn(Type type, String interfaceId, String componentId) {
         return format("%s )....> %s\n", interfaceId, componentId);
+    }
+
+    protected String renderInternal(Type type, String interfaceId, String componentId) {
+        return format("%s .. %s\n", interfaceId, componentId);
     }
 
     protected String renderLink(Type type, String interfaceId, String componentId) {

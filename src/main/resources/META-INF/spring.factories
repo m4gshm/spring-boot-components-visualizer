@@ -1,3 +1,3 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-io.github.m4gshm.connections.autoconfigure.ConnectionsExtractorAutoConfiguration,\
+io.github.m4gshm.connections.autoconfigure.ComponentsExtractorAutoConfiguration,\
 io.github.m4gshm.connections.autoconfigure.PlantUmlTextFactoryAutoConfiguration

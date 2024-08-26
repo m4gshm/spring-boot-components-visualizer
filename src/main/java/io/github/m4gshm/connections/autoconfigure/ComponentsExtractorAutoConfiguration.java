@@ -8,10 +8,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-public class ConnectionsExtractorAutoConfiguration {
+public class ComponentsExtractorAutoConfiguration {
     @Bean
-    public ComponentsExtractor connectionsExtractor(ConfigurableApplicationContext context,
-                                                    ObjectProvider<Options> componentsExtractorOptions) {
+    public ComponentsExtractor componentsExtractor(ConfigurableApplicationContext context,
+                                                   ObjectProvider<Options> componentsExtractorOptions) {
         return new ComponentsExtractor(context, componentsExtractorOptions.getIfAvailable());
     }
 }
