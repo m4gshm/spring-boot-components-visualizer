@@ -640,7 +640,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     protected String toTableCell(HttpMethod httpMethod) {
         var method = httpMethod.getMethod();
         var path = httpMethod.getPath();
-        return renderTableCells("<r>" + method + ":", path);
+        return renderTableCells("<r>" + method + ": ", path);
     }
 
     protected String renderTableCells(CharSequence... cells) {
