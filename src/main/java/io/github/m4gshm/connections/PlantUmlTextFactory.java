@@ -1,7 +1,6 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.*;
-import io.github.m4gshm.connections.model.Interface.Direction;
 import io.github.m4gshm.connections.model.Package;
 import io.github.m4gshm.connections.model.Interface.Type;
 import lombok.Builder;
@@ -20,8 +19,9 @@ import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
-import static io.github.m4gshm.connections.PlantUmlTextFactory.DirectionGroup.*;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.Direction.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.HtmlMethodsGroupBy.path;
+import static io.github.m4gshm.connections.PlantUmlTextFactory.Options.newUnionStyle;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.Union.newUnion;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
@@ -31,7 +31,6 @@ import static io.github.m4gshm.connections.model.HttpMethodsGroup.makeGroupsHier
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
-import static java.util.Arrays.stream;
 import static java.util.Collections.*;
 import static java.util.Map.entry;
 import static java.util.Objects.requireNonNull;
@@ -120,105 +119,173 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected void printInterfaces(IndentStringAppender out, Collection<Component> components) {
         var groupedInterfaces = getGroupedInterfaces(components);
-        var directionGroups = stream(Direction.values())
-                .map(options.getDirectionGroup())
-                .distinct()
-                .collect(toList());
-        for (var directionGroup : directionGroups) {
-            var byType = groupedInterfaces.getOrDefault(directionGroup, Map.of());
-            if (!byType.isEmpty()) {
-                var directionGroupStyle = getDirectionGroupStyle(directionGroup);
-                var directionGroupName = directionGroup == null ? null : directionGroup.name();
-                printUnion(out, newDirectionGroupUnion(directionGroupStyle, directionGroupName), () -> {
-                    for (var type : Type.values()) {
-                        var interfaceRelations = ofNullable(byType.get(type)).orElse(Map.of());
-                        if (!interfaceRelations.isEmpty()) {
-                            printUnion(out, newInterfaceTypeUnion(directionGroup, type), () -> {
-                                printInterfaces(out, directionGroup, type, interfaceRelations);
-                            });
-                        }
-                    }
-                });
-            }
+        printGroupedInterfaces(out, groupedInterfaces);
+    }
+
+    protected void printGroupedInterfaces(IndentStringAppender out, Collection<InterfaceGroup> groupedInterfaces) {
+        if (groupedInterfaces != null) for (var interfaceGroup : groupedInterfaces) {
+            var key = interfaceGroup.getKey();
+            var interfaces = interfaceGroup.getInterfaces();
+            var hasInterfaces = interfaces != null && !interfaces.isEmpty();
+            var groups = interfaceGroup.getGroups();
+            var hasGroups = groups != null && !groups.isEmpty();
+            if (hasInterfaces || hasGroups) printUnion(out, getUnion(key), () -> {
+                if (hasInterfaces) printInterfaces(out, key.getDirection(), key.getType(), interfaces);
+                if (hasGroups) printGroupedInterfaces(out, groups);
+            });
         }
     }
 
-    protected Map<DirectionGroup, Map<Type, Map<Interface, List<Component>>>> getGroupedInterfaces(
-            Collection<Component> components
-    ) {
-        return components.stream().flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream)
-                        .map(anInterface -> entry(anInterface.getDirection(), entry(anInterface, component)))
-                )
-                .collect(groupingBy(directionEntryEntry -> options.directionGroup.apply(directionEntryEntry.getKey()),
-                        mapping(Entry::getValue, groupingBy(entry -> entry.getKey().getType(), groupingBy(Entry::getKey, () -> {
-                            var comparator = options.getSort().getInterfaces();
-                            return comparator != null
-                                    ? new TreeMap<>(comparator)
-                                    : new LinkedHashMap<>();
-                        }, mapping(Entry::getValue, toList()))))
-                ));
+    protected Union getUnion(InterfaceGroup.Key key) {
+        var direction = key.getDirection();
+        var type = key.getType();
+        var component = key.getComponent();
+        var directionLevel = direction != null;
+        var typeLevel = type != null;
+        var componentLevel = component != null;
+        if (componentLevel) {
+            var name = component.getName();
+            return newUnion(getElementId(name, "interfaces"), name, getComponentGroupUnionStyle(key));
+        } else if (typeLevel) {
+            return newUnion(getDirectionGroupTypeId(direction, type), type.name(), getInterfaceTypeUnionStyle(key));
+        } else if (directionLevel) {
+            return newUnion(getElementId(direction.name()), direction.name(), getDirectionGroupUnionStyle(key));
+        } else {
+            return null;
+        }
     }
 
-    protected Union newInterfaceTypeUnion(DirectionGroup directionGroup, Type type) {
-        return options.printInterfaceTypeUnion ? newUnion(getDirectionGroupTypeId(directionGroup, type),
-                getInterfacesUnionName(directionGroup, type),
-                getInterfacesUnionStyle(directionGroup, type)
-        ) : null;
+    protected UnionStyle getDirectionGroupUnionStyle(InterfaceGroup.Key key) {
+        return newUnionStyle(cloud, LINE_DOTTED_LINE_GRAY);
     }
 
-    protected Union newDirectionGroupUnion(UnionStyle directionGroupStyle, String directionGroupName) {
-        return options.printDirectionGroupUnion ? new Union(directionGroupStyle, directionGroupName, directionGroupName) : null;
+    protected UnionStyle getInterfaceTypeUnionStyle(InterfaceGroup.Key key) {
+        return options.interfaceTypeUnionStyle.apply(key);
     }
 
-    protected String getInterfacesUnionName(DirectionGroup directionGroup, Type type) {
-        return options.printDirectionGroupUnion ? type.code : type.code + " " + directionGroup.name();
+    protected UnionStyle getComponentGroupUnionStyle(InterfaceGroup.Key key) {
+        return options.componentGroupUnionStyle.apply(key);
     }
 
-    protected UnionStyle getInterfacesUnionStyle(DirectionGroup directionGroup, Type type) {
-        return options.getInterfacesUnionStyle().apply(directionGroup, type);
-    }
-
-    protected UnionStyle getInterfaceSubgroupsUnionStyle(DirectionGroup directionGroup, Type type) {
+    protected UnionStyle getInterfaceSubgroupsUnionStyle(Direction directionGroup, Type type) {
         return options.getInterfaceSubgroupsUnionStyle().apply(directionGroup, type);
     }
 
-    protected UnionStyle getDirectionGroupStyle(DirectionGroup directionGroup) {
-        return options.getDirectionGroupUnionStyle().apply(directionGroup);
+    protected String getDirectionGroupTypeId(Direction direction, Type type) {
+        return getElementId(direction == null ? null : direction.name(), type.code);
     }
 
-    protected String getDirectionGroupTypeId(DirectionGroup directionGroup, Type type) {
-        return getElementId(directionGroup == null ? null : directionGroup.name(), type.code);
+    protected List<InterfaceGroup> getGroupedInterfaces(Collection<Component> components) {
+        var componentsByInterfaces = components.stream()
+                .flatMap(component -> Stream.ofNullable(component.getInterfaces())
+                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
+                .collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+
+        var rootGroup = InterfaceGroup.builder()
+                .key(InterfaceGroup.Key.builder().build())
+                .interfaces(componentsByInterfaces)
+                .build();
+
+        return Stream.of(rootGroup).map(group -> options.groupByDirection
+                ? groupByDirection(group)
+                : options.groupByInterfaceType
+                ? groupByType(group)
+                : options.groupByComponent ? groupByComponent(group) : group
+        ).collect(toList());
     }
 
-    protected void printInterfaces(IndentStringAppender out, DirectionGroup directionGroup, Type type,
+    protected InterfaceGroup groupByDirection(InterfaceGroup group) {
+        var interfaces = group.getInterfaces();
+
+        var groupedByDirection = interfaces.entrySet().stream().map(e -> {
+            var key = group.getKey();
+            var anInterface = e.getKey();
+            var newKey = key.toBuilder().direction(mapDirection(anInterface.getDirection())).build();
+            return Map.entry(newKey, e);
+        }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue))));
+
+        var newGroups = groupedByDirection.entrySet().stream().map(e -> {
+            var interfaceGroup = InterfaceGroup.builder().key(e.getKey()).interfaces(e.getValue()).build();
+            return options.groupByInterfaceType ? groupByType(interfaceGroup)
+                    : options.groupByComponent ? groupByComponent(interfaceGroup)
+                    : interfaceGroup;
+        }).collect(toList());
+
+        return group.toBuilder().interfaces(null).groups(newGroups).build();
+    }
+
+    private InterfaceGroup groupByType(InterfaceGroup group) {
+        var groupedMap = new LinkedHashMap<InterfaceGroup.Key, Map<Interface, List<Component>>>();
+        var interfaces = group.getInterfaces();
+        for (var anInterface : interfaces.keySet()) {
+            var key = group.getKey();
+            var newKey = key.toBuilder().type(anInterface.getType()).build();
+            groupedMap.computeIfAbsent(
+                    newKey, k -> new LinkedHashMap<>()
+            ).put(anInterface, interfaces.get(anInterface));
+        }
+        var subGroups = groupedMap.entrySet().stream().map(e -> {
+            var subGroup = InterfaceGroup.builder().key(e.getKey()).interfaces(e.getValue()).build();
+            return options.groupByComponent ? groupByComponent(subGroup) : subGroup;
+        }).collect(toList());
+
+        return group.toBuilder().interfaces(null).groups(subGroups).build();
+    }
+
+    private InterfaceGroup groupByComponent(InterfaceGroup group) {
+        var interfacesByComponent = group.getInterfaces().entrySet().stream().flatMap(entry ->
+                entry.getValue().stream().map(component -> entry(component, entry.getKey()))
+        ).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+
+        var groups = interfacesByComponent.entrySet().stream().flatMap(e -> {
+            var component = e.getKey();
+            var interfaces = e.getValue();
+            var key = group.getKey();
+            var newKey = key.toBuilder().component(component).build();
+            return interfaces.stream().map(anInterface -> InterfaceGroup.builder()
+                    .key(newKey)
+                    .interfaces(Map.of(anInterface, List.of(component)))
+                    .build());
+        }).collect(toList());
+
+        return group.toBuilder().interfaces(null).groups(groups).build();
+    }
+
+    protected Direction mapDirection(Interface.Direction direction) {
+        return options.mapDirection.apply(direction);
+    }
+
+    protected void printInterfaces(IndentStringAppender out, Direction direction, Type type,
                                    Map<Interface, List<Component>> interfaceRelations) {
-        var directionGroupTypeId = getDirectionGroupTypeId(directionGroup, type);
-        var group = isInterfacesSupportGroups(directionGroup, type);
+        if (interfaceRelations == null || interfaceRelations.isEmpty()) {
+            return;
+        }
+        var directionGroupTypeId = getDirectionGroupTypeId(direction, type);
+        var group = isInterfacesSupportGroups(direction, type);
         if (group) {
-            if (type == http && options.htmlMethodsGroupBy.apply(directionGroup) == path) {
+            if (type == http && options.htmlMethodsGroupBy.apply(direction) == path) {
                 //merge by url parts
                 var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations);
                 var finalGroup = groupByUrlParts(httpMethods);
-                var unionStyle = getInterfaceSubgroupsUnionStyle(directionGroup, type);
+                var unionStyle = getInterfaceSubgroupsUnionStyle(direction, type);
                 printHttpMethodGroup(out, directionGroupTypeId, finalGroup, unionStyle, interfaceRelations, httpMethods);
             } else {
-                printGroupedInterfaces(out, directionGroup, type, groupInterfacesByComponents(interfaceRelations));
+                printGroupedInterfaces(out, direction, type, groupInterfacesByComponents(interfaceRelations));
             }
         } else {
             printInterfaces(out, directionGroupTypeId, interfaceRelations);
         }
     }
 
-    protected boolean isInterfacesSupportGroups(DirectionGroup directionGroup, Type type) {
-        return options.supportGroups.test(directionGroup, type);
+    protected boolean isInterfacesSupportGroups(Direction direction, Type type) {
+        return options.supportGroups.test(direction, type);
     }
 
-    protected void printGroupedInterfaces(IndentStringAppender out, DirectionGroup directionGroup, Type type,
+    protected void printGroupedInterfaces(IndentStringAppender out, Direction direction, Type type,
                                           Map<String, Map<Interface, List<Component>>> groupedInterfaceRelations) {
-        var unionStyle = getInterfaceSubgroupsUnionStyle(directionGroup, type);
+        var unionStyle = getInterfaceSubgroupsUnionStyle(direction, type);
         groupedInterfaceRelations.forEach((groupName, interfaceRelationsOfGroup) -> {
-            var groupId = getElementId(getDirectionGroupTypeId(directionGroup, type), groupName);
+            var groupId = getElementId(getDirectionGroupTypeId(direction, type), groupName);
             var name = //(!options.isPrintDirectionGroupUnion() && directionGroup != null ? directionGroup.name() + "-" : "") +
                     //(!options.isPrintInterfaceTypeUnion() ? type.name() + "-" : "") +
                     groupName;
@@ -257,7 +324,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                             return unmodifiableList(s);
                         }, LinkedHashMap::new))));
     }
-
 
     protected void printUnion(IndentStringAppender out, Union union, Runnable internal) {
         if (union != null) {
@@ -840,7 +906,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     @Getter
     @RequiredArgsConstructor
-    public enum DirectionGroup {
+    public enum Direction {
         input, output, internal
     }
 
@@ -918,7 +984,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-
     @Data
     @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
@@ -942,37 +1007,49 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         boolean removeUnlinked = true;
         @Builder.Default
         boolean reduceDuplicatedElementRelations = true;
-        @Builder.Default
-        boolean printPackageBorder = true;
+
         //debug option
         @Builder.Default
         boolean checkUniqueViolation = true;
+
         @Builder.Default
         Map<String, List<String>> idCharReplaces = DEFAULT_ESCAPES;
         @Builder.Default
-        Function<Direction, DirectionGroup> directionGroup = Options::defaultDirectionName;
+        Function<Interface.Direction, Direction> mapDirection = Options::defaultDirectionName;
         @Builder.Default
-        Function<DirectionGroup, UnionStyle> directionGroupUnionStyle = directionGroup -> newUnionStyle(cloud, LINE_DOTTED_LINE_GRAY);
+        Function<InterfaceGroup.Key, UnionStyle> directionGroupUnionStyle = key -> newUnionStyle(cloud, LINE_DOTTED_LINE_GRAY);
         @Builder.Default
-        BiFunction<DirectionGroup, Type, UnionStyle> interfacesUnionStyle = (directionGroup, type) -> newUnionStyle(getUnion(type));
+        Function<InterfaceGroup.Key, UnionStyle> interfaceTypeUnionStyle = key -> newUnionStyle(unionBorder(key.getType()));
         @Builder.Default
-        BiFunction<DirectionGroup, Type, UnionStyle> interfaceSubgroupsUnionStyle = (directionGroup, type) -> newUnionStyle(frame, LINE_DOTTED_TEXT_GRAY);
+        Function<InterfaceGroup.Key, UnionStyle> componentGroupUnionStyle = key -> newUnionStyle(pack, LINE_DOTTED_TEXT_GRAY);
+        @Builder.Default
+        BiFunction<Direction, Type, UnionStyle> interfaceSubgroupsUnionStyle = (directionGroup, type) -> newUnionStyle(frame, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
         Function<String, UnionStyle> packagePathUnion = path -> newUnionStyle(pack, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
-        BiPredicate<DirectionGroup, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
+        BiPredicate<Direction, Type> supportGroups = (directionName, type) -> Set.of(http, jms, ws).contains(type);
         @Builder.Default
-        Function<DirectionGroup, HtmlMethodsGroupBy> htmlMethodsGroupBy = directionGroup -> path;
+        Function<Direction, HtmlMethodsGroupBy> htmlMethodsGroupBy = direction -> path;
         @Builder.Default
         ConcatenateComponentsOptions concatenateComponents = ConcatenateComponentsOptions.DEFAULT;
         @Builder.Default
         ConcatenateInterfacesOptions concatenateInterfaces = ConcatenateInterfacesOptions.DEFAULT;
         @Builder.Default
         Sort sort = Sort.builder().build();
+
+        @Builder.Default
+        boolean printPackageBorder = true;
         @Builder.Default
         boolean printDirectionGroupUnion = false;
         @Builder.Default
         boolean printInterfaceTypeUnion = false;
+
+        @Builder.Default
+        boolean groupByDirection = true;
+        @Builder.Default
+        boolean groupByInterfaceType = true;
+        @Builder.Default
+        boolean groupByComponent = false;
 
         public static UnionStyle newUnionStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
@@ -982,7 +1059,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return UnionStyle.builder().unionBorder(unionBorder).style(style).build();
         }
 
-        public static UnionBorder getUnion(Type type) {
+        public static UnionBorder unionBorder(Type type) {
             if (type != null) switch (type) {
                 case jms:
                     return queue;
@@ -992,7 +1069,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return rectangle;
         }
 
-        public static DirectionGroup defaultDirectionName(Direction direction) {
+        public static Direction defaultDirectionName(Interface.Direction direction) {
             switch (direction) {
                 case in:
                     return input;
@@ -1047,6 +1124,46 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             int columns;
             @Builder.Default
             int rows = 8;
+        }
+    }
+
+    @Data
+    @Builder(toBuilder = true)
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class InterfaceGroup {
+        Key key;
+        Map<Interface, List<Component>> interfaces;
+        List<InterfaceGroup> groups;
+
+        @Data
+        @Builder(toBuilder = true)
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
+        public static class Key {
+            Direction direction;
+            Type type;
+            Component component;
+
+            @Override
+            public String toString() {
+                var builder = new StringBuilder();
+                if (direction != null) {
+                    builder.append("direction=").append(direction);
+                }
+                if (type != null) {
+                    if (builder.length() > 0) {
+                        builder.append(", ");
+                    }
+                    builder.append("type=").append(type);
+                }
+                if (component != null) {
+                    if (builder.length() > 0) {
+                        builder.append(", ");
+                    }
+                    builder.append("component=").append(component);
+                }
+                return builder.toString();
+
+            }
         }
     }
 }
