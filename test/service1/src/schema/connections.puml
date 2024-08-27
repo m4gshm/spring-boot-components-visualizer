@@ -1,4 +1,5 @@
 @startuml
+remove @unlinked
 package "service1" as service1 #line.dotted;text:gray {
   package "api" as service1.api #line.dotted;text:gray {
     package "http" as service1.api.http #line.dotted;text:gray {

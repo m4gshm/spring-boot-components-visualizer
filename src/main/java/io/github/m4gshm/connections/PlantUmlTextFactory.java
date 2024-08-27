@@ -112,6 +112,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             out.append("\n");
         }
 
+        if(options.isRemoveUnlinked()) {
+            out.append("remove @unlinked\n");
+        }
+
 //        out.append(format("component \"%s\" as %s\n", applicationName, pumlAlias(applicationName)));
 
         var componentComparator = options.getSort().getComponents();
@@ -893,6 +897,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
         String head, bottom;
+        @Builder.Default
+        boolean removeUnlinked = true;
         @Builder.Default
         boolean reduceDuplicatedElementRelations = true;
         @Builder.Default
