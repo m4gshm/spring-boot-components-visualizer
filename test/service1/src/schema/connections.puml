@@ -26,9 +26,9 @@ package "service1" as service1 #line.dotted;text:gray {
         component jmsQueueService as jmsQueueService
       }
       package "rest" as service1.service.external.rest #line.dotted;text:gray {
+        component service2FeignClient as service2FeignClient
         component service2LegacyImpl as service2LegacyImpl
         component standaloneService2Api as standaloneService2Api
-        component service2FeignClient as service2FeignClient
       }
       package "ws" as service1.service.external.ws #line.dotted;text:gray {
         component service2StreamClientImpl as service2StreamClientImpl
@@ -37,10 +37,10 @@ package "service1" as service1 #line.dotted;text:gray {
   }
 }
 mainController ..> coreService
+coreService ..> simpleEntityRepository
 coreService ..> documentRepository
 coreService ..> service2FeignClient
 coreService ..> service2LegacyImpl
-coreService ..> simpleEntityRepository
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
 cloud "input" as input #line.dotted;line:gray; {
@@ -92,14 +92,13 @@ cloud "internal" as internal #line.dotted;line:gray; {
 cloud "output" as output #line.dotted;line:gray; {
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|jmsQueue1|\n\
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue1|\n\
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
 <#transparent,transparent>|jmsQueueEvents2|\n\
-<#transparent,transparent>|jmsQueueEvents3|\n\
-<#transparent,transparent>|jms-private-queue|" as output.jms.jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
-      jmsQueueService <.... output.jms.jmsQueueService.interfaces#line.dotted
     }
   }
   rectangle "http" as output.http {
@@ -109,20 +108,20 @@ cloud "output" as output #line.dotted;line:gray; {
       interface "GET:" as out.GET.http...service2
       service2LegacyImpl ....( out.GET.http...service2
       interface "GET:/{id}" as out.GET.http...service2..id.
-      service2LegacyImpl ....( out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
+      service2LegacyImpl ....( out.GET.http...service2..id.
     }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|ws://service-template |ws://service-property-injected|\n\
+      collections "<#transparent,transparent>|ws://currentURI-method |ws://service3|\n\
+<#transparent,transparent>|ws://currentURI-supplier | |\n\
+<#transparent,transparent>|ws://defaultURI-static | |\n\
+<#transparent,transparent>|ws://service-property-injected | |\n\
+<#transparent,transparent>|ws://service-template | |\n\
 <#transparent,transparent>|ws://service-template/{id}/ | |\n\
 <#transparent,transparent>|ws://service2 | |\n\
-<#transparent,transparent>|ws://service3 | |\n\
-<#transparent,transparent>|ws://service2-value-inject | |\n\
-<#transparent,transparent>|ws://defaultURI-static | |\n\
-<#transparent,transparent>|ws://currentURI-method | |\n\
-<#transparent,transparent>|ws://currentURI-supplier | |" as output.websocket.service2StreamClientImpl.interfaces
+<#transparent,transparent>|ws://service2-value-inject | |" as output.websocket.service2StreamClientImpl.interfaces
       service2StreamClientImpl ....(0 output.websocket.service2StreamClientImpl.interfaces
     }
   }

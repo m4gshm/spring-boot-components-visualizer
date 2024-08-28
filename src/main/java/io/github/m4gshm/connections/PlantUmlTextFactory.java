@@ -85,9 +85,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             out.append("remove @unlinked\n");
         }
 
-        var componentComparator = options.getSort().getComponents();
-        printBody(out, componentComparator != null ? components.getComponents().stream().sorted(componentComparator)
-                .collect(toList()) : components.getComponents());
+        var optionsSort = options.getSort();
+        var componentComparator = optionsSort.getComponents();
+        var components1 = components.getComponents();
+        var sorted = componentComparator != null ? components1.stream().sorted(componentComparator)
+                .collect(toList()) : components1;
+        printBody(out, sorted);
         var bottom = options.getBottom();
         if (bottom != null) {
             out.append(bottom);
@@ -177,9 +180,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected List<InterfaceGroup> getGroupedInterfaces(Collection<Component> components) {
+        var interfaceComparator = options.getSort().getInterfaces();
         var componentsByInterfaces = components.stream()
                 .flatMap(component -> Stream.ofNullable(component.getInterfaces())
-                        .flatMap(Collection::stream).map(anInterface -> entry(anInterface, component)))
+                        .flatMap(s -> interfaceComparator != null ? s.stream().sorted(interfaceComparator) : s.stream())
+                        .map(anInterface -> entry(anInterface, component)))
                 .collect(groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList())));
 
         var rootGroup = InterfaceGroup.builder()
@@ -732,8 +737,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    protected List<Entry<String, List<Entry<Interface, List<Component>>>>> renderConcatenatedInterfacesText
-            (Map<Interface, List<Component>> interfaces) {
+    protected List<Entry<String, List<Entry<Interface, List<Component>>>>> renderConcatenatedInterfacesText(
+            Map<Interface, List<Component>> interfaces
+    ) {
         var opts = options.getConcatenateInterfaces();
         var result = getRowsCols(opts.getRows(), opts.getColumns(), interfaces.size());
 
@@ -836,15 +842,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return;
         }
 
-        Collection<Component> dependencies = component.getDependencies();
-        if (dependencies != null) {
+        var dependencies = ofNullable(component.getDependencies()).map(d -> {
             var componentComparator = options.getSort().getDependencies();
-            if (componentComparator != null) {
-                dependencies = dependencies.stream().sorted(componentComparator).collect(toList());
-            }
-            for (var dependency : dependencies) {
-                printComponentReference(out, component, dependency);
-            }
+            return componentComparator != null ? d.stream().sorted(componentComparator).collect(toList()) : d;
+        }).orElse(Set.of());
+
+        for (var dependency : dependencies) {
+            printComponentReference(out, component, dependency);
         }
     }
 
@@ -1081,15 +1085,26 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
-            Comparator<Component> components = (o1, o2) -> compareNullable(o1.getPath(), o2.getPath());
-            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName());
-            Comparator<Interface> interfaces = (o1, o2) -> {
-                var name1 = o1.getName();
-                var name2 = o2.getName();
-                return name1 instanceof Comparable<?> && name2 instanceof Comparable<?>
-                        ? ((Comparable) name1).compareTo(name2) : compareNullable(name1 != null ? name1.toString()
-                        : null, name2 != null ? name2.toString() : null);
-            };
+            Comparator<Component> components = defaultComponentComparator();
+            Comparator<Component> dependencies = defaultComponentComparator();
+            Comparator<Interface> interfaces = defaultInterfaceComparator();
+
+            public static Comparator<Interface> defaultInterfaceComparator() {
+                return (o1, o2) -> {
+                    var name1 = o1.getName();
+                    var name2 = o2.getName();
+                    return name1 instanceof Comparable<?> && name2 instanceof Comparable<?>
+                            ? ((Comparable) name1).compareTo(name2) : compareNullable(name1 != null ? name1.toString()
+                            : null, name2 != null ? name2.toString() : null);
+                };
+            }
+
+            public static Comparator<Component> defaultComponentComparator() {
+                return (o1, o2) -> {
+                    var compared = compareNullable(o1.getName(), o2.getName());
+                    return compared == 0 ? compareNullable(o1.getPath(), o2.getPath()) : compared;
+                };
+            }
         }
 
         @Data
