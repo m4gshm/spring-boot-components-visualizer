@@ -37,14 +37,15 @@ public class Interface {
         }
     }
 
+    @Getter
     @RequiredArgsConstructor
     public enum Type {
         http, ws("web socket"), grpc, jms, kafka, storage;
 
-        public final String code;
+        public final String fullName;
 
         Type() {
-            code = this.name();
+            fullName = this.name();
         }
     }
 
