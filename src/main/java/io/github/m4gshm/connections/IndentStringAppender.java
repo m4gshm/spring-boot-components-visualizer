@@ -10,13 +10,11 @@ public class IndentStringAppender {
     private final StringBuilder out;
     private final String intend;
     private final String lineBreak;
-
+    private int level;
+    private boolean newLine;
     public IndentStringAppender(StringBuilder out, String intend) {
         this(out, intend, "\n");
     }
-
-    private int level;
-    private boolean newLine;
 
     public void addIndent() {
         level++;
@@ -59,5 +57,10 @@ public class IndentStringAppender {
 
     public IndentStringAppender append(String text) {
         return append(text, true);
+    }
+
+    @Override
+    public String toString() {
+        return out.toString();
     }
 }
