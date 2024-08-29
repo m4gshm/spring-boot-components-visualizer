@@ -11,7 +11,7 @@ import static lombok.AccessLevel.PRIVATE;
 @Data
 @Builder(toBuilder = true)
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Storage {
+public class StorageEntity {
     Class<?> entityType;
     Collection<String> storedTo;
     Engine engine;

@@ -72,12 +72,18 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
-    collections "<#transparent,transparent>|service1.db.jpa.model.SimpleEntity|\n\
-<#transparent,transparent>|service1.db.jpa.model.UserEntity|\n\
-<#transparent,transparent>|service1.db.mongo.model.DocumentEntity|" as internal.storage.interfaces
-    internal.storage.interfaces .. simpleEntityRepository
-    internal.storage.interfaces .. userRepository
-    internal.storage.interfaces .. documentRepository
+    folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
+      collections "<#transparent,transparent>|SimpleEntity|\n\
+<#transparent,transparent>|UserEntity|" as internal.storage.jpa.model.interfaces
+      internal.storage.jpa.model.interfaces .. simpleEntityRepository
+      internal.storage.jpa.model.interfaces .. userRepository
+    }
+    folder "mongo.model" as internal.storage.mongo.model #line.dotted;line:gray; {
+      entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      note "documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
+    }
   }
 }
 cloud "output" as output #line.dotted;line:gray; {

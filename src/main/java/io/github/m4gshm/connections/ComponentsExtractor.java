@@ -26,7 +26,6 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import javax.persistence.metamodel.Metamodel;
 import java.lang.Package;
 import java.util.*;
 import java.util.Map.Entry;
@@ -41,8 +40,8 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRes
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
-import static io.github.m4gshm.connections.model.Storage.Engine.jpa;
-import static io.github.m4gshm.connections.model.Storage.Engine.mongo;
+import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
+import static io.github.m4gshm.connections.model.StorageEntity.Engine.mongo;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -240,7 +239,7 @@ public class ComponentsExtractor {
 
                     var entityInformation = repoInfo.getEntityInformation();
                     if (entityInformation instanceof JpaMetamodelEntityInformation) {
-                        var metamodel = (Metamodel) getFieldValue(entityInformation, "metamodel");
+                        var metamodel = getFieldValue(entityInformation, "metamodel");
                         if (metamodel instanceof MetamodelImplementor) {
                             var hiberMetamodel = (MetamodelImplementor) metamodel;
                             var entityPersisters = hiberMetamodel.entityPersisters();
@@ -251,7 +250,7 @@ public class ComponentsExtractor {
                                         .name(entityClassName)
                                         .type(storage)
                                         .direction(internal)
-                                        .core(Storage.builder()
+                                        .core(StorageEntity.builder()
                                                 .entityType(type)
                                                 .storedTo(stream(tables).map(Object::toString).collect(toList()))
                                                 .engine(jpa)
@@ -260,6 +259,10 @@ public class ComponentsExtractor {
                             } else {
                                 log.warn("null entityPersister for entityClass {}", entityClassName);
                             }
+                        } else if (metamodel != null) {
+                            log.warn("unsupported jpa metamodel type {}", metamodel.getClass());
+                        } else {
+                            log.warn("null jpa metamodel type");
                         }
                     } else if (entityInformation instanceof MongoEntityInformation) {
                         var mongoInfo = (MongoEntityInformation<?, ?>) entityInformation;
@@ -268,7 +271,7 @@ public class ComponentsExtractor {
                                 .name(entityClassName)
                                 .type(storage)
                                 .direction(internal)
-                                .core(Storage.builder()
+                                .core(StorageEntity.builder()
                                         .entityType(type)
                                         .storedTo(List.of(collectionName))
                                         .engine(mongo)

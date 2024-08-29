@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections;
 
+import com.google.common.base.Strings;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Package;
 import io.github.m4gshm.connections.model.Interface.Type;
@@ -69,6 +70,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public PlantUmlTextFactory(String applicationName, Options options) {
         this.applicationName = applicationName;
         this.options = options != null ? options : Options.DEFAULT;
+    }
+
+    private static String getStorageEntityPackageName(Interface anInterface) {
+        var core = anInterface.getCore();
+        if (core instanceof StorageEntity) {
+            var storage = (StorageEntity) core;
+            return storage.getEntityType().getPackage().getName();
+        } else {
+            return "";
+        }
     }
 
     public String create(Components components, Options options) {
@@ -287,12 +298,50 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (interfaceRelations == null || interfaceRelations.isEmpty()) {
             return;
         }
-        if (key.getType() == http) {
+        var type = key.getType();
+        if (type == http) {
             //merge by url parts
             var httpMethods = extractHttpMethodsFromInterfaces(interfaceRelations);
             var finalGroup = groupByUrlParts(httpMethods);
-            var unionStyle = getInterfaceSubgroupsUnionStyle(key.getDirection(), key.getType());
+            var unionStyle = getInterfaceSubgroupsUnionStyle(key.getDirection(), type);
             printHttpMethodGroup(out, key, getElementId(key), finalGroup, unionStyle, interfaceRelations, httpMethods);
+        } else if (type == storage) {
+            Map<String, Map<Interface, List<Component>>> groupedByPackage = interfaceRelations.entrySet().stream()
+                    .map(e -> entry(getStorageEntityPackageName(e.getKey()), e)).collect(groupingBy(Entry::getKey,
+                            TreeMap::new, mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new))));
+            var commonPackPrefix = groupedByPackage.keySet().stream().reduce(Strings::commonPrefix).orElse("");
+            if (!commonPackPrefix.isEmpty()) {
+                groupedByPackage = groupedByPackage.entrySet().stream().collect(toMap(e -> e.getKey().substring(commonPackPrefix.length()),
+                        e -> {
+                            var value = e.getValue();
+
+                            var commonInterfacePrefix = value.size() > 1
+                                    ? value.keySet().stream()
+                                    .map(Interface::getName).collect(toList()).stream().reduce(Strings::commonPrefix).orElse("")
+                                    : commonPackPrefix;
+
+                            return value.entrySet().stream().map(ee -> {
+                                var anInterface = ee.getKey();
+                                var interfaceName = anInterface.getName();
+
+                                var shortName = interfaceName.subSequence(commonInterfacePrefix.length(), interfaceName.length());
+                                return entry(anInterface.toBuilder().name(shortName).build(), ee.getValue());
+                            }).collect(
+                                    toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new)
+                            );
+                        }, warnDuplicated(), LinkedHashMap::new));
+            }
+
+            if (!groupedByPackage.isEmpty()) {
+                groupedByPackage.forEach((packageName, interfaceCollectionMap) -> {
+                    var entitiesPackId = getElementId(getElementId(key), packageName);
+                    printUnion(out, newUnion(entitiesPackId, packageName, newUnionStyle(folder, LINE_DOTTED_LINE_GRAY)), () -> {
+                        printInterfaces(out, entitiesPackId, interfaceCollectionMap);
+                    });
+                });
+            } else {
+                printInterfaces(out, getElementId(key), interfaceRelations);
+            }
         } else {
             printInterfaces(out, getElementId(key), interfaceRelations);
         }
@@ -457,27 +506,31 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected ConcatenatedComponentGroup groupConcatenatedComponents(Package pack, Package parentPackage) {
         var components = pack.getComponents();
-        var componentGroupBuilder = ConcatenatedComponentGroup.builder();
         var concatenatePackageComponents = options.concatenateComponents;
         var moreThan = concatenatePackageComponents.moreThan;
-        if (moreThan != null && components != null && components.size() > moreThan) {
-            var ignoreInterfaceRelated = concatenatePackageComponents.ignoreInterfaceRelated;
-            if (ignoreInterfaceRelated) {
-                var grouped = components.stream().collect(groupingBy(c -> {
-                    var interfaces = c.getInterfaces();
-                    return !(interfaces == null || interfaces.isEmpty());
-                }, LinkedHashMap::new, toLinkedHashSet()));
-                var distinct = grouped.get(true);
-                var concatenation = grouped.get(false);
-                componentGroupBuilder.distinct(distinct != null ? distinct : Set.of());
-                componentGroupBuilder.concatenation(concatenation != null ? concatenation : Set.of());
+        var compress = moreThan != null && components != null && components.size() > moreThan;
+        if (compress) {
+            if (concatenatePackageComponents.ignoreInterfaceRelated) {
+                return extracted(components);
             } else {
-                componentGroupBuilder.concatenation(components);
+                return ConcatenatedComponentGroup.builder().concatenation(components).build();
             }
         } else {
-            componentGroupBuilder.distinct(components);
+            return ConcatenatedComponentGroup.builder().distinct(components).build();
         }
-        return componentGroupBuilder.build();
+    }
+
+    protected ConcatenatedComponentGroup extracted(Collection<Component> components) {
+        var grouped = components.stream().collect(groupingBy(c -> {
+            var interfaces = c.getInterfaces();
+            return !(interfaces == null || interfaces.isEmpty());
+        }, LinkedHashMap::new, toLinkedHashSet()));
+        var distinct = grouped.get(true);
+        var concatenation = grouped.get(false);
+        return ConcatenatedComponentGroup.builder()
+                .distinct(distinct != null ? distinct : Set.of())
+                .concatenation(concatenation != null ? concatenation : Set.of())
+                .build();
     }
 
     protected void printPackages(IndentStringAppender out, Collection<Package> packages, Package parentPackage) {
@@ -568,12 +621,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected void printInterfaceCore(IndentStringAppender out, Object core, String interfaceId) {
-        if (core instanceof Storage) {
-            out.append(renderStorage((Storage) core, interfaceId));
+        if (core instanceof StorageEntity) {
+            out.append(renderStorage((StorageEntity) core, interfaceId));
         }
     }
 
-    protected String renderStorage(Storage storage, String interfaceId) {
+    protected String renderStorage(StorageEntity storage, String interfaceId) {
         var storedTo = storage.getStoredTo();
         var tables = storedTo.stream().reduce("", (l, r) -> (l.isBlank() ? "" : l + "\n") + r);
         var noteId = getElementId(interfaceId, "table_name");
