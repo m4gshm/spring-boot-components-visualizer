@@ -11,10 +11,10 @@ Inspired by Spring REST Docs.
 Requires Java 11 or higher.
 
 === Schema example
-link:./test/service1/src/schema/connections.puml[puml],
-link:./test/service1/src/schema/connections.svg[svg]
+link:./test/service1/src/schema/components.puml[puml],
+link:./test/service1/src/schema/components.svg[svg]
 
-image::./test/service1/src/schema/connections.svg[]
+image::./test/service1/src/schema/components.svg[]
 
 === Supported interfaces
 - Beans with dependency relations
@@ -53,7 +53,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    environment("CONNECTIONS_VISUALIZE_PLANTUML_OUT", "$projectDir/src/schema/connections.puml")
+    environment("PLANTUML_OUT", "$projectDir/src/schema")
 }
 ----
 

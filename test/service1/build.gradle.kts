@@ -44,7 +44,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    environment("CONNECTIONS_VISUALIZE_PLANTUML_OUT", "$projectDir/src/schema/connections.puml")
+    environment("PLANTUML_OUT", "$projectDir/src/schema")
 }
 
 java {

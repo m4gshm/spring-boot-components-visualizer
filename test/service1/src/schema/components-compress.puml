@@ -1,0 +1,119 @@
+@startuml
+remove @unlinked
+package "service1" as service1 #line.dotted;text:gray {
+  package "api" as service1.api #line.dotted;text:gray {
+    package "http" as service1.api.http #line.dotted;text:gray {
+      component mainController as mainController
+    }
+    package "ws" as service1.api.ws #line.dotted;text:gray {
+      component eventsHandler as eventsHandler
+    }
+  }
+  package "db" as service1.db #line.dotted;text:gray {
+    package "jpa" as service1.db.jpa #line.dotted;text:gray {
+      component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
+    }
+    package "mongo" as service1.db.mongo #line.dotted;text:gray {
+      component documentRepository as documentRepository
+    }
+  }
+  package "service" as service1.service #line.dotted;text:gray {
+    component coreService as coreService
+    package "external" as service1.service.external #line.dotted;text:gray {
+      package "jms" as service1.service.external.jms #line.dotted;text:gray {
+        component jmsQueueListener as jmsQueueListener
+        component jmsQueueService as jmsQueueService
+      }
+      package "rest" as service1.service.external.rest #line.dotted;text:gray {
+        component service2FeignClient as service2FeignClient
+        component service2LegacyImpl as service2LegacyImpl
+        component standaloneService2Api as standaloneService2Api
+      }
+      package "ws" as service1.service.external.ws #line.dotted;text:gray {
+        component service2StreamClientImpl as service2StreamClientImpl
+      }
+    }
+  }
+}
+mainController ..> coreService
+coreService ..> documentRepository
+coreService ..> service2FeignClient
+coreService ..> service2LegacyImpl
+coreService ..> simpleEntityRepository
+coreService ..> standaloneService2Api
+jmsQueueListener ..> coreService
+cloud "input" as input #line.dotted;line:gray; {
+  rectangle "http" as input.http {
+    frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
+      collections "<#transparent,transparent>|<r>*: | |\n\
+<#transparent,transparent>|<r>GET: |/load|\n\
+<#transparent,transparent>|<r>POST: |/put|" as input.http..api.v1.interfaces
+      input.http..api.v1.interfaces 0)....> mainController
+    }
+  }
+  rectangle "web socket" as input.websocket {
+    frame "eventsHandler" as input.websocket.eventsHandler.eventsHandler.interfaces #line.dotted;text:gray {
+      interface "/events" as in.eventsHandler.in.ws..events
+      in.eventsHandler.in.ws..events )....> eventsHandler
+    }
+  }
+  queue "jms" as input.jms {
+    frame "jmsQueueListener" as input.jms.jmsQueueListener.jmsQueueListener.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|queue1|\n\
+<#transparent,transparent>|queue2|" as input.jms.jmsQueueListener.interfaces
+      input.jms.jmsQueueListener.interfaces 0)....> jmsQueueListener
+    }
+    frame "jmsQueueService" as input.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
+      interface "default" as in.jmsQueueService.default.in
+      in.jmsQueueService.default.in )....> jmsQueueService
+    }
+  }
+}
+cloud "internal" as internal #line.dotted;line:gray; {
+  database "storage" as internal.storage {
+    collections "<#transparent,transparent>|service1.db.jpa.model.SimpleEntity|\n\
+<#transparent,transparent>|service1.db.jpa.model.UserEntity|\n\
+<#transparent,transparent>|service1.db.mongo.model.DocumentEntity|" as internal.storage.interfaces
+    internal.storage.interfaces .. simpleEntityRepository
+    internal.storage.interfaces .. userRepository
+    internal.storage.interfaces .. documentRepository
+  }
+}
+cloud "output" as output #line.dotted;line:gray; {
+  queue "jms" as output.jms {
+    frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue1|\n\
+<#transparent,transparent>|jmsQueue2|\n\
+<#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents2|\n\
+<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
+      jmsQueueService ....> output.jms.jmsQueueService.interfaces
+    }
+  }
+  rectangle "http" as output.http {
+    interface "GET:/standalone-service2" as out.GET.standalone.service2..id.
+    standaloneService2Api ....( out.GET.standalone.service2..id.
+    frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
+      collections "<#transparent,transparent>|<r>GET: | |\n\
+<#transparent,transparent>|<r>GET: |/{id}|" as output.http.http...service2.interfaces
+      service2LegacyImpl ....(0 output.http.http...service2.interfaces
+      service2FeignClient ....(0 output.http.http...service2.interfaces
+    }
+  }
+  rectangle "web socket" as output.websocket {
+    frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|ws://currentURI-method |ws://service3|\n\
+<#transparent,transparent>|ws://currentURI-supplier | |\n\
+<#transparent,transparent>|ws://defaultURI-static | |\n\
+<#transparent,transparent>|ws://service-property-injected | |\n\
+<#transparent,transparent>|ws://service-template | |\n\
+<#transparent,transparent>|ws://service-template/{id}/ | |\n\
+<#transparent,transparent>|ws://service2 | |\n\
+<#transparent,transparent>|ws://service2-value-inject | |" as output.websocket.service2StreamClientImpl.interfaces
+      service2StreamClientImpl ....(0 output.websocket.service2StreamClientImpl.interfaces
+    }
+  }
+}
+@enduml

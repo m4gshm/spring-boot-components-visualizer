@@ -13,12 +13,11 @@ Requires Java 11 or higher.
 
 ## Schema example
 
-[puml](./test/service1/src/schema/connections.puml),
-[svg](./test/service1/src/schema/connections.svg)
+[puml](./test/service1/src/schema/components.puml),
+[svg](./test/service1/src/schema/components.svg)
 
 <figure>
-<img src="./test/service1/src/schema/connections.svg"
-alt="connections" />
+<img src="./test/service1/src/schema/components.svg" alt="components" />
 </figure>
 
 ## Supported interfaces
@@ -77,7 +76,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    environment("CONNECTIONS_VISUALIZE_PLANTUML_OUT", "$projectDir/src/schema/connections.puml")
+    environment("PLANTUML_OUT", "$projectDir/src/schema")
 }
 ```
 
@@ -114,13 +113,13 @@ public class SchemaGeneratorTest {
     @Test
     public void generatePlantUml() {
         var schema = schemaFactory.create(extractor.getComponents());
-        var envName = "CONNECTIONS_VISUALIZE_PLANTUML_OUT";
-        var plantUmlOutFileName = requireNonNull(System.getenv(envName), envName);
-        writeTextFile(plantUmlOutFileName, schema);
-        writeSwgFile(getSvgOutFile(plantUmlOutFileName), schema);
+        var envName = "PLANTUML_OUT";
+        var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
+        writeTextFile(plantUmlOutFile, schema);
+        writeSwgFile(getSvgFile(plantUmlOutFile), schema);
     }
 
-    private void writeSwgFile(String svgOutFile, String content) {
+    private void writeSwgFile(File svgOutFile, String content) {
         var svg = Svg.convert(null, content);
         try (var writer = new FileOutputStream(svgOutFile)) {
             writer.write(svg.toString().getBytes(UTF_8));
@@ -130,8 +129,7 @@ public class SchemaGeneratorTest {
         }
     }
 
-    private void writeTextFile(String fileName, String content) {
-        var file = new File(fileName);
+    private void writeTextFile(File file, String content) {
         var parentFile = file.getParentFile();
         if (!parentFile.exists()) {
             parentFile.mkdirs();
@@ -145,9 +143,10 @@ public class SchemaGeneratorTest {
         }
     }
 
-    private String getSvgOutFile(String plantUmlOutFileName) {
+    private File getSvgFile(File plantUmlFile) {
+        var plantUmlOutFileName = plantUmlFile.getName();
         var extensionDelim = plantUmlOutFileName.lastIndexOf(".");
-        return (extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg";
+        return new File((extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg");
     }
 }
 ```

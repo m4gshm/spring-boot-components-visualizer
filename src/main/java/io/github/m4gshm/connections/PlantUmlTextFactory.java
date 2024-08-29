@@ -57,6 +57,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String TABLE_TRANSPARENT = "<#transparent,transparent>";
 
     protected final String applicationName;
+    @Getter
     protected final Options options;
     protected final Map<String, String> concatenatedComponents = new HashMap<>();
     protected final Map<String, String> concatenatedInterfaces = new HashMap<>();
@@ -68,6 +69,10 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public PlantUmlTextFactory(String applicationName, Options options) {
         this.applicationName = applicationName;
         this.options = options != null ? options : Options.DEFAULT;
+    }
+
+    public String create(Components components, Options options) {
+        return new PlantUmlTextFactory(this.applicationName, options).create(components);
     }
 
     @Override
@@ -1086,7 +1091,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
             Comparator<Component> components = (o1, o2) -> {
-                var compared = compareNullable(o1.getPath(), o2.getPath()) ;
+                var compared = compareNullable(o1.getPath(), o2.getPath());
                 return compared == 0 ? compareNullable(o1.getName(), o2.getName()) : compared;
             };
             Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName());
