@@ -1085,8 +1085,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
-            Comparator<Component> components = defaultComponentComparator();
-            Comparator<Component> dependencies = defaultComponentComparator();
+            Comparator<Component> components = (o1, o2) -> {
+                var compared = compareNullable(o1.getPath(), o2.getPath()) ;
+                return compared == 0 ? compareNullable(o1.getName(), o2.getName()) : compared;
+            };
+            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName());
             Comparator<Interface> interfaces = defaultInterfaceComparator();
 
             public static Comparator<Interface> defaultInterfaceComparator() {
@@ -1096,13 +1099,6 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                     return name1 instanceof Comparable<?> && name2 instanceof Comparable<?>
                             ? ((Comparable) name1).compareTo(name2) : compareNullable(name1 != null ? name1.toString()
                             : null, name2 != null ? name2.toString() : null);
-                };
-            }
-
-            public static Comparator<Component> defaultComponentComparator() {
-                return (o1, o2) -> {
-                    var compared = compareNullable(o1.getName(), o2.getName());
-                    return compared == 0 ? compareNullable(o1.getPath(), o2.getPath()) : compared;
                 };
             }
         }
