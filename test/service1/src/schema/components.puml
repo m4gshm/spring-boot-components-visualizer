@@ -76,11 +76,11 @@ cloud "input" as input #line.dotted;line:gray; {
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
     folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
-      entity "null" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
       note "table: simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
-      entity "null" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
       note "table: auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
@@ -118,14 +118,15 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|ws://currentURI-method |ws://service3|\n\
-<#transparent,transparent>|ws://currentURI-supplier | |\n\
-<#transparent,transparent>|ws://defaultURI-static | |\n\
-<#transparent,transparent>|ws://service-property-injected | |\n\
-<#transparent,transparent>|ws://service-template | |\n\
-<#transparent,transparent>|ws://service-template/{id}/ | |\n\
-<#transparent,transparent>|ws://service2 | |\n\
-<#transparent,transparent>|ws://service2-value-inject | |" as output.websocket.service2StreamClientImpl.interfaces
+      collections "<#transparent,transparent>|ws://currentURI-method|\n\
+<#transparent,transparent>|ws://currentURI-supplier|\n\
+<#transparent,transparent>|ws://defaultURI-static|\n\
+<#transparent,transparent>|ws://service-property-injected|\n\
+<#transparent,transparent>|ws://service-template|\n\
+<#transparent,transparent>|ws://service-template/{id}/|\n\
+<#transparent,transparent>|ws://service2|\n\
+<#transparent,transparent>|ws://service2-value-inject|\n\
+<#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces
       service2StreamClientImpl ....(0 output.websocket.service2StreamClientImpl.interfaces
     }
   }

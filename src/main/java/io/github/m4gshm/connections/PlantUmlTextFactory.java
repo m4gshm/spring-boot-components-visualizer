@@ -619,7 +619,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var name = anInterface.getName().toString();
         if (anInterface.getType() == storage) {
             var lasted = name.lastIndexOf(".");
-            return lasted > 0 ? name.substring(lasted + 1) : null;
+            return lasted > 0 ? name.substring(lasted + 1) : name;
         }
         return name;
     }
@@ -745,24 +745,30 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return renderTables(result.columns, result.rows, tableParts, component -> component != null ? component.getName() : null, null);
     }
 
-    protected <T> List<Entry<String, List<T>>> renderTables(int columns, int rows, List<List<T>> tableParts, Function<T, String> stringConverter, String headRow) {
-        return tableParts.stream().map(ordered -> entry(renderTable(columns, rows, ordered, stringConverter, headRow), ordered)).collect(toList());
+    protected <T> List<Entry<String, List<T>>> renderTables(int columns, int rows, List<List<T>> tableParts, Function<T, String> stringConverter, String head) {
+        return tableParts.stream().map(ordered -> entry(renderTable(columns, rows, ordered, stringConverter, head), ordered)).collect(toList());
     }
 
-    private <T> String renderTable(int columns, int rows, List<T> ordered, Function<T, String> stringConverter, String headRow) {
+    private <T> String renderTable(int columns, int rows, List<T> ordered, Function<T, String> stringConverter, String head) {
         var result = new StringBuilder();
-        var cells = new String[columns];
-        if (headRow != null) {
-            result.append(renderTableRow(true, headRow));
-        }
+        var needHeadRodPrint = head != null;
         for (var row = 0; row < rows; row++) {
+            if (needHeadRodPrint) {
+                var headCells = new String[columns];
+                Arrays.fill(headCells, head);
+                needHeadRodPrint = false;
+                var tableRow = renderTableRow(true, headCells);
+                if (tableRow != null) {
+                    result.append(tableRow);
+                }
+            }
+            var cells = new String[columns];
             for (var column = 0; column < columns; column++) {
                 var i = row + column * rows;
                 var cellVal = i < ordered.size() ? ordered.get(i) : null;
                 var string = stringConverter.apply(cellVal);
                 cells[column] = string == null || string.isEmpty() ? " " : string;
             }
-
             var tableRow = cells.length == 1 && " ".equals(cells[0]) ? null : renderTableRow(true, cells);
             if (tableRow != null) {
                 if (result.length() != 0) {
@@ -815,9 +821,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
         var tableParts = splitOnTableParts(result.columns, result.rows,
                 new ArrayList<>(interfaces.entrySet()));
-        var headRow = interfaces.keySet().stream().map(this::toTableHead).filter(Objects::nonNull).findFirst().orElse(null);
+        var head = interfaces.keySet().stream().map(this::toTableHead).filter(Objects::nonNull).findFirst().orElse(null);
         return renderTables(result.columns, result.rows, tableParts, e -> ofNullable(e).map(Entry::getKey)
-                .map(this::toTableCell).orElse(null), headRow);
+                .map(this::toTableCell).orElse(null), head);
     }
 
     protected String toTableHead(Interface anInterface) {
@@ -1226,7 +1232,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             Integer moreThan = 3;
             int columns;
             @Builder.Default
-            int rows = 8;
+            int rows = 10;
         }
     }
 

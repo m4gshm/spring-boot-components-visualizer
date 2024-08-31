@@ -110,7 +110,16 @@ public class SchemaGeneratorTest {
     @Autowired
     PlantUmlTextFactory schemaFactory;
 
-    static void writeSwgFile(File svgOutFile, String content) {
+    @Test
+    public void generatePlantUml() {
+        var schema = schemaFactory.create(extractor.getComponents());
+        var envName = "PLANTUML_OUT";
+        var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
+        writeTextFile(plantUmlOutFile, schema);
+        writeSwgFile(getSvgFile(plantUmlOutFile), schema);
+    }
+
+    private void writeSwgFile(File svgOutFile, String content) {
         var svg = Svg.convert(null, content);
         try (var writer = new FileOutputStream(svgOutFile)) {
             writer.write(svg.toString().getBytes(UTF_8));
@@ -120,7 +129,7 @@ public class SchemaGeneratorTest {
         }
     }
 
-    static void writeTextFile(File file, String content) {
+    private void writeTextFile(File file, String content) {
         var parentFile = file.getParentFile();
         if (!parentFile.exists()) {
             parentFile.mkdirs();
@@ -134,22 +143,10 @@ public class SchemaGeneratorTest {
         }
     }
 
-    static File getSvgFile(File plantUmlFile) {
+    private File getSvgFile(File plantUmlFile) {
         var plantUmlOutFileName = plantUmlFile.getName();
         var extensionDelim = plantUmlOutFileName.lastIndexOf(".");
-        return new File(
-                plantUmlFile.getParentFile(),
-                (extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg"
-        );
-    }
-
-    @Test
-    public void generatePlantUml() {
-        var schema = schemaFactory.create(extractor.getComponents());
-        var envName = "PLANTUML_OUT";
-        var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
-        writeTextFile(plantUmlOutFile, schema);
-        writeSwgFile(getSvgFile(plantUmlOutFile), schema);
+        return new File((extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg");
     }
 }
 ```
