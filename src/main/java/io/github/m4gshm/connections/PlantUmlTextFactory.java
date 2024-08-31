@@ -16,6 +16,7 @@ import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
@@ -314,12 +315,12 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 groupedByPackage = groupedByPackage.entrySet().stream().collect(toMap(e -> e.getKey().substring(commonPackPrefix.length()),
                         e -> {
                             var value = e.getValue();
-
                             var commonInterfacePrefix = value.size() > 1
                                     ? value.keySet().stream()
-                                    .map(Interface::getName).collect(toList()).stream().reduce(Strings::commonPrefix).orElse("")
+                                    .map(Interface::getName)
+                                    .collect(toList()).stream()
+                                    .reduce(Strings::commonPrefix).orElse("")
                                     : commonPackPrefix;
-
                             return value.entrySet().stream().map(ee -> {
                                 var anInterface = ee.getKey();
                                 var interfaceName = anInterface.getName();
@@ -335,7 +336,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             if (!groupedByPackage.isEmpty()) {
                 groupedByPackage.forEach((packageName, interfaceCollectionMap) -> {
                     var entitiesPackId = getElementId(getElementId(key), packageName);
-                    printUnion(out, newUnion(entitiesPackId, packageName, newUnionStyle(folder, LINE_DOTTED_LINE_GRAY)), () -> {
+                    var style = newUnionStyle(packageName.isEmpty() ? rectangle : folder, LINE_DOTTED_LINE_GRAY);
+                    printUnion(out, newUnion(entitiesPackId, packageName, style), () -> {
                         printInterfaces(out, entitiesPackId, interfaceCollectionMap);
                     });
                 });
@@ -510,8 +512,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var moreThan = concatenatePackageComponents.moreThan;
         var compress = moreThan != null && components != null && components.size() > moreThan;
         if (compress) {
-            if (concatenatePackageComponents.ignoreInterfaceRelated) {
-                return extracted(components);
+            var componentsConcatenationCondition = concatenatePackageComponents.componentsConcatenationCondition;
+            if (componentsConcatenationCondition != null) {
+                return newConcatenatedComponentGroup(components, componentsConcatenationCondition);
             } else {
                 return ConcatenatedComponentGroup.builder().concatenation(components).build();
             }
@@ -520,13 +523,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
-    protected ConcatenatedComponentGroup extracted(Collection<Component> components) {
-        var grouped = components.stream().collect(groupingBy(c -> {
-            var interfaces = c.getInterfaces();
-            return !(interfaces == null || interfaces.isEmpty());
-        }, LinkedHashMap::new, toLinkedHashSet()));
-        var distinct = grouped.get(true);
-        var concatenation = grouped.get(false);
+    protected ConcatenatedComponentGroup newConcatenatedComponentGroup(
+            Collection<Component> components, Predicate<Component> concatenationCondition
+    ) {
+        var grouped = components.stream()
+                .collect(groupingBy(concatenationCondition::test, LinkedHashMap::new, toLinkedHashSet()));
+        var distinct = grouped.get(false);
+        var concatenation = grouped.get(true);
         return ConcatenatedComponentGroup.builder()
                 .distinct(distinct != null ? distinct : Set.of())
                 .concatenation(concatenation != null ? concatenation : Set.of())
@@ -1174,7 +1177,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             int rows = 20;
 
             @Builder.Default
-            boolean ignoreInterfaceRelated = true;
+            Predicate<Component> componentsConcatenationCondition = hasNoInterfaces();
+
+            public static Predicate<Component> hasNoInterfaces() {
+                return c -> ofNullable(c.getInterfaces()).map(Set::isEmpty).orElse(true);
+            }
         }
 
         @Data

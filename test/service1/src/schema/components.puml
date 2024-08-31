@@ -76,11 +76,11 @@ cloud "input" as input #line.dotted;line:gray; {
 cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
     folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
-      entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      entity "null" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
       note "simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
-      entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      entity "null" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
       note "auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
