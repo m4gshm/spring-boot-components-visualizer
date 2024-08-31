@@ -77,17 +77,17 @@ cloud "internal" as internal #line.dotted;line:gray; {
   database "storage" as internal.storage {
     folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
       entity "null" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
-      note "simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
+      note "table: simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
       internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
       entity "null" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
-      note "auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
+      note "table: auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
       internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
     }
     folder "mongo.model" as internal.storage.mongo.model #line.dotted;line:gray; {
       entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
-      note "documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
+      note "collection: documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
       internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
       internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
     }

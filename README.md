@@ -110,16 +110,7 @@ public class SchemaGeneratorTest {
     @Autowired
     PlantUmlTextFactory schemaFactory;
 
-    @Test
-    public void generatePlantUml() {
-        var schema = schemaFactory.create(extractor.getComponents());
-        var envName = "PLANTUML_OUT";
-        var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
-        writeTextFile(plantUmlOutFile, schema);
-        writeSwgFile(getSvgFile(plantUmlOutFile), schema);
-    }
-
-    private void writeSwgFile(File svgOutFile, String content) {
+    static void writeSwgFile(File svgOutFile, String content) {
         var svg = Svg.convert(null, content);
         try (var writer = new FileOutputStream(svgOutFile)) {
             writer.write(svg.toString().getBytes(UTF_8));
@@ -129,7 +120,7 @@ public class SchemaGeneratorTest {
         }
     }
 
-    private void writeTextFile(File file, String content) {
+    static void writeTextFile(File file, String content) {
         var parentFile = file.getParentFile();
         if (!parentFile.exists()) {
             parentFile.mkdirs();
@@ -143,10 +134,22 @@ public class SchemaGeneratorTest {
         }
     }
 
-    private File getSvgFile(File plantUmlFile) {
+    static File getSvgFile(File plantUmlFile) {
         var plantUmlOutFileName = plantUmlFile.getName();
         var extensionDelim = plantUmlOutFileName.lastIndexOf(".");
-        return new File((extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg");
+        return new File(
+                plantUmlFile.getParentFile(),
+                (extensionDelim != -1 ? plantUmlOutFileName.substring(0, extensionDelim) : plantUmlOutFileName) + ".svg"
+        );
+    }
+
+    @Test
+    public void generatePlantUml() {
+        var schema = schemaFactory.create(extractor.getComponents());
+        var envName = "PLANTUML_OUT";
+        var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
+        writeTextFile(plantUmlOutFile, schema);
+        writeSwgFile(getSvgFile(plantUmlOutFile), schema);
     }
 }
 ```

@@ -31,6 +31,7 @@ import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
 import static io.github.m4gshm.connections.Utils.*;
 import static io.github.m4gshm.connections.model.HttpMethodsGroup.makeGroupsHierarchyByHttpMethodUrl;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
+import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
@@ -633,7 +634,11 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var storedTo = storage.getStoredTo();
         var tables = storedTo.stream().reduce("", (l, r) -> (l.isBlank() ? "" : l + "\n") + r);
         var noteId = getElementId(interfaceId, "table_name");
-        return format("note \"%1$s\" as %2$s\n%2$s .. %3$s\n", tables, noteId, interfaceId);
+        var caption = storage.getEngine() == jpa ? "table" : "collection";
+        if (storedTo.size() > 1) {
+            caption += "s";
+        }
+        return format("note \"%1$s: %2$s\" as %3$s\n%3$s .. %4$s\n", caption, tables, noteId, interfaceId);
     }
 
     protected void printInterfaceReference(IndentStringAppender out, Interface anInterface,
@@ -737,16 +742,19 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var opts = options.getConcatenateComponents();
         var result = getRowsCols(opts.getRows(), opts.getColumns(), components.size());
         var tableParts = splitOnTableParts(result.columns, result.rows, new ArrayList<>(components));
-        return renderTables(result.columns, result.rows, tableParts, component -> component != null ? component.getName() : null);
+        return renderTables(result.columns, result.rows, tableParts, component -> component != null ? component.getName() : null, null);
     }
 
-    protected <T> List<Entry<String, List<T>>> renderTables(int columns, int rows, List<List<T>> tableParts, Function<T, String> stringConverter) {
-        return tableParts.stream().map(ordered -> entry(renderTable(columns, rows, ordered, stringConverter), ordered)).collect(toList());
+    protected <T> List<Entry<String, List<T>>> renderTables(int columns, int rows, List<List<T>> tableParts, Function<T, String> stringConverter, String headRow) {
+        return tableParts.stream().map(ordered -> entry(renderTable(columns, rows, ordered, stringConverter, headRow), ordered)).collect(toList());
     }
 
-    private <T> String renderTable(int columns, int rows, List<T> ordered, Function<T, String> stringConverter) {
+    private <T> String renderTable(int columns, int rows, List<T> ordered, Function<T, String> stringConverter, String headRow) {
         var result = new StringBuilder();
         var cells = new String[columns];
+        if (headRow != null) {
+            result.append(renderTableRow(true, headRow));
+        }
         for (var row = 0; row < rows; row++) {
             for (var column = 0; column < columns; column++) {
                 var i = row + column * rows;
@@ -766,7 +774,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         return result.toString();
     }
 
-    protected String renderTableRow(boolean space, String[] cells) {
+    protected String renderTableRow(boolean space, String... cells) {
         return TABLE_TRANSPARENT + "|" + renderTableCells(space, cells) + "|";
     }
 
@@ -776,6 +784,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         if (interfaces == null || interfaces.isEmpty()) {
             return;
         }
+
         var renderedParts = renderConcatenatedInterfacesText(interfaces);
         var part = 0;
         for (var renderedPart : renderedParts) {
@@ -791,6 +800,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                 var anInterface = partInt.getKey();
                 var components = partInt.getValue();
                 var interfaceId = getInterfaceId(anInterface);
+
                 //todo may be deleted
                 concatenatedInterfaces.put(interfaceId, concatenatedId);
                 printInterfaceReferences(out, anInterface, concatenatedId, true, components);
@@ -799,15 +809,30 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     protected List<Entry<String, List<Entry<Interface, List<Component>>>>> renderConcatenatedInterfacesText(
-            Map<Interface, List<Component>> interfaces
-    ) {
+            Map<Interface, List<Component>> interfaces) {
         var opts = options.getConcatenateInterfaces();
         var result = getRowsCols(opts.getRows(), opts.getColumns(), interfaces.size());
 
         var tableParts = splitOnTableParts(result.columns, result.rows,
                 new ArrayList<>(interfaces.entrySet()));
+        var headRow = interfaces.keySet().stream().map(this::toTableHead).filter(Objects::nonNull).findFirst().orElse(null);
         return renderTables(result.columns, result.rows, tableParts, e -> ofNullable(e).map(Entry::getKey)
-                .map(this::toTableCell).orElse(null));
+                .map(this::toTableCell).orElse(null), headRow);
+    }
+
+    protected String toTableHead(Interface anInterface) {
+        var core = anInterface.getCore();
+        if (core instanceof StorageEntity) {
+            return toTableHead((StorageEntity) core);
+        }
+        return null;
+    }
+
+    protected String toTableHead(StorageEntity storageEntity) {
+        var engine = storageEntity.getEngine();
+        var entity = "Entity";
+        var storedTo = engine == jpa ? "Table" : "Collection";
+        return renderTableCells("=" + entity + " ", "=" + storedTo);
     }
 
     protected String toTableCell(Interface anInterface) {
@@ -817,8 +842,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             return toTableCell((HttpMethod) interfaceName);
         } else if (core instanceof HttpMethod) {
             return toTableCell((HttpMethod) core);
+        } else if (core instanceof StorageEntity) {
+            return toTableCell((StorageEntity) core);
         }
         return renderTableCells(anInterface.getName());
+    }
+
+    protected String toTableCell(StorageEntity storageEntity) {
+        var simpleName = storageEntity.getEntityType().getSimpleName();
+        var storedTo = storageEntity.getStoredTo().stream().reduce("", (l, r) -> (l.isEmpty() ? "" : l + ", ") + r);
+        return renderTableCells(simpleName + " ", "<i>" + storedTo);
     }
 
     protected String toTableCell(HttpMethod httpMethod) {
