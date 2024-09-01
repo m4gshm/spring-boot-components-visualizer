@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.FieldDefaults;
 
+import java.util.List;
 import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -21,6 +22,7 @@ public class Component implements ComponentDependency {
     Class<?> type;
     Set<Interface> interfaces;
     Set<Component> dependencies;
+    List<CallPoint> callPoints;
 
     @Override
     public boolean isManaged() {

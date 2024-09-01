@@ -1,14 +1,13 @@
 package io.github.m4gshm.connections.bytecode;
 
+import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.*;
-import org.apache.bcel.generic.ConstantPoolGen;
-import org.apache.bcel.generic.INVOKEDYNAMIC;
-import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.Type;
+import org.apache.bcel.generic.*;
 import org.springframework.aop.SpringProxy;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandle;
@@ -18,10 +17,10 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.lang.reflect.Proxy;
+import java.util.*;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
@@ -32,8 +31,8 @@ import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
-import static java.util.stream.Stream.concat;
-import static java.util.stream.Stream.of;
+import static java.util.stream.Stream.*;
+import static java.util.stream.StreamSupport.stream;
 import static org.apache.bcel.Const.*;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_MethodHandle;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
@@ -55,17 +54,29 @@ public class EvalUtils {
         if (componentType == null) {
             return null;
         }
+        if (Proxy.isProxyClass(componentType)) {
+            var interfaces = componentType.getInterfaces();
+            var firstInterface = Arrays.stream(interfaces).findFirst().orElse(null);
+            if (interfaces.length > 1) {
+                log.debug("unproxy {} as first interface {}", componentType, firstInterface);
+            }
+            return firstInterface;
+        }
         var springProxyClass = loadedClass(() -> SpringProxy.class);
-        if (springProxyClass != null && componentType.getName().contains("$$") && springProxyClass.isAssignableFrom(componentType)) {
+        if (componentType.getName().contains("$$")) {
+            if (springProxyClass == null || !springProxyClass.isAssignableFrom(componentType)) {
+                log.debug("detected CGLIB proxy class that doesn't implements SpringProxy interface, {}", componentType);
+            }
             componentType = componentType.getSuperclass();
         }
         return componentType;
     }
 
-    public static EvalResult<Object> eval(Object object, InstructionHandle instructionHandle,
-                                          ConstantPoolGen constantPoolGen, LocalVariableTable localVariableTable,
-                                          BootstrapMethods bootstrapMethods, Code code) {
-        return new Eval(constantPoolGen, localVariableTable, bootstrapMethods, code).eval(object, instructionHandle);
+    public static EvalResult<Object> eval(Object object, String componentName, InstructionHandle instructionHandle,
+                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+                                          Method method, Collection<Component> components, ConfigurableApplicationContext context) {
+        var eval = new Eval(context, object, componentName, object.getClass(), constantPoolGen, bootstrapMethods, method, components);
+        return eval.eval(instructionHandle);
     }
 
     static Object invoke(MethodHandle methodHandle, List<Object> arguments) {
@@ -104,7 +115,7 @@ public class EvalUtils {
         }
     }
 
-    static Object callBootstrapMethod(Object object, Object[] arguments, INVOKEDYNAMIC instruction,
+    static Object callBootstrapMethod(Object[] arguments, INVOKEDYNAMIC instruction,
                                       ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = cp.getConstant(instruction.getIndex(),
@@ -116,7 +127,7 @@ public class EvalUtils {
 
         var factoryMethod = fromMethodDescriptorString(constantNameAndType.getSignature(cp), null);
 
-        int bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
+        var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
         var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
         var bootstrapMethodHandle = cp.getConstant(bootstrapMethod.getBootstrapMethodRef(),
                 CONSTANT_MethodHandle, ConstantMethodHandle.class);
@@ -249,11 +260,12 @@ public class EvalUtils {
         return fromMethodDescriptorString(cp.getConstantUtf8(constantMethodType.getDescriptorIndex()).getBytes(), null);
     }
 
-    static Class[] getArgumentTypes(Type[] argumentTypes) {
+    public static Class[] getArgumentTypes(Type[] argumentTypes) {
         var args = new Class[argumentTypes.length];
         for (int i = 0; i < argumentTypes.length; i++) {
             var argumentType = argumentTypes[i];
-            String className = argumentType.getClassName();
+            var rawClassName = argumentType.getClassName();
+            var className = rawClassName.replace("/", ".");
             args[i] = getClassByName(className);
         }
         return args;
@@ -332,8 +344,20 @@ public class EvalUtils {
         return notAccessible(declaredMethod, invokeInstruction);
     }
 
-    private static String toString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
+    public static String toString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
         return instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
+    }
+
+    public static Stream<InstructionHandle> instructionHandleStream(Code code) {
+        return ofNullable(code).map(Code::getCode).flatMap(bc -> instructionHandleStream(new InstructionList(bc)));
+    }
+
+    public static Stream<InstructionHandle> instructionHandleStream(InstructionList instructionHandles) {
+        return stream(instructionHandles.spliterator(), false);
+    }
+
+    protected static Class[] getArgumentTypes(InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
+        return getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
     }
 
     @FunctionalInterface

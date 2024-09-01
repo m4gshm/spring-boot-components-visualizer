@@ -1,10 +1,10 @@
 package io.github.m4gshm.connections.client;
 
+import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
-import org.apache.bcel.classfile.Code;
-import org.apache.bcel.classfile.LocalVariableTable;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.socket.client.WebSocketClient;
@@ -12,12 +12,11 @@ import org.springframework.web.socket.client.WebSocketClient;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.StreamSupport;
 
-import static io.github.m4gshm.connections.bytecode.EvalUtils.eval;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.lookupClass;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -26,17 +25,14 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(String componentName, Class<?> componentType,
-                                                          ConfigurableApplicationContext context) {
+                                                          ConfigurableApplicationContext context, Collection<Component> components) {
         var javaClass = lookupClass(componentType);
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = javaClass.getMethods();
         var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
         return stream(methods).flatMap(method -> {
             var code = method.getCode();
-            var localVariableTable = method.getLocalVariableTable();
-            var instructionList = new InstructionList(code.getCode());
-
-            var values = StreamSupport.stream(instructionList.spliterator(), false).map(instructionHandle -> {
+            var values = instructionHandleStream(new InstructionList(code.getCode())).map(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 if (instruction instanceof INVOKEINTERFACE) {
                     var invoke = (InvokeInstruction) instruction;
@@ -47,7 +43,7 @@ public class WebsocketClientUtils {
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
                         return getDoHandshakeUri(componentName, context.getBean(componentName), instructionHandle,
-                                constantPoolGen, localVariableTable, bootstrapMethods, code);
+                                constantPoolGen, bootstrapMethods, components, method, context);
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
                         throw new RuntimeException(e);
@@ -65,10 +61,10 @@ public class WebsocketClientUtils {
     }
 
     private static String getDoHandshakeUri(
-            String componentName, Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            LocalVariableTable localVariableTable,
-            BootstrapMethods bootstrapMethods,
-            Code code) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+            String componentName, Object object, InstructionHandle instructionHandle,
+            ConstantPoolGen constantPoolGen,
+            BootstrapMethods bootstrapMethods, Collection<Component> components,
+            Method method, ConfigurableApplicationContext context) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
@@ -76,8 +72,8 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            var value = eval(object, instructionHandle.getPrev(), constantPoolGen,
-                    localVariableTable, bootstrapMethods, code);
+            var value = eval(object, componentName, instructionHandle.getPrev(), constantPoolGen,
+                    bootstrapMethods, method, components, context);
             var result = value.getResult();
             if (result instanceof URI) {
                 var uri = (URI) result;
@@ -86,8 +82,10 @@ public class WebsocketClientUtils {
                 return result != null ? result.toString() : null;
             }
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            var uriTemplates = eval(object, instructionHandle.getPrev(), constantPoolGen, localVariableTable, bootstrapMethods, code);
-            var utiTemplate = eval(object, uriTemplates.getLastInstruction().getPrev(), constantPoolGen, localVariableTable, bootstrapMethods, code);
+            var uriTemplates = eval(object, componentName, instructionHandle.getPrev(), constantPoolGen,
+                    bootstrapMethods, method, components, context);
+            var utiTemplate = eval(object, componentName, uriTemplates.getLastInstruction().getPrev(), constantPoolGen,
+                    bootstrapMethods, method, components, context);
             return String.valueOf(utiTemplate.getResult());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.io.File;
 
@@ -17,12 +18,13 @@ import static service1.SchemaGeneratorTest.*;
 public class SchemaGeneratorTest2 {
 
     @Autowired
-    ComponentsExtractor extractor;
+    ConfigurableApplicationContext context;
     @Autowired
     PlantUmlTextFactory schemaFactory;
 
     @Test
     public void generatePlantUml() {
+        var extractor = new ComponentsExtractor(context, ComponentsExtractor.Options.builder().failFast(true).build());
         var schema = schemaFactory.create(extractor.getComponents(), schemaFactory.getOptions().toBuilder()
                 .concatenateInterfaces(PlantUmlTextFactory.Options.ConcatenateInterfacesOptions.builder()
                         .moreThan(1)

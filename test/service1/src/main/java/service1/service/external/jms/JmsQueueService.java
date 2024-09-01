@@ -15,11 +15,10 @@ public class JmsQueueService extends AbstractJmsQueueService {
     private final JmsTemplate jmsTemplate;
     private final JmsOperations jmsOperations;
 
-    public final void sendMessage(String message, String message2, String message3) {
-        var jmsQueue1 = wrap("jmsQueue1");
+    public final void sendMessage(String message, String message2, String message3, String jmsQueue) {
         var jmsQueue2 = wrap("jmsQueue2");
         if (message3 != null)
-            jmsTemplate.sendAndReceive(jmsQueue1, session -> session.createTextMessage(message3 != null ? message3 : message2));
+            jmsTemplate.sendAndReceive(jmsQueue, session -> session.createTextMessage(message3 != null ? message3 : message2));
         else
             jmsTemplate.sendAndReceive(jmsQueue2, session -> session.createTextMessage(message3 != null ? message3 : message2));
         jmsTemplate.send(new StringBuilder("jmsQueueEvents").toString(), session -> getMessage(message3, session));

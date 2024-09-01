@@ -3,6 +3,7 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
+import io.github.m4gshm.connections.ComponentsExtractor.ComponentKey;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalException;
@@ -243,7 +244,9 @@ public class ComponentsExtractorUtils {
 
     public static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
         var type = loadedClass(classSupplier);
-        return type != null ? dependencies.stream().filter(component -> type.isAssignableFrom(component.getType())).findFirst().orElse(null) : null;
+        return type != null && dependencies != null ? dependencies.stream()
+                .filter(component -> type.isAssignableFrom(component.getType())).findFirst().orElse(null)
+                : null;
     }
 
     public static Field getDeclaredField(String name, Class<?> type) {
@@ -324,8 +327,8 @@ public class ComponentsExtractorUtils {
     }
 
     @SafeVarargs
-    public static Map<ComponentsExtractor.ComponentKey, Component> mergeComponents(Collection<Component>... components) {
-        return of(components).flatMap(Collection::stream).collect(toMap(ComponentsExtractor.ComponentKey::newComponentKey, c -> c, (l, r) -> {
+    public static Map<ComponentKey, Component> mergeComponents(Collection<Component>... components) {
+        return of(components).flatMap(Collection::stream).collect(toMap(ComponentKey::newComponentKey, c -> c, (l, r) -> {
             var lInterfaces = l.getInterfaces();
             var lDependencies = l.getDependencies();
             var rInterfaces = r.getInterfaces();
@@ -339,7 +342,7 @@ public class ComponentsExtractorUtils {
 
     @SafeVarargs
     public static LinkedHashSet<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
-        return of(interfaces).flatMap(Collection::stream).collect(toLinkedHashSet());
+        return of(interfaces).filter(Objects::nonNull).flatMap(Collection::stream).collect(toLinkedHashSet());
     }
 
     public static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {
@@ -379,12 +382,15 @@ public class ComponentsExtractorUtils {
         return concat(Stream.of(component), dependencies != null ? dependencies.stream() : empty());
     }
 
-    public static Component getComponentWithFilteredDependencies(Component component,
-                                                                 Map<ComponentsExtractor.ComponentKey, Component> componentsPerName) {
+    public static Component getComponentWithFilteredDependencies(Component component, Map<ComponentKey, Component> componentsPerName) {
         var dependencies = component.getDependencies();
-        return dependencies != null && !dependencies.isEmpty() ? component.toBuilder()
-                .dependencies(dependencies.stream().filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency)))
-                        .collect(toLinkedHashSet())).build() : component;
+        if (dependencies != null && !dependencies.isEmpty()) {
+            var filteredDependencies = dependencies.stream()
+                    .filter(componentDependency -> componentsPerName.containsKey(newComponentKey(componentDependency)))
+                    .collect(toLinkedHashSet());
+            return component.toBuilder().dependencies(filteredDependencies).build();
+        }
+        return component;
     }
 
     public static Component newManagedDependency(String oName) {

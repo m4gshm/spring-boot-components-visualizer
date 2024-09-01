@@ -1,13 +1,15 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
+import io.github.m4gshm.connections.bytecode.Eval;
 import io.github.m4gshm.connections.bytecode.EvalResult;
+import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
-import org.apache.bcel.classfile.Code;
-import org.apache.bcel.classfile.LocalVariableTable;
+import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.core.JmsOperations;
@@ -16,12 +18,12 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
-import static io.github.m4gshm.connections.bytecode.EvalUtils.eval;
+import static io.github.m4gshm.connections.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.bytecode.EvalUtils.lookupClass;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
@@ -38,26 +40,22 @@ public class JmsOperationsUtils {
     public static final String DEFAULT_DESTINATION = "default";
 
     public static List<JmsClient> extractJmsClients(
-            String componentName, Class<?> componentType, ConfigurableApplicationContext context) {
+            String componentName, Class<?> componentType, ConfigurableApplicationContext context, Collection<Component> components) {
         var javaClass = lookupClass(componentType);
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = javaClass.getMethods();
-        var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
+        var bootstrapMethods = getBootstrapMethods(javaClass);
         return stream(methods).flatMap(method -> {
             var code = method.getCode();
-            var localVariableTable = method.getLocalVariableTable();
-            var instructionList = new InstructionList(code.getCode());
-
-            var values = StreamSupport.stream(instructionList.spliterator(), false).flatMap(instructionHandle -> {
+            var values = instructionHandleStream(new InstructionList(code.getCode())).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
-                var expectedType =
-                        instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
-                                instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
+                var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
+                        instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
 
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(componentName, context.getBean(componentName), instructionHandle, localVariableTable,
-                        constantPoolGen, bootstrapMethods, code).stream()
+                        ? extractJmsClients(componentName, context.getBean(componentName), instructionHandle,
+                        constantPoolGen, bootstrapMethods, method, components, context).stream()
                         : Stream.of();
             }).filter(Objects::nonNull).collect(toList());
 
@@ -65,40 +63,55 @@ public class JmsOperationsUtils {
         }).filter(Objects::nonNull).collect(toList());
     }
 
+    public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {
+        return javaClass.getAttribute(ATTR_BOOTSTRAP_METHODS);
+    }
+
     private static List<JmsClient> extractJmsClients(
             String componentName, Object object, InstructionHandle instructionHandle,
-            LocalVariableTable localVariableTable,
             ConstantPoolGen constantPoolGen,
             BootstrapMethods bootstrapMethods,
-            Code code) {
+            Method method, Collection<Component> components, ConfigurableApplicationContext context) {
         log.trace("extractJmsClients, componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
 
-        var onEval = instructionHandle.getPrev();
+//        var onEval = instructionHandle.getPrev();
 
         var direction = getJmsDirection(methodName);
         if (direction == undefined) {
             return List.of();
         } else {
-            var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
-            var arguments = newEvalResults(argumentTypes);
-            for (int i = argumentTypes.length; i > 0; i--) {
-                var evalResult = eval(object, onEval, constantPoolGen, localVariableTable, bootstrapMethods, code);
-                arguments[i - 1] = evalResult;
-                onEval = evalResult.getLastInstruction().getPrev();
-            }
+            var eval = new Eval(context, object, componentName, object.getClass(), constantPoolGen, bootstrapMethods, method, components);
+            var valueVariants = eval.evalArguments(instructionHandle, instruction).getValueVariants();
+            return valueVariants.stream().map(values -> {
+                if (values.isEmpty()) {
+                    return newJmsClient(DEFAULT_DESTINATION, direction, methodName);
+                } else {
+                    Object first = values.get(0);
+                    String destination = JmsOperationsUtils.getDestination(first);
+                    return newJmsClient(destination, direction, methodName);
+                }
+            }).collect(toList());
 
-            if (arguments.length > 0) {
-                var firstArg = arguments[0];
-                var results = firstArg.getResults();
-                return results.stream().map(JmsOperationsUtils::getDestination)
-                        .map(destination -> newJmsClient(destination, direction, methodName)
-                        ).collect(toList());
-            } else {
-                return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
-            }
+//            var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
+//            var arguments = newEvalResults(argumentTypes);
+//            for (int i = argumentTypes.length; i > 0; i--) {
+//                var evalResult = eval(object, componentName, onEval, constantPoolGen, bootstrapMethods, method, components, context);
+//                arguments[i - 1] = evalResult;
+//                onEval = evalResult.getLastInstruction().getPrev();
+//            }
+//
+//            if (arguments.length > 0) {
+//                var firstArg = arguments[0];
+//                var results = firstArg.getResults();
+//                return results.stream().map(JmsOperationsUtils::getDestination)
+//                        .map(destination -> newJmsClient(destination, direction, methodName)
+//                        ).collect(toList());
+//            } else {
+//                return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
+//            }
         }
     }
 
@@ -120,7 +133,8 @@ public class JmsOperationsUtils {
         try {
             destination = firstArg instanceof CharSequence ? firstArg.toString()
                     : firstArg instanceof Queue ? ((Queue) firstArg).getQueueName()
-                    : firstArg instanceof Topic ? ((Topic) firstArg).getTopicName() : UNDEFINED_DESTINATION;
+                    : firstArg instanceof Topic ? ((Topic) firstArg).getTopicName()
+                    : UNDEFINED_DESTINATION;
         } catch (JMSException e) {
             log.error("destination name error", e);
             destination = UNRECOGNIZED_DESTINATION;
