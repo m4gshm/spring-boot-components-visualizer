@@ -1,6 +1,9 @@
 package io.github.m4gshm.connections.bytecode;
 
+import io.github.m4gshm.connections.bytecode.Eval.Value;
 import io.github.m4gshm.connections.model.Component;
+import lombok.Data;
+import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.Repository;
@@ -18,18 +21,22 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
+import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.bytecode.EvalResult.*;
+import static io.github.m4gshm.connections.bytecode.Eval.Result.*;
+import static io.github.m4gshm.connections.bytecode.Eval.Value.constant;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.*;
 import static java.util.stream.StreamSupport.stream;
@@ -72,16 +79,17 @@ public class EvalUtils {
         return componentType;
     }
 
-    public static EvalResult<Object> eval(Object object, String componentName, InstructionHandle instructionHandle,
-                                          ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-                                          Method method, Collection<Component> components, ConfigurableApplicationContext context) {
+    public static Eval.Result eval(Object object, String componentName, InstructionHandle instructionHandle,
+                                   ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+                                   Method method, Collection<Component> components,
+                                   ConfigurableApplicationContext context) {
         var eval = new Eval(context, object, componentName, object.getClass(), constantPoolGen, bootstrapMethods, method, components);
         return eval.eval(instructionHandle);
     }
 
-    static Object invoke(MethodHandle methodHandle, List<Object> arguments) {
+    static Value invoke(MethodHandle methodHandle, List<Object> arguments) {
         try {
-            return methodHandle.invokeWithArguments(arguments);
+            return constant(methodHandle.invokeWithArguments(arguments));
         } catch (Throwable e) {
             throw new EvalException(e);
         }
@@ -97,8 +105,9 @@ public class EvalUtils {
         return constructor;
     }
 
-    static EvalResult<Object> instantiateObject(InstructionHandle instructionHandle,
-                                                Class<?> type, Class[] argumentTypes, Object[] arguments) {
+    
+    static Eval.Result instantiateObject(InstructionHandle instructionHandle,
+                                         Class<?> type, Class[] argumentTypes, Object[] arguments) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -106,7 +115,7 @@ public class EvalUtils {
             throw new EvalException(e);
         }
         if (constructor.trySetAccessible()) try {
-            return success(constructor.newInstance(arguments), instructionHandle, instructionHandle);
+            return success(Value.constant(constructor.newInstance(arguments)), instructionHandle, instructionHandle);
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new EvalException(e);
         }
@@ -115,8 +124,8 @@ public class EvalUtils {
         }
     }
 
-    static Object callBootstrapMethod(Object[] arguments, INVOKEDYNAMIC instruction,
-                                      ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
+    static Value callBootstrapMethod(Object[] arguments, INVOKEDYNAMIC instruction,
+                                     ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = cp.getConstant(instruction.getIndex(),
                 CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
@@ -133,7 +142,6 @@ public class EvalUtils {
                 CONSTANT_MethodHandle, ConstantMethodHandle.class);
         var bootstrapMethodref = cp.getConstant(bootstrapMethodHandle.getReferenceIndex(),
                 CONSTANT_Methodref, ConstantMethodref.class);
-
         var nameAndType = cp.getConstant(bootstrapMethodref.getNameAndTypeIndex(),
                 CONSTANT_NameAndType, ConstantNameAndType.class);
 
@@ -150,21 +158,25 @@ public class EvalUtils {
                 return newMethodType((ConstantMethodType) constant, cp);
             } else if (constant instanceof ConstantMethodHandle) {
                 return newMethodHandleAndLookup((ConstantMethodHandle) constant, cp, lookup);
+            } else if (constant instanceof ConstantObject) {
+                return ((ConstantObject) constant).getConstantValue(cp);
             } else {
-                String message = "unsupported bootstrap method argument type " + constant;
-                throw new EvalException(message);
+                throw new EvalException("unsupported bootstrap method argument type " + constant);
             }
         }).collect(toList());
 
-        var privateLookup = (Lookup) bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry
-                        ? ((Map.Entry<?, ?>) a).getValue() : null)
+        var selectedLookup = bootstrabMethodArguments.stream().map(a -> a instanceof MethodHandleAndLookup
+                        ? ((MethodHandleAndLookup) a).getLookup() : null)
                 .filter(Objects::nonNull).findFirst()
-                .orElseThrow(() -> new EvalException("null private lookup of lambda method"));
+                .orElseGet(() -> {
+                    log.debug("null private lookup of lambda method {}", bootstrapMethod.toString(cp));
+                    return lookup;
+                });
 
-        bootstrabMethodArguments = bootstrabMethodArguments.stream().map(a -> a instanceof Map.Entry
-                ? ((Map.Entry<?, ?>) a).getKey() : a).collect(toList());
+        bootstrabMethodArguments = bootstrabMethodArguments.stream().map(a -> a instanceof MethodHandleAndLookup
+                ? ((MethodHandleAndLookup) a).getMethodHandle() : a).collect(toList());
 
-        bootstrabMethodArguments = concat(of(privateLookup, interfaceMethodName, factoryMethod),
+        bootstrabMethodArguments = concat(of(selectedLookup, interfaceMethodName, factoryMethod),
                 bootstrabMethodArguments.stream()).collect(toList());
 
         CallSite metafactory;
@@ -179,8 +191,8 @@ public class EvalUtils {
         return invoke(lambdaInstance, asList(arguments));
     }
 
-    private static Map.Entry<MethodHandle, Lookup> newMethodHandleAndLookup(ConstantMethodHandle constant,
-                                                                            ConstantPool cp, Lookup lookup) {
+    private static MethodHandleAndLookup newMethodHandleAndLookup(ConstantMethodHandle constant,
+                                                                  ConstantPool cp, Lookup lookup) {
         var constantMethodref = cp.getConstant(constant.getReferenceIndex(), ConstantMethodref.class);
 
         var constantNameAndType = cp.getConstant(constantMethodref.getNameAndTypeIndex(), ConstantNameAndType.class);
@@ -193,8 +205,10 @@ public class EvalUtils {
         setAccessibleMethod(targetClass, methodName, methodType);
 
         var privateLookup = getPrivateLookup(targetClass, lookup);
-        return entry(lookupReference(privateLookup, constant.getReferenceKind(), targetClass, methodName, methodType),
-                privateLookup);
+        return new MethodHandleAndLookup(
+                lookupReference(privateLookup, constant.getReferenceKind(), targetClass, methodName, methodType),
+                privateLookup
+        );
     }
 
     static Lookup getPrivateLookup(Class<?> targetClass, Lookup lookup) {
@@ -272,54 +286,37 @@ public class EvalUtils {
     }
 
     static Class<?> getClassByName(String className) {
-        switch (className) {
-            case "boolean":
-                return boolean.class;
-            case "byte":
-                return byte.class;
-            case "char":
-                return char.class;
-            case "short":
-                return short.class;
-            case "int":
-                return int.class;
-            case "long":
-                return long.class;
-            case "float":
-                return float.class;
-            case "double":
-                return double.class;
-            case "void":
-                return void.class;
-        }
-        Class<?> forName;
         try {
-            forName = Class.forName(className);
+            return classByName(className);
         } catch (ClassNotFoundException e) {
             throw new EvalException(e);
         }
-        return forName;
     }
 
-    public static EvalResult<Object> getFieldValue(Object object, String name, InstructionHandle
+    public static Eval.Result getFieldValue(Object object, String name, InstructionHandle
             getFieldInstruction, InstructionHandle lastInstruction) {
-        var field = getDeclaredField(name, object.getClass());
-        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible()
-                ? success(getValue(object, field), getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
+        return getFieldValue(object, object.getClass(), name, getFieldInstruction, lastInstruction);
     }
 
-    private static Object getValue(Object object, Field field) {
+    public static Eval.Result getFieldValue(Object object, Class<?> objectClass, String name, InstructionHandle
+            getFieldInstruction, InstructionHandle lastInstruction) {
+        var field = getDeclaredField(name, objectClass);
+        return field == null ? notFound(name, getFieldInstruction) : field.trySetAccessible()
+                ? success(getFieldValue(object, field), getFieldInstruction, lastInstruction) : notAccessible(field, getFieldInstruction);
+    }
+
+    private static Value getFieldValue(Object object, Field field) {
         try {
-            return field.get(object);
+            return constant(field.get(object));
         } catch (IllegalAccessException e) {
             throw new EvalException(e);
         }
     }
 
-    static EvalResult<Object> callMethod(Object object, Class<?> type,
-                                         String methodName, Class[] argTypes, Object[] args,
-                                         InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                         ConstantPoolGen constantPoolGen) {
+    static Eval.Result callMethod(Object object, Class<?> type,
+                                  String methodName, Class[] argTypes, Object[] args,
+                                  InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
+                                  ConstantPoolGen constantPoolGen) {
         var msg = "callMethod";
         var declaredMethod = getDeclaredMethod(methodName, type, argTypes);
         if (declaredMethod == null) {
@@ -337,7 +334,7 @@ public class EvalUtils {
             if (log.isDebugEnabled()) {
                 log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName, result, toString(invokeInstruction, constantPoolGen));
             }
-            return success(result, invokeInstruction, lastInstruction);
+            return success(constant(result), invokeInstruction, lastInstruction);
         } else {
             log.warn("{}, method is not accessible, method '{}.{}', instruction {}", msg, type.getName(), methodName, toString(invokeInstruction, constantPoolGen));
         }
@@ -363,6 +360,13 @@ public class EvalUtils {
     @FunctionalInterface
     public interface MethodHandleLookup {
         MethodHandle get() throws NoSuchMethodException, IllegalAccessException;
+    }
+
+    @Data
+    @FieldDefaults(makeFinal = true)
+    private static class MethodHandleAndLookup {
+        MethodHandle methodHandle;
+        Lookup lookup;
     }
 
 }

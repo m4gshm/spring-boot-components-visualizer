@@ -1,12 +1,10 @@
 package io.github.m4gshm.connections;
 
-import io.github.m4gshm.connections.model.Component;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.springframework.core.env.Environment;
 
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.function.BinaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
@@ -40,7 +38,7 @@ public class Utils {
         return environment.getProperty("spring.application.name", "application");
     }
 
-    static <T> BinaryOperator<T> warnDuplicated() {
+    public static <T> BinaryOperator<T> warnDuplicated() {
         return (l, r) -> {
             if (l != r) {
                 log.warn("Duplicate components detected: first {}, second {}", l, r);
@@ -51,5 +49,29 @@ public class Utils {
 
     public static <T extends Comparable<T>> int compareNullable(T o1, T o2) {
         return o1 == null && o2 == null ? 0 : o1 == null ? -1 : o2 == null ? 1 : o1.compareTo(o2);
+    }
+
+    public static Class<?> classByName(String className) throws ClassNotFoundException {
+        switch (className) {
+            case "boolean":
+                return boolean.class;
+            case "byte":
+                return byte.class;
+            case "char":
+                return char.class;
+            case "short":
+                return short.class;
+            case "int":
+                return int.class;
+            case "long":
+                return long.class;
+            case "float":
+                return float.class;
+            case "double":
+                return double.class;
+            case "void":
+                return void.class;
+        }
+        return Class.forName(className);
     }
 }

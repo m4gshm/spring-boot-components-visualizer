@@ -226,29 +226,35 @@ public class ComponentsExtractor {
             var name = method.getName();
             var methodArgTypes = /*getArgumentTypes*/(method.getArgumentTypes());
 //            var localVariableTable = method.getLocalVariableTable();
-            var callPoints = instructionHandleStream(code).map(instructionHandle -> {
+            var callPoints = new ArrayList<CallPoint>();
+            var jumpsTo = new HashMap<Integer, InstructionHandle>();
+            instructionHandleStream(code).forEach(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
-                if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
+                if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE /*|| instruction instanceof INVOKEDYNAMIC*/) {
                     var invokeInstruction = (InvokeInstruction) instruction;
                     var methodName = invokeInstruction.getMethodName(constantPoolGen);
                     var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
-                    var ownerClass = invokeInstruction.getClassName(constantPoolGen);
-                    return CallPoint.builder()
+                    var ownerClassName = /*instruction instanceof INVOKEDYNAMIC ? null : */invokeInstruction.getClassName(constantPoolGen);
+                     callPoints.add(CallPoint.builder()
                             .methodName(methodName)
-                            .ownerClass(ownerClass)
+                            .ownerClassName(ownerClassName)
                             .argumentTypes(argumentTypes)
                             .instruction(instructionHandle)
-                            .build();
+                            .build()
+                     );
+                } else if (instruction instanceof GOTO) {
+                    var goTo = (GOTO) instruction;
+                    jumpsTo.put(goTo.getTarget().getPosition(), instructionHandle);
                 }
-                return null;
-            }).filter(Objects::nonNull).collect(toList());
+            });
             return CallPoint.builder()
                     .methodName(name)
-                    .ownerClass(componentType.getName())
+                    .ownerClass(componentType)
                     .argumentTypes(methodArgTypes)
                     .method(method)
                     .javaClass(javaClass)
                     .callPoints(callPoints)
+                    .jumpsTo(jumpsTo)
                     .build();
         }).collect(toList());
     }

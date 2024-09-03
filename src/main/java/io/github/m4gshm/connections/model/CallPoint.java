@@ -9,7 +9,9 @@ import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static lombok.AccessLevel.PRIVATE;
 
@@ -17,7 +19,8 @@ import static lombok.AccessLevel.PRIVATE;
 @Builder
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class CallPoint {
-    String ownerClass;
+    Class<?> ownerClass;
+    String ownerClassName;
     String methodName;
     Type[] argumentTypes;
     InstructionHandle instruction;
@@ -26,4 +29,6 @@ public class CallPoint {
     JavaClass javaClass;
     @Builder.Default
     List<CallPoint> callPoints = List.of();
+    @Builder.Default
+    Map<Integer, InstructionHandle> jumpsTo = Map.of();
 }

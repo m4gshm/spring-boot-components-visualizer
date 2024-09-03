@@ -2,7 +2,6 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.Eval;
-import io.github.m4gshm.connections.bytecode.EvalResult;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
@@ -89,8 +88,8 @@ public class JmsOperationsUtils {
                 if (values.isEmpty()) {
                     return newJmsClient(DEFAULT_DESTINATION, direction, methodName);
                 } else {
-                    Object first = values.get(0);
-                    String destination = JmsOperationsUtils.getDestination(first);
+                    var first = values.get(0);
+                    var destination = JmsOperationsUtils.getDestination(first.getValue());
                     return newJmsClient(destination, direction, methodName);
                 }
             }).collect(toList());
@@ -115,10 +114,10 @@ public class JmsOperationsUtils {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static <T> EvalResult<T>[] newEvalResults(Type[] argumentTypes) {
-        return new EvalResult[argumentTypes.length];
-    }
+//    @SuppressWarnings("unchecked")
+//    private static Eval.EvalResult[] newEvalResults(Type[] argumentTypes) {
+//        return new Eval.EvalResult[argumentTypes.length];
+//    }
 
     private static JmsClient newJmsClient(String destination, Direction direction, String methodName) {
         return JmsClient.builder()

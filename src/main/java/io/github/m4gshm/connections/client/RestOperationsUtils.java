@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.bytecode.EvalResult;
+import io.github.m4gshm.connections.bytecode.Eval;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
@@ -65,7 +65,7 @@ public class RestOperationsUtils {
         var httpMethod = getHttpMethod(methodName);
 
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
-        var arguments = new EvalResult[argumentTypes.length];
+        var arguments = new Eval.Result[argumentTypes.length];
         for (int i = argumentTypes.length; i > 0; i--) {
             var evalResult = eval(object, componentName, onEval, constantPoolGen,
                     bootstrapMethods, method, components, context);
@@ -73,7 +73,7 @@ public class RestOperationsUtils {
             onEval = evalResult.getLastInstruction().getPrev();
         }
 
-        var url = String.valueOf(arguments[0].getResult());
+        var url = String.valueOf(arguments[0].getFirstValue().getValue());
         return HttpMethod.builder().method(httpMethod).path(url).build();
     }
 

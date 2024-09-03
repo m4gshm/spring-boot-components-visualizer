@@ -64,7 +64,8 @@ public class WebsocketClientUtils {
             String componentName, Object object, InstructionHandle instructionHandle,
             ConstantPoolGen constantPoolGen,
             BootstrapMethods bootstrapMethods, Collection<Component> components,
-            Method method, ConfigurableApplicationContext context) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+            Method method, ConfigurableApplicationContext context) throws ClassNotFoundException,
+            InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", componentName);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
@@ -74,7 +75,7 @@ public class WebsocketClientUtils {
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = eval(object, componentName, instructionHandle.getPrev(), constantPoolGen,
                     bootstrapMethods, method, components, context);
-            var result = value.getResult();
+            var result = value.getFirstValue().getValue();
             if (result instanceof URI) {
                 var uri = (URI) result;
                 return uri.toString();
@@ -86,7 +87,7 @@ public class WebsocketClientUtils {
                     bootstrapMethods, method, components, context);
             var utiTemplate = eval(object, componentName, uriTemplates.getLastInstruction().getPrev(), constantPoolGen,
                     bootstrapMethods, method, components, context);
-            return String.valueOf(utiTemplate.getResult());
+            return String.valueOf(utiTemplate.getFirstValue().getValue());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
