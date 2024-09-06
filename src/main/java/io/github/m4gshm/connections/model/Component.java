@@ -37,5 +37,7 @@ public class Component implements ComponentDependency {
         return isManaged() ? name : /*todo must be unique, make incremental int sequence*/unmanagedInstance.getClass().getSimpleName();
     }
 
-
+    public Class<?> getType() {
+        return isManaged() ? type : unmanagedInstance.getClass();
+    }
 }

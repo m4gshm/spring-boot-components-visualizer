@@ -6,7 +6,7 @@ import feign.Target;
 import io.github.m4gshm.connections.ComponentsExtractor.ComponentKey;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
-import io.github.m4gshm.connections.bytecode.EvalException;
+import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
@@ -42,8 +42,6 @@ import static io.github.m4gshm.connections.model.HttpMethod.ALL;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Type.jms;
 import static io.github.m4gshm.connections.model.Interface.Type.ws;
-import static java.lang.reflect.Modifier.isPublic;
-import static java.lang.reflect.Modifier.isStatic;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -244,9 +242,9 @@ public class ComponentsExtractorUtils {
 
     public static <T> Component findDependencyByType(Collection<Component> dependencies, Supplier<Class<T>> classSupplier) {
         var type = loadedClass(classSupplier);
-        return type != null && dependencies != null ? dependencies.stream()
-                .filter(component -> type.isAssignableFrom(component.getType())).findFirst().orElse(null)
-                : null;
+        return type != null && dependencies != null ? dependencies.stream().filter(component -> {
+            return type.isAssignableFrom(component.getType());
+        }).findFirst().orElse(null) : null;
     }
 
     public static Field getDeclaredField(String name, Class<?> type) {
@@ -277,7 +275,7 @@ public class ComponentsExtractorUtils {
             return field.get(object);
         } catch (Exception e) {
             if (throwException) {
-                throw new EvalException(e);
+                throw new EvalBytecodeException(e);
             }
             log.debug("eval getFieldValue {}, of object type {}", field, object != null ? object.getClass() : null, e);
             return null;
@@ -366,7 +364,7 @@ public class ComponentsExtractorUtils {
         return beanDefinitionNames;
     }
 
-    public static void handleError(String errMsg, String componentName, EvalException e, boolean failFast) {
+    public static void handleError(String errMsg, String componentName, EvalBytecodeException e, boolean failFast) {
         if (failFast) {
             log.error("{} {}", errMsg, componentName, e);
             throw e;

@@ -1,13 +1,17 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
-import io.github.m4gshm.connections.bytecode.EvalException;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
+import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bcel.classfile.ConstantMethodHandle;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.generic.*;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
@@ -36,8 +40,10 @@ import static io.github.m4gshm.connections.ComponentsExtractorUtils.getFieldValu
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
-import static io.github.m4gshm.connections.bytecode.EvalUtils.*;
+import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
+import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
+import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
@@ -75,6 +81,18 @@ public class ComponentsExtractor {
                     }
                     return Interface.builder().direction(out).type(http).core(httpMethod).build();
                 })).collect(toLinkedHashSet());
+    }
+
+    private static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, ConstantPoolGen constantPoolGen, JavaClass javaClass) {
+        var cp = constantPoolGen.getConstantPool();
+        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
+        var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
+        var bootstrapMethods = getBootstrapMethods(javaClass);
+        var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
+        var bootstrapMethodArguments = getBootstrapMethodArguments(bootstrapMethod, cp);
+        return bootstrapMethodArguments.stream().map(constant -> constant instanceof ConstantMethodHandle
+                ? newMethodInfo((ConstantMethodHandle) constant, cp) : null
+        ).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     public Components getComponents() {
@@ -217,7 +235,13 @@ public class ComponentsExtractor {
     }
 
     private List<CallPoint> getCallsHierarchy(Class<?> componentType) {
-        var javaClass = lookupClass(componentType);
+        JavaClass javaClass;
+        try {
+            javaClass = lookupClass(componentType);
+        } catch (EvalBytecodeException e) {
+            log.debug("getCallsHierarchy {}", componentType, e);
+            return List.of();
+        }
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = javaClass.getMethods();
 //        var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
@@ -225,26 +249,41 @@ public class ComponentsExtractor {
             var code = method.getCode();
             var name = method.getName();
             var methodArgTypes = /*getArgumentTypes*/(method.getArgumentTypes());
-//            var localVariableTable = method.getLocalVariableTable();
             var callPoints = new ArrayList<CallPoint>();
-            var jumpsTo = new HashMap<Integer, InstructionHandle>();
             instructionHandleStream(code).forEach(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
-                if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE /*|| instruction instanceof INVOKEDYNAMIC*/) {
+                if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
                     var invokeInstruction = (InvokeInstruction) instruction;
                     var methodName = invokeInstruction.getMethodName(constantPoolGen);
                     var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
-                    var ownerClassName = /*instruction instanceof INVOKEDYNAMIC ? null : */invokeInstruction.getClassName(constantPoolGen);
-                     callPoints.add(CallPoint.builder()
-                            .methodName(methodName)
-                            .ownerClassName(ownerClassName)
-                            .argumentTypes(argumentTypes)
-                            .instruction(instructionHandle)
-                            .build()
-                     );
-                } else if (instruction instanceof GOTO) {
-                    var goTo = (GOTO) instruction;
-                    jumpsTo.put(goTo.getTarget().getPosition(), instructionHandle);
+
+                    final CallPoint callPoint;
+                    if (instruction instanceof INVOKEDYNAMIC) {
+                        var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
+                                constantPoolGen, javaClass);
+                        if (methodInfo != null) {
+                            var argumentTypes1 = Type.getArgumentTypes(methodInfo.methodType.descriptorString());
+                            callPoint = CallPoint.builder()
+                                    .methodName(methodInfo.methodName)
+                                    .ownerClassName(methodInfo.targetClass.getName())
+                                    .argumentTypes(argumentTypes1)
+                                    .instruction(instructionHandle)
+                                    .build();
+                        } else {
+                            //log
+                            callPoint = null;
+                        }
+                    } else {
+                        callPoint = CallPoint.builder()
+                                .methodName(methodName)
+                                .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
+                                .argumentTypes(argumentTypes)
+                                .instruction(instructionHandle)
+                                .build();
+                    }
+                    if (callPoint != null) {
+                        callPoints.add(callPoint);
+                    }
                 }
             });
             return CallPoint.builder()
@@ -254,7 +293,7 @@ public class ComponentsExtractor {
                     .method(method)
                     .javaClass(javaClass)
                     .callPoints(callPoints)
-                    .jumpsTo(jumpsTo)
+//                    .jumpsTo(jumpsTo)
                     .build();
         }).collect(toList());
     }
@@ -358,9 +397,10 @@ public class ComponentsExtractor {
                                                  Collection<Component> dependencies, Collection<Component> components) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
-            var jmsClients = extractJmsClients(componentName, componentType, context, components);
+            var jmsClients = extractJmsClients(componentName, componentType, context, components,
+                    this.options.methodArgumentResolver, this.options.methodReturnResolver);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
-        } catch (EvalException e) {
+        } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
         }
         return Set.of();
@@ -370,7 +410,8 @@ public class ComponentsExtractor {
                                                 Collection<Component> dependencies, Collection<Component> components) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
-            var wsClientUris = extractWebsocketClientUris(componentName, componentType, context, components);
+            var wsClientUris = extractWebsocketClientUris(componentName, componentType, context,
+                    components, options.methodArgumentResolver, options.methodReturnResolver);
 
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
@@ -379,7 +420,7 @@ public class ComponentsExtractor {
                             .build())
                     .collect(toLinkedHashSet());
 
-        } catch (EvalException e) {
+        } catch (EvalBytecodeException e) {
             handleError("jws client getting error, component", componentName, e, options.isFailFast());
         }
         return Set.of();
@@ -389,14 +430,15 @@ public class ComponentsExtractor {
                                                           Collection<Component> dependencies, Collection<Component> components) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
-            var httpMethods = extractRestOperationsUris(componentName, componentType, context, components);
+            var httpMethods = extractRestOperationsUris(componentName, componentType, context,
+                    components, options.methodArgumentResolver, options.methodReturnResolver);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)
                             .core(httpMethod)
                             .build())
                     .collect(toLinkedHashSet());
-        } catch (EvalException e) {
+        } catch (EvalBytecodeException e) {
             handleError("rest operations client getting error, component", componentName, e, options.isFailFast());
         }
         return Set.of();
@@ -600,6 +642,27 @@ public class ComponentsExtractor {
         @Builder.Default
         boolean ignoreNotFoundDependencies = true;
         boolean cropRootPackagePath;
+        @Builder.Default
+        MethodArgumentResolver methodArgumentResolver = newMethodArgumentResolver(StubFactory.DEFAULT);
+        @Builder.Default
+        MethodReturnResolver methodReturnResolver = newMethodReturnResolver(StubFactory.DEFAULT);
+
+        public static MethodArgumentResolver newMethodArgumentResolver(StubFactory stubFactory) {
+            return (method, argument) -> stubFactory.create(getType(argument.typeName));
+        }
+
+        public static MethodReturnResolver newMethodReturnResolver(StubFactory stubFactory) {
+            return method -> stubFactory.create(getType(Type.getReturnType(method.signature).getClassName()));
+        }
+
+        private static Class<?> getType(String typeName) {
+            try {
+                return Class.forName(typeName);
+            } catch (ClassNotFoundException e) {
+                //log
+                return null;
+            }
+        }
 
         @Data
         @Builder

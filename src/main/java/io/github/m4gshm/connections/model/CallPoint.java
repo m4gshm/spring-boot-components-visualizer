@@ -29,6 +29,6 @@ public class CallPoint {
     JavaClass javaClass;
     @Builder.Default
     List<CallPoint> callPoints = List.of();
-    @Builder.Default
-    Map<Integer, InstructionHandle> jumpsTo = Map.of();
+//    @Builder.Default
+//    Map<Integer, InstructionHandle> jumpsTo = Map.of();
 }
