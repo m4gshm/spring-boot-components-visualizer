@@ -18,10 +18,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
+import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.lookupClass;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -34,31 +34,32 @@ public class WebsocketClientUtils {
                                                           Collection<Component> components,
                                                           MethodArgumentResolver methodArgumentResolver,
                                                           MethodReturnResolver methodReturnResolver) {
-        var javaClass = lookupClass(componentType);
-        var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-        var methods = javaClass.getMethods();
-        var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-        return stream(methods).flatMap(method -> instructionHandleStream(new InstructionList(method.getCode().getCode())
-        ).map(instructionHandle -> {
-            var instruction = instructionHandle.getInstruction();
-            if (instruction instanceof INVOKEINTERFACE) {
-                var invoke = (InvokeInstruction) instruction;
+        var javaClasses = getClassHierarchy(componentType);
+        return javaClasses.stream().flatMap(javaClass -> {
+            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+            var methods = javaClass.getMethods();
+            var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
+            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
+                var instruction = instructionHandle.getInstruction();
+                if (instruction instanceof INVOKEINTERFACE) {
+                    var invoke = (InvokeInstruction) instruction;
 
-                var referenceType = invoke.getReferenceType(constantPoolGen);
-                var methodName = invoke.getMethodName(constantPoolGen);
-                var className = referenceType.getClassName();
+                    var referenceType = invoke.getReferenceType(constantPoolGen);
+                    var methodName = invoke.getMethodName(constantPoolGen);
+                    var className = referenceType.getClassName();
 
-                if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                    return getDoHandshakeUri(componentName, context.getBean(componentName), instructionHandle,
-                            constantPoolGen, bootstrapMethods, components, method, context,
-                            methodArgumentResolver, methodReturnResolver);
-                } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
-                         IllegalAccessException e) {
-                    throw new RuntimeException(e);
+                    if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
+                        return getDoHandshakeUri(componentName, context.getBean(componentName), instructionHandle,
+                                constantPoolGen, bootstrapMethods, components, method, context,
+                                methodArgumentResolver, methodReturnResolver);
+                    } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
+                             IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
-            }
-            return null;
-        }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull).collect(toList());
+                return null;
+            }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
+        }).collect(toList());
     }
 
     private static boolean isMethodOfClass(Class<?> expectedClass, String expectedMethodName, String className, String methodName) {

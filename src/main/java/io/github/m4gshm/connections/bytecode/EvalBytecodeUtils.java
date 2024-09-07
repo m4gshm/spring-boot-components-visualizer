@@ -21,6 +21,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -54,6 +55,28 @@ public class EvalBytecodeUtils {
         } catch (ClassNotFoundException e) {
             throw new EvalBytecodeException(e);
         }
+    }
+
+    public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
+        ArrayList<JavaClass> classes = new ArrayList<>();
+        componentType = unproxy(componentType);
+        JavaClass javaClass;
+        try {
+            javaClass = Repository.lookupClass(componentType);
+        } catch (ClassNotFoundException e) {
+            throw new EvalBytecodeException(e);
+        }
+        classes.add(javaClass);
+        try {
+            for (javaClass = javaClass.getSuperClass(); javaClass != null; javaClass = javaClass.getSuperClass()) {
+                classes.add(javaClass);
+            }
+        } catch (ClassNotFoundException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("get superclass error of {}", javaClass.getClassName(), e);
+            }
+        }
+        return classes;
     }
 
     public static Class<?> unproxy(Class<?> componentType) {

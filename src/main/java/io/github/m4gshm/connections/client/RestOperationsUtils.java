@@ -19,8 +19,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
+import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.lookupClass;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -33,21 +33,23 @@ public class RestOperationsUtils {
                                                              Collection<Component> components,
                                                              MethodArgumentResolver methodArgumentResolver,
                                                              MethodReturnResolver methodReturnResolver) {
-        var javaClass = lookupClass(componentType);
-        var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-        var methods = javaClass.getMethods();
-        var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-        return stream(methods).flatMap(method -> instructionHandleStream(new InstructionList(method.getCode().getCode())
-        ).map(instructionHandle -> {
-            var instruction = instructionHandle.getInstruction();
-            var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
-                    instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
-            var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
-            return match
-                    ? extractHttpMethods(componentName, context.getBean(componentName), instructionHandle,
-                    constantPoolGen, bootstrapMethods, components, method, context, methodArgumentResolver, methodReturnResolver)
-                    : null;
-        }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull).collect(toList());
+        var javaClasses = getClassHierarchy(componentType);
+        return javaClasses.stream().flatMap(javaClass -> {
+            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+            var methods = javaClass.getMethods();
+            var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
+            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
+                var instruction = instructionHandle.getInstruction();
+                var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
+                        instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
+                var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
+                return match
+                        ? extractHttpMethods(componentName, context.getBean(componentName), instructionHandle,
+                        constantPoolGen, bootstrapMethods, components, method, context, methodArgumentResolver, methodReturnResolver)
+                        : null;
+            }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
+        }).collect(toList());
+
     }
 
     static boolean isClass(Class<?> expectedClass, InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {

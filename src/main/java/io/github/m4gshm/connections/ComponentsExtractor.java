@@ -235,67 +235,73 @@ public class ComponentsExtractor {
     }
 
     private List<CallPoint> getCallsHierarchy(Class<?> componentType) {
-        JavaClass javaClass;
-        try {
-            javaClass = lookupClass(componentType);
-        } catch (EvalBytecodeException e) {
-            log.debug("getCallsHierarchy {}", componentType, e);
-            return List.of();
-        }
-        var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-        var methods = javaClass.getMethods();
-//        var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-        return stream(methods).map(method -> {
-            var code = method.getCode();
-            var name = method.getName();
-            var methodArgTypes = /*getArgumentTypes*/(method.getArgumentTypes());
-            var callPoints = new ArrayList<CallPoint>();
-            instructionHandleStream(code).forEach(instructionHandle -> {
-                var instruction = instructionHandle.getInstruction();
-                if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
-                    var invokeInstruction = (InvokeInstruction) instruction;
-                    var methodName = invokeInstruction.getMethodName(constantPoolGen);
-                    var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
+        var javaClasses = getClassHierarchy(componentType);
+        return javaClasses.stream().flatMap(javaClass -> {
+            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+            var methods = javaClass.getMethods();
+            return stream(methods).map(method -> {
+                var code = method.getCode();
+                var name = method.getName();
+                var methodArgTypes = /*getArgumentTypes*/(method.getArgumentTypes());
+                var callPoints = new ArrayList<CallPoint>();
+                instructionHandleStream(code).forEach(instructionHandle -> {
+                    var instruction = instructionHandle.getInstruction();
+                    if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
+                        var invokeInstruction = (InvokeInstruction) instruction;
+                        var methodName = invokeInstruction.getMethodName(constantPoolGen);
+                        var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
 
-                    final CallPoint callPoint;
-                    if (instruction instanceof INVOKEDYNAMIC) {
-                        var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
-                                constantPoolGen, javaClass);
-                        if (methodInfo != null) {
-                            var argumentTypes1 = Type.getArgumentTypes(methodInfo.methodType.descriptorString());
+                        final CallPoint callPoint;
+                        if (instruction instanceof INVOKEDYNAMIC) {
+                            var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
+                                    constantPoolGen, javaClass);
+                            if (methodInfo != null) {
+                                var argumentTypes1 = Type.getArgumentTypes(methodInfo.methodType.descriptorString());
+                                callPoint = CallPoint.builder()
+                                        .methodName(methodInfo.methodName)
+                                        .ownerClassName(methodInfo.targetClass.getName())
+                                        .argumentTypes(argumentTypes1)
+                                        .instruction(instructionHandle)
+                                        .build();
+                            } else {
+                                //log
+                                callPoint = null;
+                            }
+                        } else {
                             callPoint = CallPoint.builder()
-                                    .methodName(methodInfo.methodName)
-                                    .ownerClassName(methodInfo.targetClass.getName())
-                                    .argumentTypes(argumentTypes1)
+                                    .methodName(methodName)
+                                    .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
+                                    .argumentTypes(argumentTypes)
                                     .instruction(instructionHandle)
                                     .build();
-                        } else {
-                            //log
-                            callPoint = null;
                         }
-                    } else {
-                        callPoint = CallPoint.builder()
-                                .methodName(methodName)
-                                .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
-                                .argumentTypes(argumentTypes)
-                                .instruction(instructionHandle)
-                                .build();
+                        if (callPoint != null) {
+                            callPoints.add(callPoint);
+                        }
                     }
-                    if (callPoint != null) {
-                        callPoints.add(callPoint);
-                    }
-                }
-            });
-            return CallPoint.builder()
-                    .methodName(name)
-                    .ownerClass(componentType)
-                    .argumentTypes(methodArgTypes)
-                    .method(method)
-                    .javaClass(javaClass)
-                    .callPoints(callPoints)
+                });
+                return CallPoint.builder()
+                        .methodName(name)
+                        .ownerClass(componentType)
+                        .argumentTypes(methodArgTypes)
+                        .method(method)
+                        .javaClass(javaClass)
+                        .callPoints(callPoints)
 //                    .jumpsTo(jumpsTo)
-                    .build();
+                        .build();
+            });
         }).collect(toList());
+    }
+
+    public static List<JavaClass> getClassHierarchy(Class<?> componentType) {
+        List<JavaClass> javaClasses;
+        try {
+            javaClasses = lookupClassInheritanceHierarchy(componentType);
+        } catch (EvalBytecodeException e) {
+            log.debug("getClassHierarchy {}", componentType, e);
+            javaClasses = List.of();
+        }
+        return javaClasses;
     }
 
     protected String getComponentPath(Class<?> componentType, Package rootPackage) {

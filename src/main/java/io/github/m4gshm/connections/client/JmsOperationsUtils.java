@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.lookupClass;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
@@ -43,25 +43,23 @@ public class JmsOperationsUtils {
     public static List<JmsClient> extractJmsClients(
             String componentName, Class<?> componentType, ConfigurableApplicationContext context,
             Collection<Component> components, MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver) {
-        var javaClass = lookupClass(componentType);
-        var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-        var methods = javaClass.getMethods();
-        var bootstrapMethods = getBootstrapMethods(javaClass);
-        return stream(methods).flatMap(method -> {
-            var code = method.getCode();
-            var values = instructionHandleStream(new InstructionList(code.getCode())).flatMap(instructionHandle -> {
+        var javaClasses = getClassHierarchy(componentType);
+        return javaClasses.stream().flatMap(javaClass -> {
+            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+            var methods = javaClass.getMethods();
+            var bootstrapMethods = getBootstrapMethods(javaClass);
+            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(componentName, context.getBean(componentName), instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, components, context, methodArgumentResolver, methodReturnResolver).stream()
+                        constantPoolGen, bootstrapMethods, method, components, context,
+                        methodArgumentResolver, methodReturnResolver).stream()
                         : Stream.of();
-            }).filter(Objects::nonNull).collect(toList());
-
-            return values.stream();
-        }).filter(Objects::nonNull).collect(toList());
+            }).filter(Objects::nonNull));
+        }).collect(toList());
     }
 
     public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {
