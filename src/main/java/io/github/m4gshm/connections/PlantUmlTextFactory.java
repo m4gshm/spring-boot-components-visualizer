@@ -1186,19 +1186,17 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
             Comparator<Component> components = (o1, o2) -> {
-                var compared = compareNullable(o1.getPath(), o2.getPath());
-                return compared == 0 ? compareNullable(o1.getName(), o2.getName()) : compared;
+                var compared = compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
+                return compared == 0 ? compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase) : compared;
             };
-            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName());
+            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
             Comparator<Interface> interfaces = defaultInterfaceComparator();
 
             public static Comparator<Interface> defaultInterfaceComparator() {
                 return (o1, o2) -> {
-                    var name1 = o1.getName();
-                    var name2 = o2.getName();
-                    return name1 instanceof Comparable<?> && name2 instanceof Comparable<?>
-                            ? ((Comparable) name1).compareTo(name2) : compareNullable(name1 != null ? name1.toString()
-                            : null, name2 != null ? name2.toString() : null);
+                    var name1 = ofNullable(o1.getName()).map(CharSequence::toString).orElse(null);
+                    var name2 = ofNullable(o2.getName()).map(CharSequence::toString).orElse(null);
+                    return compareNullable(name1, name2, String::compareToIgnoreCase);
                 };
             }
         }

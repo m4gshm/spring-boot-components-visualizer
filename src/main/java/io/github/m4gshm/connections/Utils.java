@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.springframework.core.env.Environment;
 
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.function.BinaryOperator;
 import java.util.function.Supplier;
@@ -47,8 +48,8 @@ public class Utils {
         };
     }
 
-    public static <T extends Comparable<T>> int compareNullable(T o1, T o2) {
-        return o1 == null && o2 == null ? 0 : o1 == null ? -1 : o2 == null ? 1 : o1.compareTo(o2);
+    public static <T extends Comparable<T>> int compareNullable(T o1, T o2, Comparator<T> comparator) {
+        return o1 == null && o2 == null ? 0 : o1 == null ? -1 : o2 == null ? 1 : comparator.compare(o1, o2);
     }
 
     public static Class<?> classByName(String className) throws ClassNotFoundException {
