@@ -84,6 +84,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
     }
 
+    public static <T> int ignoreCaseComparator(T o1, T o2, Function<T, CharSequence> getter) {
+        return compare(o1, o2, getter, String::compareToIgnoreCase);
+    }
+
+    private static <T> int compare(T o1, T o2, Function<T, CharSequence> getter, Comparator<String> comparator) {
+        var name1 = ofNullable(o1).map(getter).map(CharSequence::toString).orElse(null);
+        var name2 = ofNullable(o2).map(getter).map(CharSequence::toString).orElse(null);
+        return compareNullable(name1, name2, comparator);
+    }
+
     public String create(Components components, Options options) {
         return new PlantUmlTextFactory(this.applicationName, options).create(components);
     }
@@ -883,9 +893,9 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             //remove the pack
             return subPackages.stream().map(subPack -> getRenamedSubPack(pack, subPack)).flatMap(this::mergeSubPack);
         }
-        return Stream.of(
-                pack.toBuilder().packages(subPackages.stream().flatMap(this::mergeSubPack).collect(toList())).build()
-        );
+        var mergedSubPackages = subPackages.stream().flatMap(this::mergeSubPack)
+                .sorted(options.getSort().packages).collect(toList());
+        return Stream.of(pack.toBuilder().packages(mergedSubPackages).build());
     }
 
     protected Package getRenamedSubPack(Package parentPack, Package subPack) {
@@ -917,7 +927,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
     protected List<Package> toPackagesHierarchy(Collection<Component> components) {
         return distinctPackages(null, components.stream().map(this::getComponentPackage)).values().stream()
-                .flatMap(this::mergeSubPack).collect(toList());
+                .flatMap(this::mergeSubPack).sorted(options.getSort().packages).collect(toList());
     }
 
     protected Package getComponentPackage(Component component) {
@@ -1186,19 +1196,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
             Comparator<Component> components = (o1, o2) -> {
-                var compared = compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
-                return compared == 0 ? compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase) : compared;
+                var nameCompared = compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
+                var pathCompared = compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
+                return nameCompared == 0 ? pathCompared : nameCompared;
             };
             Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
-            Comparator<Interface> interfaces = defaultInterfaceComparator();
-
-            public static Comparator<Interface> defaultInterfaceComparator() {
-                return (o1, o2) -> {
-                    var name1 = ofNullable(o1.getName()).map(CharSequence::toString).orElse(null);
-                    var name2 = ofNullable(o2.getName()).map(CharSequence::toString).orElse(null);
-                    return compareNullable(name1, name2, String::compareToIgnoreCase);
-                };
-            }
+            Comparator<Interface> interfaces = (o1, o2) -> ignoreCaseComparator(o1, o2, Interface::getName);
+            Comparator<Package> packages = (o1, o2) -> ignoreCaseComparator(o1, o2, Package::getName);
         }
 
         @Data
