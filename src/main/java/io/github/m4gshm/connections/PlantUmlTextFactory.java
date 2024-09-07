@@ -28,7 +28,8 @@ import static io.github.m4gshm.connections.PlantUmlTextFactory.Union.newUnion;
 import static io.github.m4gshm.connections.PlantUmlTextFactory.UnionBorder.*;
 import static io.github.m4gshm.connections.PlantUmlTextFactoryUtils.*;
 import static io.github.m4gshm.connections.UriUtils.PATH_DELIMITER;
-import static io.github.m4gshm.connections.Utils.*;
+import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.Utils.warnDuplicated;
 import static io.github.m4gshm.connections.model.HttpMethodsGroup.makeGroupsHierarchyByHttpMethodUrl;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
@@ -245,7 +246,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         var newGroups = directionGroups.stream().map(e -> {
             var interfaceGroup = InterfaceGroup.builder().key(e.getKey()).interfaces(e.getValue()).build();
             return options.groupByInterfaceType ? groupByInterfaceType(interfaceGroup) : groupByComponent(interfaceGroup);
-        }).collect(toList());
+        }).sorted(options.getSort().getInterfaceGroups()).collect(toList());
 
         return group.toBuilder().interfaces(null).groups(newGroups).build();
     }
@@ -265,6 +266,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
         var subGroups = groupedMap.entrySet().stream()
                 .map(e -> groupByComponent(InterfaceGroup.builder().key(e.getKey()).interfaces(e.getValue()).build()))
+                .sorted(options.getSort().getInterfaceGroups())
                 .collect(toList());
         return group.toBuilder().interfaces(null).groups(subGroups).build();
     }
@@ -295,10 +297,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
                                     .id(getElementId(component.getName(), anInterface.getId())).build(), component))
                             .collect(groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList()))))
                     .build() : null;
-        }).filter(Objects::nonNull).collect(toList());
-
-        var newGroup = group.toBuilder().interfaces(excluded).groups(groups).build();
-        return newGroup;
+        }).filter(Objects::nonNull).sorted(options.getSort().getInterfaceGroups()).collect(toList());
+        return group.toBuilder().interfaces(excluded).groups(groups).build();
     }
 
     protected Direction mapDirection(Interface.Direction direction) {
@@ -1195,30 +1195,23 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
-            Comparator<Component> components = (o1, o2) -> {
+            Comparator<Component> components = Sort::compare;
+            Comparator<Component> dependencies = (o1, o2) -> Utils.compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
+            Comparator<Interface> interfaces = (o1, o2) -> ignoreCaseComparator(o1, o2, Interface::getName);
+            Comparator<InterfaceGroup> interfaceGroups = (o1, o2) -> compareNullable(o1, o2, InterfaceGroup::getKey, (k1, k2) -> {
+                int direction = k1.direction.compareTo(k2.direction);
+                if (direction != 0) return direction;
+                int type = k1.type.compareTo(k2.type);
+                if (type != 0) return type;
+                return compare(k1.component, k2.component);
+            });
+            Comparator<Package> packages = (o1, o2) -> ignoreCaseComparator(o1, o2, Package::getName);
+
+            public static int compare(Component o1, Component o2) {
                 var nameCompared = Utils.compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
                 var pathCompared = Utils.compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
                 return nameCompared == 0 ? pathCompared : nameCompared;
-            };
-            Comparator<Component> dependencies = (o1, o2) -> Utils.compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
-            Comparator<Interface> interfaces = (o1, o2) -> ignoreCaseComparator(o1, o2, Interface::getName);
-            Comparator<InterfaceGroup> interfaceGroups =  new Comparator<InterfaceGroup>() {
-
-                @Override
-                public int compare(InterfaceGroup o1, InterfaceGroup o2) {
-                    return compareNullable(o1, o2, InterfaceGroup::getKey, new Comparator<InterfaceGroup.Key>() {
-                        @Override
-                        public int compare(InterfaceGroup.Key o1, InterfaceGroup.Key o2) {
-                            int direction = o1.direction.compareTo(o2.direction);
-                            if (direction != 0) return direction;
-                            int type = o1.type.compareTo(o2.type);
-
-                            return type;
-                        }
-                    });
-                }
-            };
-            Comparator<Package> packages = (o1, o2) -> ignoreCaseComparator(o1, o2, Package::getName);
+            }
         }
 
         @Data

@@ -44,27 +44,17 @@ coreService ..> simpleEntityRepository
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
 mainController ..> coreService
-cloud "internal" as internal #line.dotted;line:gray; {
-  database "storage" as internal.storage {
-    folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
-      entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
-      note "table: simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
-      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
-      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
-      entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
-      note "table: auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
-      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
-      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
-    }
-    folder "mongo.model" as internal.storage.mongo.model #line.dotted;line:gray; {
-      entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
-      note "collection: documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
-      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
-      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
+cloud "input" as input #line.dotted;line:gray; {
+  rectangle "http" as input.http {
+    frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
+      interface "*:" as in....api.v1.
+      in....api.v1. )....> mainController
+      interface "GET:/load" as in.GET..api.v1.load
+      in.GET..api.v1.load )....> mainController
+      interface "POST:/put" as in.POST..api.v1.put
+      in.POST..api.v1.put )....> mainController
     }
   }
-}
-cloud "input" as input #line.dotted;line:gray; {
   rectangle "web socket" as input.websocket {
     frame "eventsHandler" as input.websocket.eventsHandler.eventsHandler.interfaces #line.dotted;text:gray {
       interface "/events" as in.eventsHandler.in.ws..events
@@ -83,29 +73,8 @@ cloud "input" as input #line.dotted;line:gray; {
       in.jmsQueueService.default.in )....> jmsQueueService
     }
   }
-  rectangle "http" as input.http {
-    frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
-      interface "*:" as in....api.v1.
-      in....api.v1. )....> mainController
-      interface "GET:/load" as in.GET..api.v1.load
-      in.GET..api.v1.load )....> mainController
-      interface "POST:/put" as in.POST..api.v1.put
-      in.POST..api.v1.put )....> mainController
-    }
-  }
 }
 cloud "output" as output #line.dotted;line:gray; {
-  queue "jms" as output.jms {
-    frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|jms-private-queue|\n\
-<#transparent,transparent>|jmsQueue1|\n\
-<#transparent,transparent>|jmsQueue2|\n\
-<#transparent,transparent>|jmsQueueEvents|\n\
-<#transparent,transparent>|jmsQueueEvents2|\n\
-<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
-      jmsQueueService ....> output.jms.jmsQueueService.interfaces
-    }
-  }
   rectangle "http" as output.http {
     interface "GET:/standalone-service2" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
@@ -129,6 +98,37 @@ cloud "output" as output #line.dotted;line:gray; {
 <#transparent,transparent>|ws://service2-value-inject|\n\
 <#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces
       service2StreamClientImpl ....(0 output.websocket.service2StreamClientImpl.interfaces
+    }
+  }
+  queue "jms" as output.jms {
+    frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue1|\n\
+<#transparent,transparent>|jmsQueue2|\n\
+<#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents2|\n\
+<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
+      jmsQueueService ....> output.jms.jmsQueueService.interfaces
+    }
+  }
+}
+cloud "internal" as internal #line.dotted;line:gray; {
+  database "storage" as internal.storage {
+    folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
+      entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      note "table: simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
+      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
+      entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      note "table: auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
+      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
+    }
+    folder "mongo.model" as internal.storage.mongo.model #line.dotted;line:gray; {
+      entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      note "collection: documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
     }
   }
 }
