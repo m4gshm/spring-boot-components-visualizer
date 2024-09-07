@@ -85,13 +85,13 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     }
 
     public static <T> int ignoreCaseComparator(T o1, T o2, Function<T, CharSequence> getter) {
-        return compare(o1, o2, getter, String::compareToIgnoreCase);
+        return compareNullable(o1, o2, getter.andThen(CharSequence::toString), String::compareToIgnoreCase);
     }
 
-    private static <T> int compare(T o1, T o2, Function<T, CharSequence> getter, Comparator<String> comparator) {
-        var name1 = ofNullable(o1).map(getter).map(CharSequence::toString).orElse(null);
-        var name2 = ofNullable(o2).map(getter).map(CharSequence::toString).orElse(null);
-        return compareNullable(name1, name2, comparator);
+    private static <T, P> int compareNullable(T o1, T o2, Function<T, P> getter, Comparator<P> comparator) {
+        var name1 = ofNullable(o1).map(getter).orElse(null);
+        var name2 = ofNullable(o2).map(getter).orElse(null);
+        return Utils.compareNullable(name1, name2, comparator);
     }
 
     public String create(Components components, Options options) {
@@ -1196,12 +1196,27 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Sort {
             Comparator<Component> components = (o1, o2) -> {
-                var nameCompared = compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
-                var pathCompared = compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
+                var nameCompared = Utils.compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
+                var pathCompared = Utils.compareNullable(o1.getPath(), o2.getPath(), String::compareToIgnoreCase);
                 return nameCompared == 0 ? pathCompared : nameCompared;
             };
-            Comparator<Component> dependencies = (o1, o2) -> compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
+            Comparator<Component> dependencies = (o1, o2) -> Utils.compareNullable(o1.getName(), o2.getName(), String::compareToIgnoreCase);
             Comparator<Interface> interfaces = (o1, o2) -> ignoreCaseComparator(o1, o2, Interface::getName);
+            Comparator<InterfaceGroup> interfaceGroups =  new Comparator<InterfaceGroup>() {
+
+                @Override
+                public int compare(InterfaceGroup o1, InterfaceGroup o2) {
+                    return compareNullable(o1, o2, InterfaceGroup::getKey, new Comparator<String>() {
+                        @Override
+                        public int compare(String o1, String o2) {
+                            return 0;
+                        }
+                    })
+                    InterfaceGroup.Key key1 = o1.key;
+                    InterfaceGroup.Key key2 = o2.key;
+                    return ;
+                }
+            };
             Comparator<Package> packages = (o1, o2) -> ignoreCaseComparator(o1, o2, Package::getName);
         }
 
