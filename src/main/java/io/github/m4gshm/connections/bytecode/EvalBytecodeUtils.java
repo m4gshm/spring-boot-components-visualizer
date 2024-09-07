@@ -30,8 +30,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
 import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.constant;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.notAccessible;
+import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.MethodInfo.newMethodInfo;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
@@ -290,8 +289,12 @@ public class EvalBytecodeUtils {
         }
     }
 
-    public static Result getFieldValue(Object object, String name, InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) {
-        return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstruction);
+    public static Result getFieldValue(Result result, String name, InstructionHandle getFieldInstruction,
+                                       InstructionHandle lastInstruction) {
+        return delay(() -> {
+            var object = result.getValue();
+            return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstruction);
+        }, lastInstruction);
     }
 
     public static Object getTargetObject(Object candidate) {

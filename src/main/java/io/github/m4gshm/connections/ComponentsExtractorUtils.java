@@ -292,10 +292,11 @@ public class ComponentsExtractorUtils {
     }
 
     public static Interface newInterface(JmsClient jmsClient) {
+        var destination = jmsClient.getDestination();
         return Interface.builder().direction(jmsClient.getDirection()).type(jms)
-                .name(jmsClient.getDestination())
+                .name(destination)
                 .core(JmsClient.Destination.builder()
-                        .destination(jmsClient.getDestination())
+                        .destination(destination)
                         .direction(jmsClient.getDirection())
                         .build())
                 .build();

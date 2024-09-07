@@ -190,9 +190,8 @@ public class EvalBytecode {
             var getField = (GETFIELD) instruction;
             var evalFieldOwnedObject = eval(instructionHandle.getPrev());
             var fieldName = getField.getFieldName(constantPoolGen);
-            return delay(() -> {
-                return getFieldValue(evalFieldOwnedObject.getValue(), fieldName, instructionHandle, instructionHandle);
-            }, evalFieldOwnedObject.getLastInstruction());
+            var lastInstruction = evalFieldOwnedObject.getLastInstruction();
+            return getFieldValue(evalFieldOwnedObject, fieldName, instructionHandle, lastInstruction);
         } else if (instruction instanceof CHECKCAST) {
             return eval(instructionHandle.getPrev());
         } else if (instruction instanceof InvokeInstruction) {

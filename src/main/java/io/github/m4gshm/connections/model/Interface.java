@@ -19,7 +19,13 @@ public class Interface {
     Type type;
 
     public CharSequence getName() {
-        return name != null ? name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
+        var name = this.name != null ? this.name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
+        if (name == null) {
+            name = "!!NULL!!";
+        } else if (name.toString().isBlank()) {
+            name = "!!BLANK!!";
+        }
+        return name;
     }
 
     public String getId() {
