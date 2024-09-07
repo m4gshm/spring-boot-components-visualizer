@@ -1206,15 +1206,16 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
                 @Override
                 public int compare(InterfaceGroup o1, InterfaceGroup o2) {
-                    return compareNullable(o1, o2, InterfaceGroup::getKey, new Comparator<String>() {
+                    return compareNullable(o1, o2, InterfaceGroup::getKey, new Comparator<InterfaceGroup.Key>() {
                         @Override
-                        public int compare(String o1, String o2) {
-                            return 0;
+                        public int compare(InterfaceGroup.Key o1, InterfaceGroup.Key o2) {
+                            int direction = o1.direction.compareTo(o2.direction);
+                            if (direction != 0) return direction;
+                            int type = o1.type.compareTo(o2.type);
+
+                            return type;
                         }
-                    })
-                    InterfaceGroup.Key key1 = o1.key;
-                    InterfaceGroup.Key key2 = o2.key;
-                    return ;
+                    });
                 }
             };
             Comparator<Package> packages = (o1, o2) -> ignoreCaseComparator(o1, o2, Package::getName);
