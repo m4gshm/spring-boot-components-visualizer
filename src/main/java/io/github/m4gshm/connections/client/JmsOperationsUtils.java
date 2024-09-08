@@ -81,7 +81,7 @@ public class JmsOperationsUtils {
         } else {
             var eval = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
                     bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
-            var arguments = eval.evalArguments2(instructionHandle, instruction);
+            var arguments = eval.evalArguments(instructionHandle, instruction);
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));

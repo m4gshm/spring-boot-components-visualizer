@@ -49,7 +49,6 @@ public class RestOperationsUtils {
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
-
     }
 
     static boolean isClass(Class<?> expectedClass, InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {

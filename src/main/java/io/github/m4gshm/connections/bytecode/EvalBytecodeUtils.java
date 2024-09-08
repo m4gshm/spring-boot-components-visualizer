@@ -317,7 +317,7 @@ public class EvalBytecodeUtils {
         return delay(() -> {
             var object = result.getValue();
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstruction);
-        }, lastInstruction);
+        });
     }
 
     public static Object getTargetObject(Object candidate) {
