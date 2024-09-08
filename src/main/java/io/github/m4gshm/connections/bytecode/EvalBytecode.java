@@ -272,7 +272,7 @@ public class EvalBytecode {
         final Result objectCallResult;
         var callConstructor = instruction instanceof INVOKESPECIAL && methodName.equals("<init>");
         if (callConstructor) {
-            var prev = instructionHandle.getPrev();
+            var prev = lastArgInstruction.getPrev();
             if (prev.getInstruction() instanceof DUP) {
                 prev = prev.getPrev();
             }
