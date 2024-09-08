@@ -115,10 +115,24 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
 
         var optionsSort = options.getSort();
+        var componentStream = components.getComponents().stream();
+        if (options.ignoreSprintConfigurations) {
+            var configGrouped = componentStream.collect(groupingBy(Component::isConfiguration));
+            componentStream = configGrouped.getOrDefault(false, List.of()).stream();
+            var configNames = configGrouped.getOrDefault(true, List.of())
+                    .stream().map(Component::getName).collect(toSet());
+            componentStream = componentStream.map(c -> {
+                var dependencies = c.getDependencies();
+                var withoutConfigs = dependencies != null ? dependencies.stream()
+                        .filter(d -> !configNames.contains(d.getName())).collect(toLinkedHashSet()) : null;
+                return withoutConfigs != null ? c.toBuilder().dependencies(withoutConfigs).build() : c;
+            });
+        }
         var componentComparator = optionsSort.getComponents();
-        var components1 = components.getComponents();
-        var sorted = componentComparator != null ? components1.stream().sorted(componentComparator)
-                .collect(toList()) : components1;
+        if (componentComparator != null) {
+            componentStream = componentStream.sorted(componentComparator);
+        }
+        var sorted = componentStream.collect(toList());
         printBody(out, sorted);
         var bottom = options.getBottom();
         if (bottom != null) {
@@ -1113,6 +1127,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         String head, bottom;
         @Builder.Default
         boolean removeUnlinked = true;
+        @Builder.Default
+        boolean ignoreSprintConfigurations = true;
         @Builder.Default
         boolean reduceDuplicatedElementRelations = true;
 

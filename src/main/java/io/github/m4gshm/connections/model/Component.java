@@ -23,6 +23,7 @@ public class Component implements ComponentDependency {
     @ToString.Include(rank = -1)
     String path;
     Class<?> type;
+    boolean configuration;
     Set<Interface> interfaces;
     Set<Component> dependencies;
     List<CallPoint> callPoints;

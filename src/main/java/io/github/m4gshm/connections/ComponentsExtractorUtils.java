@@ -62,7 +62,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static boolean isIncluded(Class<?> type) {
-        return !(isSpringBootTest(type) || (isSpringConfiguration(type)) || isProperties(type));
+        return !(isSpringBootTest(type) || isProperties(type));
     }
 
     public static boolean isProperties(Class<?> beanType) {

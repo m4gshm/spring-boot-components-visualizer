@@ -189,6 +189,7 @@ public class ComponentsExtractor {
             var component = Component.builder().name(name)
                     .path(getComponentPath(componentType, rootPackage))
                     .type(componentType)
+                    .configuration(isSpringConfiguration(componentType))
                     .interfaces(interfaces)
                     .build();
             cache.put(componentName, Set.of(component));
@@ -202,6 +203,7 @@ public class ComponentsExtractor {
                 var component = Component.builder().name(componentName)
                         .path(getComponentPath(componentType, rootPackage))
                         .type(componentType)
+                        .configuration(isSpringConfiguration(componentType))
                         .dependencies(dependencies)
                         .callPoints(getCallsHierarchy(componentType))
                         .build();
@@ -527,6 +529,7 @@ public class ComponentsExtractor {
                                 : Component.builder().unmanagedInstance(webSocketHandler)
                 )
                         .type(webSocketHandlerClass)
+                        .configuration(isSpringConfiguration(webSocketHandlerClass))
                         .callPoints(getCallsHierarchy(webSocketHandlerClass))
                         .path(getComponentPath(webSocketHandlerClass, rootPackage));
 

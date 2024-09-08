@@ -314,9 +314,9 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Result result, String name, InstructionHandle getFieldInstruction,
                                        InstructionHandle lastInstruction) {
-        return delay(() -> {
+        return delay(() -> lastInstruction, lastInstr -> {
             var object = result.getValue();
-            return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstruction);
+            return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstr);
         });
     }
 
