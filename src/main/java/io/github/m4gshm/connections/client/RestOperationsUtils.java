@@ -65,6 +65,7 @@ public class RestOperationsUtils {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
+        //todo use eva.getPrev
         var onEval = instructionHandle.getPrev();
         var httpMethod = getHttpMethod(methodName);
 
@@ -77,6 +78,7 @@ public class RestOperationsUtils {
         for (int i = argumentTypes.length; i > 0; i--) {
             var evalResult = eval.eval(onEval);
             arguments[i - 1] = evalResult;
+            //todo use eva.getPrev
             onEval = evalResult.getLastInstruction().getPrev();
         }
 

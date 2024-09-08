@@ -83,6 +83,7 @@ public class WebsocketClientUtils {
         var evalEngine = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
                 bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
+            //todo use eva.getPrev
             var value = evalEngine.eval(instructionHandle.getPrev());
             return evalEngine.resolve(value).stream().map(Result::getValue).map(o -> {
                 if (o instanceof URI) {
@@ -93,7 +94,9 @@ public class WebsocketClientUtils {
                 }
             }).collect(toList());
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
+            //todo use eva.getPrev
             var uriTemplates = evalEngine.eval(instructionHandle.getPrev());
+            //todo use eva.getPrev
             var utiTemplate = evalEngine.eval(uriTemplates.getLastInstruction().getPrev());
             return evalEngine.resolve(utiTemplate).stream().map(Result::getValue).map(String::valueOf).collect(toList());
         } else {

@@ -313,8 +313,9 @@ public class EvalBytecodeUtils {
     }
 
     public static Result getFieldValue(Result result, String name, InstructionHandle getFieldInstruction,
-                                       InstructionHandle lastInstruction) {
-        return delay(() -> lastInstruction, lastInstr -> {
+                                       InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen) {
+        var instructionText = getInstructionString(getFieldInstruction, constantPoolGen);
+        return delay(instructionText, () -> lastInstruction, lastInstr -> {
             var object = result.getValue();
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstr);
         });
@@ -360,6 +361,10 @@ public class EvalBytecodeUtils {
 
     public static Class<?>[] getArgumentTypes(InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
         return getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
+    }
+
+    public static String getInstructionString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
+        return instructionHandle.getPosition() + ": " + instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
     }
 
     @FunctionalInterface
