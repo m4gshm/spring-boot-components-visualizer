@@ -49,10 +49,10 @@ cloud "input" as input #line.dotted;line:gray; {
     frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
       interface "*:" as in....api.v1.
       in....api.v1. )....> mainController
-      interface "GET:/load" as in.GET..api.v1.load
-      in.GET..api.v1.load )....> mainController
-      interface "POST:/put" as in.POST..api.v1.put
-      in.POST..api.v1.put )....> mainController
+      interface "GET:/load/{id}" as in.GET..api.v1.load..id.
+      in.GET..api.v1.load..id. )....> mainController
+      interface "POST:/put/{id}" as in.POST..api.v1.put..id.
+      in.POST..api.v1.put..id. )....> mainController
     }
   }
   rectangle "web socket" as input.websocket {
@@ -76,7 +76,7 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:/standalone-service2" as out.GET.standalone.service2..id.
+    interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       interface "GET:" as out.GET.http...service2

@@ -1,10 +1,7 @@
 package service1.api.http;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import service1.service.CoreService;
 
 @RequestMapping("/api/v1")
@@ -13,14 +10,14 @@ import service1.service.CoreService;
 public class MainController {
     private final CoreService coreService;
 
-    @GetMapping("/load")
-    public String get() {
-        return coreService.get();
+    @GetMapping("/load/{id}")
+    public String get(@PathVariable String id) {
+        return coreService.get(id);
     }
 
-    @PostMapping("/put")
-    public String save() {
-        return coreService.get();
+    @PostMapping("/put/{id}")
+    public String save(@PathVariable String id) {
+        return coreService.get(id);
     }
 
     @RequestMapping

@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.bytecode;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import lombok.Data;
+import lombok.NonNull;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -140,9 +142,9 @@ public class EvalBytecodeUtils {
         }
     }
 
-    static Result callBootstrapMethod(Object[] arguments, INVOKEDYNAMIC instruction,
-                                      ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-                                      InstructionHandle lastArgInstruction) {
+    static Result callBootstrapMethod(@NonNull Object[] arguments, @NonNull INVOKEDYNAMIC instruction,
+                                      @NonNull ConstantPoolGen constantPoolGen, @NonNull BootstrapMethods bootstrapMethods,
+                                      @NonNull InstructionHandle lastArgInstruction) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
         var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(constantInvokeDynamic, cp);
@@ -313,10 +315,11 @@ public class EvalBytecodeUtils {
     }
 
     public static Result getFieldValue(Result result, String name, InstructionHandle getFieldInstruction,
-                                       InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen) {
+                                       InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
+                                       Function<Result, Result> unevaluatedHandler) {
         var instructionText = getInstructionString(getFieldInstruction, constantPoolGen);
         return delay(instructionText, () -> lastInstruction, lastInstr -> {
-            var object = result.getValue();
+            var object = result.getValue(unevaluatedHandler);
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstr);
         });
     }

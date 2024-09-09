@@ -14,8 +14,8 @@ public class Service2LegacyImpl implements Service2Api {
     private final String url = "http://service2";
 
     @Override
-    public String get() {
-        return restTemplate.getForObject("http://service2/{id}", String.class);
+    public String get(String id) {
+        return restTemplate.getForObject("http://service2/" + id, String.class);
     }
 
     public String get2() {

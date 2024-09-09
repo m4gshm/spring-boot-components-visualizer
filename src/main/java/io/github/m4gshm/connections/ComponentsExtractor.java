@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.client.RestOperationsUtils;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -83,7 +84,9 @@ public class ComponentsExtractor {
                 })).collect(toLinkedHashSet());
     }
 
-    private static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, ConstantPoolGen constantPoolGen, JavaClass javaClass) {
+    private static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction,
+                                                             ConstantPoolGen constantPoolGen,
+                                                             JavaClass javaClass) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
         var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
@@ -406,7 +409,7 @@ public class ComponentsExtractor {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(componentName, componentType, context, components,
-                    this.options.methodArgumentResolver, this.options.methodReturnResolver);
+                    this.options.methodArgumentResolver, this.options.methodReturnResolver, RestOperationsUtils::stringifyVariable);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
@@ -419,7 +422,7 @@ public class ComponentsExtractor {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
             var wsClientUris = extractWebsocketClientUris(componentName, componentType, context,
-                    components, options.methodArgumentResolver, options.methodReturnResolver);
+                    components, options.methodArgumentResolver, options.methodReturnResolver, RestOperationsUtils::stringifyVariable);
 
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
@@ -439,7 +442,7 @@ public class ComponentsExtractor {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(componentName, componentType, context,
-                    components, options.methodArgumentResolver, options.methodReturnResolver);
+                    components, options.methodArgumentResolver, options.methodReturnResolver, RestOperationsUtils::stringifyVariable);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)

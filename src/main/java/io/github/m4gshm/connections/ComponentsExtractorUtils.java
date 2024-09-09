@@ -139,16 +139,15 @@ public class ComponentsExtractorUtils {
         }
         var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
                 .map(RequestMapping::path).flatMap(Arrays::stream).findFirst().orElse("");
-        return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream()
-                .flatMap(requestMapping -> {
-                    var methods = getHttpMethods(requestMapping);
-                    return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
-                            .flatMap(path -> methods.stream().map(method -> HttpMethod.builder()
-                                    .path(path)
-                                    .method(method)
-                                    .build())
-                            );
-                }).collect(toCollection(LinkedHashSet::new));
+        return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream().flatMap(requestMapping -> {
+            var methods = getHttpMethods(requestMapping);
+            return getPaths(requestMapping).stream().map(path -> concatPath(path, rootPath))
+                    .flatMap(path -> methods.stream().map(method -> HttpMethod.builder()
+                            .path(path)
+                            .method(method)
+                            .build())
+                    );
+        }).collect(toCollection(LinkedHashSet::new));
     }
 
     public static Collection<String> getPaths(RequestMapping requestMapping) {

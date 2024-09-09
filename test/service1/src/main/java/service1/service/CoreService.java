@@ -33,8 +33,8 @@ public class CoreService {
         this.jmsQueueService = jmsQueueService;
     }
 
-    public String get() {
-        return null;
+    public String get(String id) {
+        return service2LegacyImpl.get(id);
     }
 
     public String makeAll() {

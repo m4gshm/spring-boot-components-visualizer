@@ -468,30 +468,34 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         }
         var reducedGroup = group.toBuilder().name(part).methods(newMethods).groups(subGroups);
         var reducedGroupMethods = newMethods != null ? newMethods : new LinkedHashMap<HttpMethod, HttpMethod>();
-        var reducedSubGroups = Stream.ofNullable(subGroups)
-                .flatMap(m -> m.entrySet().stream()).map(e -> entry(e.getKey(), reduceUrlBasedHttpMethodGroups(e.getValue()))).filter(e -> {
-                    var subGroup = e.getValue();
-                    var subGroupGroups = subGroup.getGroups();
-                    var subGroupMethods = subGroup.getMethods();
-                    if (subGroupGroups == null || subGroupGroups.isEmpty()) {
-                        if (subGroupMethods == null || subGroupMethods.isEmpty()) {
-                            //remove the subgroup
-                            return false;
-                        } else if (subGroupMethods.size() == 1) {
-                            //move methods of the subgroup to the parent group
-                            var movedToParentGroupMethods = subGroupMethods.entrySet().stream().map(entry -> {
-                                var groupMethod = entry.getKey();
-                                var path = e.getKey() + groupMethod.getPath();
-                                var newGroupMethod = groupMethod.toBuilder().path(path).build();
-                                return entry(newGroupMethod, entry.getValue());
-                            }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
-                            reducedGroupMethods.putAll(movedToParentGroupMethods);
-                            //remove the subgroup
-                            return false;
-                        }
-                    }
-                    return true;
-                }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
+        var reducedSubGroups = Stream.ofNullable(subGroups).flatMap(m -> m.entrySet().stream()).map(e -> {
+            var value = e.getValue();
+            var reduced = reduceUrlBasedHttpMethodGroups(value);
+            var key = reduced.getName();
+            return entry(key, reduced);
+        }).filter(e -> {
+            var subGroup = e.getValue();
+            var subGroupGroups = subGroup.getGroups();
+            var subGroupMethods = subGroup.getMethods();
+            if (subGroupGroups == null || subGroupGroups.isEmpty()) {
+                if (subGroupMethods == null || subGroupMethods.isEmpty()) {
+                    //remove the subgroup
+                    return false;
+                } else if (subGroupMethods.size() == 1) {
+                    //move methods of the subgroup to the parent group
+                    var movedToParentGroupMethods = subGroupMethods.entrySet().stream().map(entry -> {
+                        var groupMethod = entry.getKey();
+                        var path = e.getKey() + groupMethod.getPath();
+                        var newGroupMethod = groupMethod.toBuilder().path(path).build();
+                        return entry(newGroupMethod, entry.getValue());
+                    }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
+                    reducedGroupMethods.putAll(movedToParentGroupMethods);
+                    //remove the subgroup
+                    return false;
+                }
+            }
+            return true;
+        }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
         return reducedGroup.methods(reducedGroupMethods).groups(reducedSubGroups).build();
     }
 

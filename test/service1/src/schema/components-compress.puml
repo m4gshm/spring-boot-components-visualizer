@@ -48,8 +48,8 @@ cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
       collections "<#transparent,transparent>|<r>*: | |\n\
-<#transparent,transparent>|<r>GET: |/load|\n\
-<#transparent,transparent>|<r>POST: |/put|" as input.http..api.v1.interfaces
+<#transparent,transparent>|<r>GET: |/load/{id}|\n\
+<#transparent,transparent>|<r>POST: |/put/{id}|" as input.http..api.v1.interfaces
       input.http..api.v1.interfaces 0)....> mainController
     }
   }
@@ -73,7 +73,7 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:/standalone-service2" as out.GET.standalone.service2..id.
+    interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       collections "<#transparent,transparent>|<r>GET: | |\n\
