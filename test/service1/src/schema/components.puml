@@ -106,7 +106,6 @@ cloud "output" as output #line.dotted;line:gray; {
 <#transparent,transparent>|jmsQueue1|\n\
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
-<#transparent,transparent>|jmsQueueEvents2|\n\
 <#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }

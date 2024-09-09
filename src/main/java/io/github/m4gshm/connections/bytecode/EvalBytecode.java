@@ -322,7 +322,8 @@ public class EvalBytecode {
         var argumentTypes = getArgumentTypes(instruction, constantPoolGen);
         if (instruction instanceof INVOKEVIRTUAL) {
             return delay(instructionText, () -> lastInstruction, lastIntr -> {
-                var firstVariantResults = resolveArgumentVariants(evalArgumentsResults);
+                var filledVariants = resolveArgumentsVariants(evalArgumentsResults);
+                var firstVariantResults = filledVariants.get(0);
 //                var lastArgInstruction = getLastArgInstruction(firstVariantResults, evalArguments);
 //                var next = getPrev(lastInstruction);
 //                var objectCallResult = eval(next);
@@ -336,7 +337,8 @@ public class EvalBytecode {
             });
         } else if (instruction instanceof INVOKEINTERFACE) {
             return delay(instructionText, () -> lastInstruction, lastIntr -> {
-                var firstVariantResults = resolveArgumentVariants(evalArgumentsResults);
+                var filledVariants = resolveArgumentsVariants(evalArgumentsResults);
+                var firstVariantResults = filledVariants.get(0);
 //                var lastArgInstruction = getLastArgInstruction(firstVariantResults, evalArguments);
 //                var next = getPrev(lastInstruction);
 //                var objectCallResult = eval(next);
@@ -349,7 +351,8 @@ public class EvalBytecode {
             });
         } else if (instruction instanceof INVOKEDYNAMIC) {
             return delay(instructionText, () -> lastInstruction, lastIntr -> {
-                var firstVariantResults = resolveArgumentVariants(evalArgumentsResults);
+                var filledVariants = resolveArgumentsVariants(evalArgumentsResults);
+                var firstVariantResults = filledVariants.get(0);
 //                var lastArgInstruction = getLastArgInstruction(firstVariantResults, evalArguments);
                 var arguments = getArguments(argumentTypes, firstVariantResults);
                 return callBootstrapMethod(arguments, (INVOKEDYNAMIC) instruction, constantPoolGen, bootstrapMethods,
@@ -357,7 +360,8 @@ public class EvalBytecode {
             });
         } else if (instruction instanceof INVOKESTATIC) {
             return delay(instructionText, () -> lastInstruction, lastIntr -> {
-                var firstVariantResults = resolveArgumentVariants(evalArgumentsResults);
+                var filledVariants = resolveArgumentsVariants(evalArgumentsResults);
+                var firstVariantResults = filledVariants.get(0);
 //                var lastArgInstruction = getLastArgInstruction(firstVariantResults, evalArguments);
                 var arguments = getArguments(argumentTypes, firstVariantResults);
                 var type = getClassByName(instruction.getClassName(constantPoolGen));
@@ -367,7 +371,8 @@ public class EvalBytecode {
         } else if (instruction instanceof INVOKESPECIAL) {
 
             return delay(instructionText, () -> lastInstruction, lastIntr -> {
-                var firstVariantResults = resolveArgumentVariants(evalArgumentsResults);
+                var filledVariants = resolveArgumentsVariants(evalArgumentsResults);
+                var firstVariantResults = filledVariants.get(0);
 //                var lastArgInstruction = getLastArgInstruction(firstVariantResults, evalArguments);
                 var arguments = getArguments(argumentTypes, firstVariantResults);
                 var invokeSpec = (INVOKESPECIAL) instruction;
@@ -387,7 +392,7 @@ public class EvalBytecode {
         throw newUnsupportedEvalException(instruction, constantPoolGen);
     }
 
-    private List<Result> resolveArgumentVariants(List<Result> evalArgumentsResults) {
+    public List<List<Result>> resolveArgumentsVariants(List<Result> evalArgumentsResults) {
         var argumentVariants = new ArrayList<List<Result>>(evalArgumentsResults.size());
         var dimensions = 1;
         //todo arguments should be resolved in reverse mode
@@ -409,7 +414,7 @@ public class EvalBytecode {
             }
             filledVariants.add(filledVariant);
         }
-        return filledVariants.get(0);
+        return filledVariants;
     }
 
     private Object[] getArguments(Class<?>[] argumentTypes, List<Result> results) {
@@ -525,12 +530,22 @@ public class EvalBytecode {
                     .map(variant -> resolveMethodArgumentVariant(value, variant))
                     .collect(toList());
             if (!valueVariants.isEmpty()) {
-                return valueVariants.stream().flatMap(r -> resolve(r).stream()).collect(toList());
+                return valueVariants.stream().flatMap(variant -> {
+                    try {
+                        return resolve(variant).stream();
+                    } catch (UnevaluatedVariableException e) {
+                        return Stream.of(variant);
+                    }
+                }).collect(toList());
             } else {
                 return List.of(variable);
             }
         } else if (value instanceof Delay) {
-            return resolve(((Delay) value).getDelayed());
+            try {
+                return resolve(((Delay) value).getDelayed());
+            } catch (UnevaluatedVariableException e) {
+                return List.of(value);
+            }
         } else if (value instanceof Multiple) {
             return ((Multiple) value).getValues().stream().flatMap(v -> resolve(v).stream()).collect(toList());
         } else {

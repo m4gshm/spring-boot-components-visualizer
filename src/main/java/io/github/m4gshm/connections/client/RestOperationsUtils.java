@@ -73,6 +73,14 @@ public class RestOperationsUtils {
         var eval = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
                 bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
 
+        var evalArguments = eval.evalArguments(instructionHandle, instruction);
+        List<Result> argumentsArguments = evalArguments.getArguments();
+        Result path = argumentsArguments.get(0);
+        Result methodR = "exchange".equals(methodName) ? argumentsArguments.get(1) : null;
+
+        List<Result> resolvedPath = eval.resolve(path);
+        List<Result> resolve = eval.resolve(methodR);
+
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var arguments = new Result[argumentTypes.length];
         for (int i = argumentTypes.length; i > 0; i--) {
