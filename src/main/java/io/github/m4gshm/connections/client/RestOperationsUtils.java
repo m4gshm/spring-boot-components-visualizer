@@ -35,7 +35,8 @@ public class RestOperationsUtils {
                                                              ConfigurableApplicationContext context,
                                                              Collection<Component> components,
                                                              MethodArgumentResolver methodArgumentResolver,
-                                                             MethodReturnResolver methodReturnResolver, Function<Result, Result> unevaluatedHandler) {
+                                                             MethodReturnResolver methodReturnResolver,
+                                                             Function<Result, Result> unevaluatedHandler) {
         var javaClasses = getClassHierarchy(componentType);
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -48,7 +49,8 @@ public class RestOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractHttpMethods(componentName, context.getBean(componentName), instructionHandle,
-                        constantPoolGen, bootstrapMethods, components, method, context, methodArgumentResolver, methodReturnResolver, unevaluatedHandler)
+                        constantPoolGen, bootstrapMethods, components, method, context, methodArgumentResolver,
+                        methodReturnResolver, unevaluatedHandler)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
@@ -68,7 +70,7 @@ public class RestOperationsUtils {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
-        var httpMethod = getHttpMethod(methodName);
+
 
         var eval = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
                 bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
@@ -78,11 +80,19 @@ public class RestOperationsUtils {
 
         var path = argumentsArguments.get(0);
         var resolvedPaths = eval.resolve(path, unevaluatedHandler);
-        var paths = resolveVariableStrings(resolvedPaths);
+        var paths = resolveVariableStrings(resolvedPaths, unevaluatedHandler);
 
-        var methods = "exchange".equals(methodName) ? resolveVariableStrings(argumentsArguments.get(1))
-                : httpMethod != null ? List.of(httpMethod) : List.of("UNDEFINED");
-        return methods.stream().flatMap(m -> paths.stream().map(p -> HttpMethod.builder().method(m).path(p).build()))
+
+        final List<String> httpMethods;
+        if ("exchange".equals(methodName)) {
+            var httpMethodArg = argumentsArguments.get(1);
+            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, unevaluatedHandler);
+            httpMethods = resolveVariableStrings(resolvedHttpMethodResults, unevaluatedHandler);
+        }  else {
+            httpMethods = List.of(getHttpMethod(methodName));
+        }
+
+        return httpMethods.stream().flatMap(m -> paths.stream().map(p -> HttpMethod.builder().method(m).path(p).build()))
                 .collect(toList());
     }
 
@@ -99,12 +109,12 @@ public class RestOperationsUtils {
         return result;
     }
 
-    private static List<String> resolveVariableStrings(Collection<Result> results) {
-        return results.stream().flatMap(result -> resolveVariableStrings(result).stream()).distinct().collect(toList());
+    private static List<String> resolveVariableStrings(Collection<Result> results, Function<Result, Result> unevaluatedHandler) {
+        return results.stream().flatMap(result -> resolveVariableStrings(result, unevaluatedHandler).stream()).distinct().collect(toList());
     }
 
-    private static List<String> resolveVariableStrings(Result result) {
-        return List.of(String.valueOf(result.getValue(null)));
+    private static List<String> resolveVariableStrings(Result result, Function<Result, Result> unevaluatedHandler) {
+        return List.of(String.valueOf(result.getValue(unevaluatedHandler)));
 //        return (result instanceof Multiple
 //                ? ((Multiple) result).getResults().stream()
 //                : Stream.of(result)).map(result1 -> {
@@ -131,6 +141,6 @@ public class RestOperationsUtils {
                 : methodName.startsWith("patch") ? "PATCH"
                 : methodName.startsWith("exchange") ? "EXCHANGE"
                 : methodName.startsWith("execute") ? "EXECUTE"
-                : null;
+                : "UNDEFINED";
     }
 }
