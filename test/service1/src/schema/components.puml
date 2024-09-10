@@ -83,7 +83,8 @@ cloud "output" as output #line.dotted;line:gray; {
       service2LegacyImpl ....( out.GET.http...service2
       interface "GET:/{id}" as out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
-      service2LegacyImpl ....( out.GET.http...service2..id.
+      interface "GET:/load/{id}" as out.GET.http...service2.load..id.
+      service2LegacyImpl ....( out.GET.http...service2.load..id.
     }
   }
   rectangle "web socket" as output.websocket {

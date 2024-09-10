@@ -13,15 +13,14 @@ import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
 
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
-import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -42,10 +41,12 @@ public class JmsOperationsUtils {
     public static final String UNDEFINED_DESTINATION = "undefined";
     public static final String DEFAULT_DESTINATION = "default";
 
-    public static List<JmsClient> extractJmsClients(
-            String componentName, Class<?> componentType, ConfigurableApplicationContext context,
-            Collection<Component> components, MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver, Function<Result, Result> unevaluatedHandler) {
-        var javaClasses = getClassHierarchy(componentType);
+    public static List<JmsClient> extractJmsClients(Component component,
+                                                    Map<Component, List<Component>> dependentOnMap,
+                                                    MethodArgumentResolver methodArgumentResolver,
+                                                    MethodReturnResolver methodReturnResolver,
+                                                    Function<Result, Result> unevaluatedHandler) {
+        var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
@@ -56,8 +57,8 @@ public class JmsOperationsUtils {
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(componentName, context.getBean(componentName), instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, components, context,
+                        ? extractJmsClients(component, dependentOnMap, instructionHandle,
+                        constantPoolGen, bootstrapMethods, method,
                         methodArgumentResolver, methodReturnResolver, unevaluatedHandler).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
@@ -69,12 +70,12 @@ public class JmsOperationsUtils {
     }
 
     private static List<JmsClient> extractJmsClients(
-            String componentName, Object object, InstructionHandle instructionHandle,
+            Component component, Map<Component, List<Component>> dependentOnMap, InstructionHandle instructionHandle,
             ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-            Method method, Collection<Component> components, ConfigurableApplicationContext context,
+            Method method,
             MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver,
             Function<Result, Result> unevaluatedHandler) {
-        log.trace("extractJmsClients, componentName {}", componentName);
+        log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
@@ -82,8 +83,8 @@ public class JmsOperationsUtils {
         if (direction == undefined) {
             return List.of();
         } else {
-            var eval = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
-                    bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
+            var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen,
+                    bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
             var arguments = eval.evalArguments(instructionHandle, instruction, unevaluatedHandler);
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {

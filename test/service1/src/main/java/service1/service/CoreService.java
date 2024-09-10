@@ -34,7 +34,7 @@ public class CoreService {
     }
 
     public String get(String id) {
-        return service2LegacyImpl.get(id);
+        return service2LegacyImpl.get("load", id);
     }
 
     public String makeAll() {

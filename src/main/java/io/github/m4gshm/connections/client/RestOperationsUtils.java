@@ -12,12 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -31,13 +31,12 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @Slf4j
 @UtilityClass
 public class RestOperationsUtils {
-    public static List<HttpMethod> extractRestOperationsUris(String componentName, Class<?> componentType,
-                                                             ConfigurableApplicationContext context,
-                                                             Collection<Component> components,
+    public static List<HttpMethod> extractRestOperationsUris(Component component,
+                                                             Map<Component, List<Component>> dependencyToDependentMap,
                                                              MethodArgumentResolver methodArgumentResolver,
                                                              MethodReturnResolver methodReturnResolver,
                                                              Function<Result, Result> unevaluatedHandler) {
-        var javaClasses = getClassHierarchy(componentType);
+        var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
@@ -48,8 +47,8 @@ public class RestOperationsUtils {
                         instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractHttpMethods(componentName, context.getBean(componentName), instructionHandle,
-                        constantPoolGen, bootstrapMethods, components, method, context, methodArgumentResolver,
+                        ? extractHttpMethods(component, dependencyToDependentMap, instructionHandle,
+                        constantPoolGen, bootstrapMethods, method, methodArgumentResolver,
                         methodReturnResolver, unevaluatedHandler)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
@@ -61,34 +60,34 @@ public class RestOperationsUtils {
         return expectedClass.getName().equals(className);
     }
 
-    private static List<HttpMethod> extractHttpMethods(
-            String componentName, Object object, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods, Collection<Component> components, Method method,
-            ConfigurableApplicationContext context, MethodArgumentResolver methodArgumentResolver,
-            MethodReturnResolver methodReturnResolver, Function<Result, Result> unevaluatedHandler) {
-        log.trace("extractHttpMethod componentName {}", componentName);
+    private static List<HttpMethod> extractHttpMethods(Component component,
+                                                       Map<Component, List<Component>> dependencyToDependentMap,
+                                                       InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
+                                                       BootstrapMethods bootstrapMethods, Method method,
+                                                       MethodArgumentResolver methodArgumentResolver,
+                                                       MethodReturnResolver methodReturnResolver,
+                                                       Function<Result, Result> unevaluatedHandler) {
+        log.trace("extractHttpMethod componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
 
+        var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
+                bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
 
-        var eval = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
-                bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
-
-        var evalArguments = eval.evalArguments(instructionHandle, instruction, unevaluatedHandler);
+        var evalArguments = eval.evalArguments(instructionHandle, instruction, null);
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
         var resolvedPaths = eval.resolve(path, unevaluatedHandler);
-        var paths = resolveVariableStrings(resolvedPaths, unevaluatedHandler);
-
+        var paths = resolveVariableStrings(resolvedPaths, null);
 
         final List<String> httpMethods;
         if ("exchange".equals(methodName)) {
             var httpMethodArg = argumentsArguments.get(1);
             var resolvedHttpMethodResults = eval.resolve(httpMethodArg, unevaluatedHandler);
             httpMethods = resolveVariableStrings(resolvedHttpMethodResults, unevaluatedHandler);
-        }  else {
+        } else {
             httpMethods = List.of(getHttpMethod(methodName));
         }
 

@@ -8,15 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.socket.client.WebSocketClient;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
@@ -30,12 +26,11 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @Slf4j
 @UtilityClass
 public class WebsocketClientUtils {
-    public static List<String> extractWebsocketClientUris(String componentName, Class<?> componentType,
-                                                          ConfigurableApplicationContext context,
-                                                          Collection<Component> components,
-                                                          MethodArgumentResolver methodArgumentResolver,
-                                                          MethodReturnResolver methodReturnResolver, Function<Result, Result> unevaluatedHandler) {
-        var javaClasses = getClassHierarchy(componentType);
+    public static List<String> extractWebsocketClientUris(Component component,
+                                                          Map<Component, List<Component>> dependentOnMap, MethodArgumentResolver methodArgumentResolver,
+                                                          MethodReturnResolver methodReturnResolver,
+                                                          Function<Result, Result> unevaluatedHandler) {
+        var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
@@ -50,8 +45,8 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        return getDoHandshakeUri(componentName, context.getBean(componentName), instructionHandle,
-                                constantPoolGen, bootstrapMethods, components, method, context,
+                        return getDoHandshakeUri(component, dependentOnMap, instructionHandle,
+                                constantPoolGen, bootstrapMethods, method,
                                 methodArgumentResolver, methodReturnResolver, unevaluatedHandler);
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -67,22 +62,21 @@ public class WebsocketClientUtils {
         return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
     }
 
-    private static List<String> getDoHandshakeUri(
-            String componentName, Object object, InstructionHandle instructionHandle,
-            ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods, Collection<Component> components,
-            Method method, ConfigurableApplicationContext context,
-            MethodArgumentResolver methodArgumentResolver,
-            MethodReturnResolver methodReturnResolver, Function<Result, Result> unevaluatedHandler) throws ClassNotFoundException,
+    private static List<String> getDoHandshakeUri(Component component,
+                                                  Map<Component, List<Component>> dependentOnMap,
+                                                  InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
+                                                  BootstrapMethods bootstrapMethods, Method method,
+                                                  MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver,
+                                                  Function<Result, Result> unevaluatedHandler) throws ClassNotFoundException,
             InvocationTargetException, NoSuchMethodException, IllegalAccessException {
-        log.trace("getDoHandshakeUri componentName {}", componentName);
+        log.trace("getDoHandshakeUri componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var evalEngine = new EvalBytecode(context, object, componentName, object.getClass(), constantPoolGen,
-                bootstrapMethods, method, components, methodArgumentResolver, methodReturnResolver);
+        var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
+                bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             //todo use eva.getPrev
             var value = evalEngine.eval(instructionHandle.getPrev(), unevaluatedHandler);

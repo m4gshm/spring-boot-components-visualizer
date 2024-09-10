@@ -3,7 +3,7 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
-import io.github.m4gshm.connections.ComponentsExtractor.ComponentKey;
+import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
@@ -18,7 +18,6 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
@@ -35,7 +34,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.ComponentsExtractor.ComponentKey.newComponentKey;
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.model.HttpMethod.ALL;
@@ -177,13 +176,12 @@ public class ComponentsExtractorUtils {
                 .collect(toList());
     }
 
-    public static FeignClient extractFeignClient(String name, ConfigurableApplicationContext context) {
+    public static FeignClient extractFeignClient(String name, Object object) {
         try {
-            var bean = context.getBean(name);
-            if (!isProxyClass(bean.getClass())) {
+            if (!isProxyClass(object.getClass())) {
                 return null;
             }
-            var handler = Proxy.getInvocationHandler(bean);
+            var handler = Proxy.getInvocationHandler(object);
             var handlerClass = handler.getClass();
             if ("org.springframework.aop.framework.JdkDynamicAopProxy".equals(handlerClass.getName())) {
                 var advised = getFieldValue(handler, "advised");
@@ -326,7 +324,7 @@ public class ComponentsExtractorUtils {
 
     @SafeVarargs
     public static Map<ComponentKey, Component> mergeComponents(Collection<Component>... components) {
-        return of(components).flatMap(Collection::stream).collect(toMap(ComponentKey::newComponentKey, c -> c, (l, r) -> {
+        return of(components).flatMap(Collection::stream).collect(toMap(Component.ComponentKey::newComponentKey, c -> c, (l, r) -> {
             var lInterfaces = l.getInterfaces();
             var lDependencies = l.getDependencies();
             var rInterfaces = r.getInterfaces();
@@ -391,8 +389,8 @@ public class ComponentsExtractorUtils {
         return component;
     }
 
-    public static Component newManagedDependency(String oName) {
-        return Component.builder().name(oName).build();
+    public static Component newManagedDependency(String name, Object object) {
+        return Component.builder().name(name).object(object).build();
     }
 
     public static String getWebsocketInterfaceId(Interface.Direction direction, String uri) {
