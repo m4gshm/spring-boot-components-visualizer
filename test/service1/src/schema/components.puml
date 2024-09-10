@@ -79,12 +79,12 @@ cloud "output" as output #line.dotted;line:gray; {
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
-      interface "GET:" as out.GET.http...service2
-      service2LegacyImpl ....( out.GET.http...service2
-      interface "GET:/{id}" as out.GET.http...service2..id.
-      service2FeignClient ....( out.GET.http...service2..id.
-      interface "GET:/load/{id}" as out.GET.http...service2.load..id.
-      service2LegacyImpl ....( out.GET.http...service2.load..id.
+      collections "<#transparent,transparent>|<r>GET: | |\n\
+<#transparent,transparent>|<r>GET: |/{id}|\n\
+<#transparent,transparent>|<r>GET: |/load-deprecated/{id}|\n\
+<#transparent,transparent>|<r>GET: |/load/{id}|" as output.http.http...service2.interfaces
+      service2LegacyImpl ....(0 output.http.http...service2.interfaces
+      service2FeignClient ....(0 output.http.http...service2.interfaces
     }
   }
   rectangle "web socket" as output.websocket {

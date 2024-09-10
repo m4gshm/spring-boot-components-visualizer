@@ -152,8 +152,8 @@ public class EvalBytecode {
     @Override
     public String toString() {
         return "EvalBytecode{" +
-                "componentName='" + getComponentName() + '\'' +
-                "method='" + getMethod().getSignature() + '\'' +
+                "componentName='" + getComponentName() + "', " +
+                "method='" + getMethod().toString() + '\'' +
                 '}';
     }
 
@@ -535,7 +535,7 @@ public class EvalBytecode {
             var variable = (MethodArgument) value;
 
             var evalContext = variable.evalContext;
-            var dependentOnThisComponent = getDependentOnThisComponent(evalContext);
+            var dependentOnThisComponent = getDependencyToDependentMap(evalContext);
             var method = evalContext.getMethod();
             var methodName = method.getName();
             var argumentTypes = method.getArgumentTypes();
@@ -570,6 +570,11 @@ public class EvalBytecode {
         } else {
             return List.of(value);
         }
+    }
+
+    private static List<Component> getDependencyToDependentMap(EvalBytecode evalContext) {
+        var dependency = evalContext.dependencyToDependentMap.getOrDefault(evalContext.component, List.of());
+        return Stream.concat(Stream.of(evalContext.component), dependency.stream()).collect(toList());
     }
 
     protected Result manualResolve(MethodArgument value) {
@@ -627,10 +632,6 @@ public class EvalBytecode {
             }).filter(Objects::nonNull).collect(toList());
             return !callersWithVariants.isEmpty() ? entry(dependentComponent, callersWithVariants) : null;
         }).filter(Objects::nonNull).collect(toList());
-    }
-
-    private List<Component> getDependentOnThisComponent(EvalBytecode evalContext) {
-        return evalContext.dependencyToDependentMap.getOrDefault(evalContext.component, List.of());
     }
 
     private boolean isMatch(String expectedMethodName, Type[] expectedArguments, Class<?> objectType,
@@ -880,13 +881,14 @@ public class EvalBytecode {
 
             @Override
             public Object getValue(Function<Result, Result> unevaluatedHandler) {
-                var result = getResults().get(0);
-                try {
-                    return result.getValue(unevaluatedHandler);
-                } catch (UnevaluatedVariableException e) {
-                    //log
-                    return unevaluatedHandler.apply(result).getValue(null);
-                }
+                throw new IncorrectMultipleResultsInvocationException(this);
+//                var result = getResults().get(0);
+//                try {
+//                    return result.getValue(unevaluatedHandler);
+//                } catch (UnevaluatedVariableException e) {
+//                    //log
+//                    return unevaluatedHandler.apply(result).getValue(null);
+//                }
             }
 
             public List<Result> getResults() {
@@ -914,12 +916,6 @@ public class EvalBytecode {
         public String toString() {
             return objectType.getName() + "." + name + signature;
         }
-    }
-
-    @Data
-    public static class EvalArguments {
-        private final List<List<Result>> valueVariants;
-        private final InstructionHandle instructionHandle;
     }
 
 }
