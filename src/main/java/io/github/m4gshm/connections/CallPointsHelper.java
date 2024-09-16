@@ -23,25 +23,43 @@ import static java.util.stream.Collectors.toList;
 public class CallPointsHelper {
     public static List<CallPoint> getCallsHierarchy(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
-                                                    Function<Result, Result> unevaluatedHandler) {
+                                                    Function<Result, Result> unevaluatedHandler,
+                                                    Map<Component, List<CallPoint>> callPointsCache) {
+
+
+        if (callPointsCache.containsKey(component)) {
+            return callPointsCache.get(component);
+        } else {
+            callPointsCache.put(component, List.of());
+        }
+
         var componentType = component.getType();
         var javaClasses = ComponentsExtractor.getClassHierarchy(componentType);
-        return javaClasses.stream().filter(javaClass -> !"java.lang.Object".equals(javaClass.getClassName())).flatMap(javaClass -> {
+
+        var points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
+        ).flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             return stream(methods).map(method -> newCallPoint(component, componentType, method, javaClass,
-                    dependencyToDependentMap, unevaluatedHandler, constantPoolGen));
+                    dependencyToDependentMap, unevaluatedHandler, constantPoolGen, callPointsCache));
         }).collect(toList());
+        callPointsCache.put(component, points);
+        return points;
+    }
+
+    private static boolean isObject(JavaClass javaClass) {
+        return "java.lang.Object".equals(javaClass.getClassName());
     }
 
     public static CallPoint newCallPoint(Component component, Class<?> componentType,
                                          Method method, JavaClass javaClass,
                                          Map<Component, List<Component>> dependencyToDependentMap,
                                          Function<Result, Result> unevaluatedHandler,
-                                         ConstantPoolGen constantPoolGen) {
+                                         ConstantPoolGen constantPoolGen,
+                                         Map<Component, List<CallPoint>> callPointsCache) {
         var code = method.getCode();
 
-        var callPoints = new ArrayList<CallPoint>();
+//        var callPoints = new ArrayList<CallPoint>();
         var callPoints1 = new ArrayList<CallPoint>();
 
         var instructionHandles = instructionHandleStream(code).collect(toList());
@@ -55,7 +73,7 @@ public class CallPointsHelper {
 
                 var instrCallPoints = new LinkedHashSet<CallPoint>();
                 var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                        getBootstrapMethods(javaClass), method);
+                        getBootstrapMethods(javaClass), method, callPointsCache);
 
                 //debug info
                 var instructionString = instruction.toString(constantPoolGen.getConstantPool());
@@ -93,7 +111,7 @@ public class CallPointsHelper {
                             javaClass, constantPoolGen);
                     if (!invokeDynamics.isEmpty()) {
                         instrCallPoints.addAll(invokeDynamicCalls);
-                    } else  {
+                    } else {
                         var invokeCalls = findInvokeCalls(
                                 argument.getLastInstruction(),
                                 argument.getFirstInstruction(),
@@ -112,44 +130,44 @@ public class CallPointsHelper {
             }
         }
 
-        for (var iterator = instructionHandles.iterator(); iterator.hasNext(); ) {
-            var instructionHandle1 = iterator.next();
-            var instruction = instructionHandle1.getInstruction();
-            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
-                var invokeInstruction = (InvokeInstruction) instruction;
-                var methodName = invokeInstruction.getMethodName(constantPoolGen);
-                var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
-
-                final CallPoint callPoint;
-                if (instruction instanceof INVOKEDYNAMIC) {
-                    var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
-                            constantPoolGen, javaClass);
-                    InstructionHandle next = instructionHandle1.getNext();
-                    if (methodInfo != null) {
-                        var argumentTypes1 = Type.getArgumentTypes(methodInfo.getSignature());
-                        callPoint = CallPoint.builder()
-                                .methodName(methodInfo.name)
-                                .ownerClassName(methodInfo.objectType.getName())
-                                .argumentTypes(argumentTypes1)
-                                .instruction(instructionHandle1)
-                                .build();
-                    } else {
-                        //log
-                        callPoint = null;
-                    }
-                } else {
-                    callPoint = CallPoint.builder()
-                            .methodName(methodName)
-                            .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
-                            .argumentTypes(argumentTypes)
-                            .instruction(instructionHandle1)
-                            .build();
-                }
-                if (callPoint != null) {
-                    callPoints.add(callPoint);
-                }
-            }
-        }
+//        for (var iterator = instructionHandles.iterator(); iterator.hasNext(); ) {
+//            var instructionHandle1 = iterator.next();
+//            var instruction = instructionHandle1.getInstruction();
+//            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
+//                var invokeInstruction = (InvokeInstruction) instruction;
+//                var methodName = invokeInstruction.getMethodName(constantPoolGen);
+//                var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
+//
+//                final CallPoint callPoint;
+//                if (instruction instanceof INVOKEDYNAMIC) {
+//                    var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
+//                            constantPoolGen, javaClass);
+//                    InstructionHandle next = instructionHandle1.getNext();
+//                    if (methodInfo != null) {
+//                        var argumentTypes1 = Type.getArgumentTypes(methodInfo.getSignature());
+//                        callPoint = CallPoint.builder()
+//                                .methodName(methodInfo.name)
+//                                .ownerClassName(methodInfo.objectType.getName())
+//                                .argumentTypes(argumentTypes1)
+//                                .instruction(instructionHandle1)
+//                                .build();
+//                    } else {
+//                        //log
+//                        callPoint = null;
+//                    }
+//                } else {
+//                    callPoint = CallPoint.builder()
+//                            .methodName(methodName)
+//                            .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
+//                            .argumentTypes(argumentTypes)
+//                            .instruction(instructionHandle1)
+//                            .build();
+//                }
+//                if (callPoint != null) {
+//                    callPoints.add(callPoint);
+//                }
+//            }
+//        }
         return CallPoint.builder()
                 .methodName(method.getName())
                 .ownerClass(componentType)

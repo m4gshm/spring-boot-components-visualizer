@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +27,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
                                                           Map<Component, List<Component>> dependentOnMap,
-                                                          Function<Result, Result> unevaluatedHandler) {
+                                                          Function<Result, Result> unevaluatedHandler,
+                                                          Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -44,7 +46,7 @@ public class WebsocketClientUtils {
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
                         var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle,
                                 constantPoolGen, bootstrapMethods, method,
-                                unevaluatedHandler);
+                                unevaluatedHandler, callPointsCache);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -64,7 +66,8 @@ public class WebsocketClientUtils {
                                                   Map<Component, List<Component>> dependentOnMap,
                                                   InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  Function<Result, Result> unevaluatedHandler) throws ClassNotFoundException,
+                                                  Function<Result, Result> unevaluatedHandler,
+                                                  Map<Component, List<CallPoint>> callPointsCache) throws ClassNotFoundException,
             InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
@@ -73,7 +76,7 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
-                bootstrapMethods, method);
+                bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             //todo use eva.getPrev
             var value = evalEngine.eval(instructionHandle.getPrev(), unevaluatedHandler);

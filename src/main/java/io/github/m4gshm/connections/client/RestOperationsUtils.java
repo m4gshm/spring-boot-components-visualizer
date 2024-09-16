@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.client;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.MethodArgument;
+import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
@@ -31,7 +32,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class RestOperationsUtils {
     public static List<HttpMethod> extractRestOperationsUris(Component component,
                                                              Map<Component, List<Component>> dependencyToDependentMap,
-                                                             Function<Result, Result> unevaluatedHandler) {
+                                                             Function<Result, Result> unevaluatedHandler,
+                                                             Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -45,7 +47,7 @@ public class RestOperationsUtils {
                 return match
                         ? extractHttpMethods(component, dependencyToDependentMap, instructionHandle,
                         constantPoolGen, bootstrapMethods, method,
-                        unevaluatedHandler)
+                        unevaluatedHandler, callPointsCache)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
@@ -60,7 +62,8 @@ public class RestOperationsUtils {
                                                        Map<Component, List<Component>> dependencyToDependentMap,
                                                        InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                        BootstrapMethods bootstrapMethods, Method method,
-                                                       Function<Result, Result> unevaluatedHandler) {
+                                                       Function<Result, Result> unevaluatedHandler,
+                                                       Map<Component, List<CallPoint>> callPointsCache) {
         var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
         log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
                 instructionText);
@@ -69,7 +72,7 @@ public class RestOperationsUtils {
         var methodName = instruction.getMethodName(constantPoolGen);
 
         var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                bootstrapMethods, method);
+                bootstrapMethods, method, callPointsCache);
 
         var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
         var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, null);

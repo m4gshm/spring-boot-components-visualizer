@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.client;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
@@ -17,6 +18,7 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,7 +43,8 @@ public class JmsOperationsUtils {
 
     public static List<JmsClient> extractJmsClients(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
-                                                    Function<Result, Result> unevaluatedHandler) {
+                                                    Function<Result, Result> unevaluatedHandler,
+                                                    Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -55,7 +58,7 @@ public class JmsOperationsUtils {
                 return match
                         ? extractJmsClients(component, dependencyToDependentMap, instructionHandle,
                         constantPoolGen, bootstrapMethods, method,
-                        unevaluatedHandler).stream()
+                        unevaluatedHandler, callPointsCache).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -69,7 +72,7 @@ public class JmsOperationsUtils {
             Component component, Map<Component, List<Component>> dependencyToDependentMap,
             InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
             Method method,
-            Function<Result, Result> unevaluatedHandler) {
+            Function<Result, Result> unevaluatedHandler, Map<Component, List<CallPoint>> callPointsCache) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -79,7 +82,7 @@ public class JmsOperationsUtils {
             return List.of();
         } else {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                    bootstrapMethods, method);
+                    bootstrapMethods, method, callPointsCache);
             var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
             var arguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler);
             var argumentsArguments = arguments.getArguments();

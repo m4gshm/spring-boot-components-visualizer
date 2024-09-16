@@ -322,7 +322,7 @@ public class EvalBytecodeUtils {
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
                                        Function<Result, Result> unevaluatedHandler, EvalBytecode evalBytecode) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        return delay(instructionText, instructionHandle, evalBytecode, () -> lastInstruction, (lastInstr, unevaluatedHandler1) -> {
+        return delay(instructionText, instructionHandle, evalBytecode, unevaluatedHandler, () -> lastInstruction, (lastInstr, unevaluatedHandler1) -> {
             var object = result.getValue(unevaluatedHandler1);
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
                     lastInstr, evalBytecode);
