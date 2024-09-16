@@ -23,7 +23,6 @@ public class Component implements ComponentDependency {
     boolean configuration;
     Set<Interface> interfaces;
     Set<Component> dependencies;
-    List<CallPoint> callPoints;
 
     @Override
     public boolean isManaged() {

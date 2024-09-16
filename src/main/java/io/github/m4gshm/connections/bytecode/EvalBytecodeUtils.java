@@ -34,7 +34,7 @@ import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredF
 import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.MethodInfo.newMethodInfo;
+import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
@@ -103,9 +103,10 @@ public class EvalBytecodeUtils {
         return componentType;
     }
 
-    static Result invoke(MethodHandle methodHandle, List<Object> arguments, InstructionHandle lastArgInstruction) {
+    static Result invoke(MethodHandle methodHandle, List<Object> arguments, InstructionHandle firstInstruction,
+                         InstructionHandle lastArgInstruction, EvalBytecode evalBytecode) {
         try {
-            return constant(methodHandle.invokeWithArguments(arguments), lastArgInstruction);
+            return constant(methodHandle.invokeWithArguments(arguments), firstInstruction, lastArgInstruction, evalBytecode);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
@@ -121,9 +122,9 @@ public class EvalBytecodeUtils {
         return constructor;
     }
 
-
     static Result instantiateObject(InstructionHandle instructionHandle,
-                                    Class<?> type, Class<?>[] argumentTypes, Object[] arguments) {
+                                    Class<?> type, Class<?>[] argumentTypes, Object[] arguments,
+                                    EvalBytecode evalBytecode) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -131,7 +132,7 @@ public class EvalBytecodeUtils {
             throw new EvalBytecodeException(e);
         }
         if (constructor.trySetAccessible()) try {
-            return constant(constructor.newInstance(arguments), instructionHandle);
+            return constant(constructor.newInstance(arguments), instructionHandle, evalBytecode);
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new EvalBytecodeException(e);
         } catch (IllegalArgumentException e) {
@@ -143,8 +144,9 @@ public class EvalBytecodeUtils {
     }
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, @NonNull INVOKEDYNAMIC instruction,
-                                      @NonNull ConstantPoolGen constantPoolGen, @NonNull BootstrapMethods bootstrapMethods,
-                                      @NonNull InstructionHandle lastArgInstruction) {
+                                      InstructionHandle instructionHandle, @NonNull ConstantPoolGen constantPoolGen,
+                                      @NonNull BootstrapMethods bootstrapMethods,
+                                      @NonNull InstructionHandle lastArgInstruction, EvalBytecode evalBytecode) {
         var cp = constantPoolGen.getConstantPool();
         var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
         var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(constantInvokeDynamic, cp);
@@ -201,7 +203,7 @@ public class EvalBytecodeUtils {
         }
 
         var lambdaInstance = metafactory.dynamicInvoker();
-        return invoke(lambdaInstance, asList(arguments), lastArgInstruction);
+        return invoke(lambdaInstance, asList(arguments), instructionHandle, lastArgInstruction, evalBytecode);
     }
 
     public static List<Constant> getBootstrapMethodArguments(BootstrapMethod bootstrapMethod, ConstantPool cp) {
@@ -223,11 +225,13 @@ public class EvalBytecodeUtils {
                                                                   ConstantPool cp, Lookup lookup) {
         var result = Objects.requireNonNull(newMethodInfo(constant, cp), "cannot extract invokedynamic methodInfo");
 
-        setAccessibleMethod(result.targetClass, result.methodName, result.methodType);
+        var methodType = fromMethodDescriptorString(result.getSignature(), null);
+        setAccessibleMethod(result.objectType, result.name, methodType);
 
-        var privateLookup = getPrivateLookup(result.targetClass, lookup);
+        var privateLookup = getPrivateLookup(result.objectType, lookup);
         return new MethodHandleAndLookup(
-                lookupReference(privateLookup, constant.getReferenceKind(), result.targetClass, result.methodName, result.methodType),
+                lookupReference(privateLookup, constant.getReferenceKind(), result.objectType, result.name,
+                        methodType),
                 privateLookup
         );
     }
@@ -295,7 +299,7 @@ public class EvalBytecodeUtils {
         return fromMethodDescriptorString(cp.getConstantUtf8(constantMethodType.getDescriptorIndex()).getBytes(), null);
     }
 
-    public static Class[] getArgumentTypes(Type[] argumentTypes) {
+    public static Class<?>[] getArgumentClasses(Type[] argumentTypes) {
         var args = new Class[argumentTypes.length];
         for (int i = 0; i < argumentTypes.length; i++) {
             var argumentType = argumentTypes[i];
@@ -314,13 +318,14 @@ public class EvalBytecodeUtils {
         }
     }
 
-    public static Result getFieldValue(Result result, String name, InstructionHandle getFieldInstruction,
+    public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       Function<Result, Result> unevaluatedHandler) {
-        var instructionText = getInstructionString(getFieldInstruction, constantPoolGen);
-        return delay(instructionText, () -> lastInstruction, (lastInstr, unevaluatedHandler1) -> {
+                                       Function<Result, Result> unevaluatedHandler, EvalBytecode evalBytecode) {
+        var instructionText = getInstructionString(instructionHandle, constantPoolGen);
+        return delay(instructionText, instructionHandle, evalBytecode, () -> lastInstruction, (lastInstr, unevaluatedHandler1) -> {
             var object = result.getValue(unevaluatedHandler1);
-            return getFieldValue(getTargetObject(object), getTargetClass(object), name, getFieldInstruction, lastInstr);
+            return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
+                    lastInstr, evalBytecode);
         });
     }
 
@@ -335,16 +340,18 @@ public class EvalBytecodeUtils {
     }
 
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
-                                       InstructionHandle getFieldInstruction, InstructionHandle lastInstruction) {
+                                       InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
+                                       EvalBytecode evalBytecode) {
         var field = getDeclaredField(name, objectClass);
         return field == null ? Result.notFound(name, getFieldInstruction) : field.trySetAccessible()
-                ? getFieldValue(object, field, lastInstruction)
+                ? getFieldValue(object, field, lastInstruction, evalBytecode)
                 : notAccessible(field, getFieldInstruction);
     }
 
-    private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction) {
+    private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
+                                        EvalBytecode evalBytecode) {
         try {
-            return constant(field.get(object), lastInstruction);
+            return constant(field.get(object), lastInstruction, evalBytecode);
         } catch (IllegalAccessException e) {
             throw new EvalBytecodeException(e);
         }
@@ -362,10 +369,6 @@ public class EvalBytecodeUtils {
         return stream(instructionHandles.spliterator(), false);
     }
 
-    public static Class<?>[] getArgumentTypes(InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
-        return getArgumentTypes(instruction.getArgumentTypes(constantPoolGen));
-    }
-
     public static String getInstructionString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
         return instructionHandle.getPosition() + ": " + instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
     }
@@ -373,28 +376,6 @@ public class EvalBytecodeUtils {
     @FunctionalInterface
     public interface MethodHandleLookup {
         MethodHandle get() throws NoSuchMethodException, IllegalAccessException;
-    }
-
-    @Data
-    public static class MethodInfo {
-        public final String methodName;
-        public final MethodType methodType;
-        public final Class<?> targetClass;
-
-        public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool cp) {
-            var constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
-            if (constantCP instanceof ConstantMethodref || constantCP instanceof ConstantInterfaceMethodref) {
-                var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
-                var methodName = constantNameAndType.getName(cp);
-                var methodSignature = constantNameAndType.getSignature(cp);
-                var methodType = fromMethodDescriptorString(methodSignature, null);
-                var targetClass = getClassByName(constantCP.getClass(cp));
-                return new MethodInfo(methodName, methodType, targetClass);
-            } else {
-                return null;
-            }
-        }
-
     }
 
     @Data

@@ -1,7 +1,6 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +15,6 @@ import java.util.*;
 import java.util.function.Function;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static java.util.Arrays.stream;
@@ -27,8 +25,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
-                                                          Map<Component, List<Component>> dependentOnMap, MethodArgumentResolver methodArgumentResolver,
-                                                          MethodReturnResolver methodReturnResolver,
+                                                          Map<Component, List<Component>> dependentOnMap,
                                                           Function<Result, Result> unevaluatedHandler) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -45,9 +42,10 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        return getDoHandshakeUri(component, dependentOnMap, instructionHandle,
+                        var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle,
                                 constantPoolGen, bootstrapMethods, method,
-                                methodArgumentResolver, methodReturnResolver, unevaluatedHandler);
+                                unevaluatedHandler);
+                        return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
                         throw new RuntimeException(e);
@@ -66,7 +64,6 @@ public class WebsocketClientUtils {
                                                   Map<Component, List<Component>> dependentOnMap,
                                                   InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver,
                                                   Function<Result, Result> unevaluatedHandler) throws ClassNotFoundException,
             InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
@@ -76,7 +73,7 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
-                bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
+                bootstrapMethods, method);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             //todo use eva.getPrev
             var value = evalEngine.eval(instructionHandle.getPrev(), unevaluatedHandler);

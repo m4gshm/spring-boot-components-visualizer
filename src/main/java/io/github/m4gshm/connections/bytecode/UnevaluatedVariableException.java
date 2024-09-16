@@ -1,13 +1,13 @@
 package io.github.m4gshm.connections.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.MethodArgument;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable;
 import lombok.Getter;
 
 @Getter
 public class UnevaluatedVariableException extends EvalBytecodeException {
-    private final MethodArgument variable;
+    private final Variable variable;
 
-    public UnevaluatedVariableException(MethodArgument variable) {
+    public UnevaluatedVariableException(Variable variable) {
         super("unresolved " + variable);
         this.variable = variable;
     }

@@ -9,6 +9,10 @@ import service1.service.external.rest.AbstractService2FeignClient;
 import service1.service.external.rest.Service2Api;
 import service1.service.external.rest.Service2FeignClient;
 
+import java.util.List;
+
+import static java.util.Objects.requireNonNull;
+
 @Service
 public class CoreService {
 
@@ -34,11 +38,19 @@ public class CoreService {
     }
 
     public String get(String id) {
-        return service2LegacyImpl.get("load", id);
+        return service2LegacyImpl.get("load", requireNonNull(id));
     }
 
     public String makeAll() {
-        jmsQueueService.sendMessage(null, null, null, jmsQueueService.wrap("jmsQueue1"));
+        var jmsQueue1 = getJmsQueue();
+        List.of("0", "1").forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + "i"));
         return null;
+    }
+
+    private String getJmsQueue() {
+        JmsQueueService jmsQueueService1 = jmsQueueService;
+        requireNonNull(jmsQueueService1);
+        var jmsQueue1 = jmsQueueService1.wrap("jmsQueue");
+        return jmsQueue1;
     }
 }

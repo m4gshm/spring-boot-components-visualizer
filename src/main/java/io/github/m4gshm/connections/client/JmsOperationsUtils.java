@@ -2,8 +2,6 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -42,9 +40,7 @@ public class JmsOperationsUtils {
     public static final String DEFAULT_DESTINATION = "default";
 
     public static List<JmsClient> extractJmsClients(Component component,
-                                                    Map<Component, List<Component>> dependentOnMap,
-                                                    MethodArgumentResolver methodArgumentResolver,
-                                                    MethodReturnResolver methodReturnResolver,
+                                                    Map<Component, List<Component>> dependencyToDependentMap,
                                                     Function<Result, Result> unevaluatedHandler) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -57,9 +53,9 @@ public class JmsOperationsUtils {
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(component, dependentOnMap, instructionHandle,
+                        ? extractJmsClients(component, dependencyToDependentMap, instructionHandle,
                         constantPoolGen, bootstrapMethods, method,
-                        methodArgumentResolver, methodReturnResolver, unevaluatedHandler).stream()
+                        unevaluatedHandler).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -70,10 +66,9 @@ public class JmsOperationsUtils {
     }
 
     private static List<JmsClient> extractJmsClients(
-            Component component, Map<Component, List<Component>> dependentOnMap, InstructionHandle instructionHandle,
-            ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+            Component component, Map<Component, List<Component>> dependencyToDependentMap,
+            InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
             Method method,
-            MethodArgumentResolver methodArgumentResolver, MethodReturnResolver methodReturnResolver,
             Function<Result, Result> unevaluatedHandler) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
@@ -83,9 +78,10 @@ public class JmsOperationsUtils {
         if (direction == undefined) {
             return List.of();
         } else {
-            var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen,
-                    bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
-            var arguments = eval.evalArguments(instructionHandle, instruction, unevaluatedHandler);
+            var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
+                    bootstrapMethods, method);
+            var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
+            var arguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler);
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));

@@ -25,10 +25,7 @@ public class CallPoint {
     Type[] argumentTypes;
     InstructionHandle instruction;
     Method method;
-//    ConstantPoolGen constantPoolGen;
     JavaClass javaClass;
     @Builder.Default
     List<CallPoint> callPoints = List.of();
-//    @Builder.Default
-//    Map<Integer, InstructionHandle> jumpsTo = Map.of();
 }

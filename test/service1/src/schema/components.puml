@@ -89,12 +89,12 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|ws://currentURI-method|\n\
+      collections "<#transparent,transparent>|[Ljava.lang.Object;@1a2d8488|\n\
+<#transparent,transparent>|ws://currentURI-method|\n\
 <#transparent,transparent>|ws://currentURI-supplier|\n\
 <#transparent,transparent>|ws://defaultURI-static|\n\
 <#transparent,transparent>|ws://service-property-injected|\n\
 <#transparent,transparent>|ws://service-template|\n\
-<#transparent,transparent>|ws://service-template/{id}/|\n\
 <#transparent,transparent>|ws://service2|\n\
 <#transparent,transparent>|ws://service2-value-inject|\n\
 <#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces
@@ -104,10 +104,10 @@ cloud "output" as output #line.dotted;line:gray; {
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
       collections "<#transparent,transparent>|jms-private-queue|\n\
-<#transparent,transparent>|jmsQueue1|\n\
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
-<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueueEvents3|\n\
+<#transparent,transparent>|{jmsQueue1}i|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }
   }

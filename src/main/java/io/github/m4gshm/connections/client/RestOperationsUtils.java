@@ -1,8 +1,6 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.MethodArgument;
 import io.github.m4gshm.connections.model.Component;
@@ -33,8 +31,6 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class RestOperationsUtils {
     public static List<HttpMethod> extractRestOperationsUris(Component component,
                                                              Map<Component, List<Component>> dependencyToDependentMap,
-                                                             MethodArgumentResolver methodArgumentResolver,
-                                                             MethodReturnResolver methodReturnResolver,
                                                              Function<Result, Result> unevaluatedHandler) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -48,8 +44,8 @@ public class RestOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractHttpMethods(component, dependencyToDependentMap, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, methodArgumentResolver,
-                        methodReturnResolver, unevaluatedHandler)
+                        constantPoolGen, bootstrapMethods, method,
+                        unevaluatedHandler)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
@@ -64,18 +60,19 @@ public class RestOperationsUtils {
                                                        Map<Component, List<Component>> dependencyToDependentMap,
                                                        InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                        BootstrapMethods bootstrapMethods, Method method,
-                                                       MethodArgumentResolver methodArgumentResolver,
-                                                       MethodReturnResolver methodReturnResolver,
                                                        Function<Result, Result> unevaluatedHandler) {
-        log.trace("extractHttpMethod componentName {}", component.getName());
+        var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
+        log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
+                instructionText);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
         var methodName = instruction.getMethodName(constantPoolGen);
 
         var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                bootstrapMethods, method, methodArgumentResolver, methodReturnResolver);
+                bootstrapMethods, method);
 
-        var evalArguments = eval.evalArguments(instructionHandle, instruction, null);
+        var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
+        var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, null);
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
@@ -98,11 +95,10 @@ public class RestOperationsUtils {
     public static Result stringifyVariable(Result result) {
         if (result instanceof MethodArgument) {
             var methodArgument = (MethodArgument) result;
-            var localVariable = methodArgument.getLocalVariable();
-            var type = Type.getType(localVariable.getSignature());
+            var type = methodArgument.getType();
             if (String.class.getName().equals(type.getClassName())) {
-                var name = localVariable.getName();
-                return constant("{" + name + "}", methodArgument.getLastInstruction());
+                var name = methodArgument.getName();
+                return constant("{" + name + "}", methodArgument.getLastInstruction(), methodArgument.getEvalContext()).withParent(result);
             }
         }
         return result;
