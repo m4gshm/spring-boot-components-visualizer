@@ -43,14 +43,13 @@ public class CoreService {
 
     public String makeAll() {
         var jmsQueue1 = getJmsQueue();
-        List.of("0", "1").forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + "i"));
+        List.of("0", "1").forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + i));
         return null;
     }
 
     private String getJmsQueue() {
         JmsQueueService jmsQueueService1 = jmsQueueService;
         requireNonNull(jmsQueueService1);
-        var jmsQueue1 = jmsQueueService1.wrap("jmsQueue");
-        return jmsQueue1;
+        return jmsQueueService1.wrap("jmsQueue");
     }
 }

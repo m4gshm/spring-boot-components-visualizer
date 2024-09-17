@@ -101,10 +101,10 @@ cloud "output" as output #line.dotted;line:gray; {
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
       collections "<#transparent,transparent>|jms-private-queue|\n\
-<#transparent,transparent>|jmsQueue1|\n\
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
-<#transparent,transparent>|jmsQueueEvents3|" as output.jms.jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueueEvents3|\n\
+<#transparent,transparent>|{jmsQueue1}i|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }
   }
