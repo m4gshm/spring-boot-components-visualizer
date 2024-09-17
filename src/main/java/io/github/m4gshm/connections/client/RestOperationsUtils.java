@@ -75,7 +75,7 @@ public class RestOperationsUtils {
                 bootstrapMethods, method, callPointsCache);
 
         var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
-        var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, null);
+        var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler);
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
