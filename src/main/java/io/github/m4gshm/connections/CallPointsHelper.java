@@ -2,7 +2,6 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
-import io.github.m4gshm.connections.bytecode.InvokeDynamicUtils;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import org.apache.bcel.classfile.JavaClass;
@@ -13,6 +12,7 @@ import java.util.*;
 import java.util.function.Function;
 
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
+import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static java.util.Arrays.stream;
@@ -204,15 +204,19 @@ public class CallPointsHelper {
                                                        JavaClass javaClass, ConstantPoolGen constantPoolGen) {
         var instruction = next.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
-            var methodInfo = InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, javaClass, constantPoolGen);
+            var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, javaClass, constantPoolGen);
             if (methodInfo != null) {
                 var argumentTypes = Type.getArgumentTypes(methodInfo.getSignature());
+                var methodName = methodInfo.getName();
+                var ownerClassName = methodInfo.getObjectType().getName();
+                var referenceKind = methodInfo.getReferenceKind();
                 return CallPoint.builder()
-                        .methodName(methodInfo.name)
-                        .ownerClassName(methodInfo.objectType.getName())
+                        .methodName(methodName)
+                        .ownerClassName(ownerClassName)
                         .argumentTypes(argumentTypes)
                         .instruction(next)
                         .invokeDynamic(true)
+                        .referenceKind(referenceKind)
                         .build();
             }
         }

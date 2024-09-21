@@ -1,9 +1,7 @@
 package io.github.m4gshm.connections.bytecode;
 
 import lombok.Data;
-import lombok.Getter;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +26,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.of;
+import static lombok.AccessLevel.PRIVATE;
 import static org.apache.bcel.Const.*;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_MethodHandle;
 import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
@@ -35,43 +34,55 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 @Slf4j
 @UtilityClass
 public class InvokeDynamicUtils {
-    public static BootstrapMethodAndArguments getBootstrapMethodAndArguments(
+    public static BootstrapMethodHandlerAndArguments getBootstrapMethodAndArguments(
             INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods, @NonNull ConstantPoolGen constantPoolGen
     ) {
-        var cp = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
-        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(constantInvokeDynamic, cp);
+        var constantPool = constantPoolGen.getConstantPool();
+        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
+        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(constantInvokeDynamic, constantPool);
+        var bootstrapMethod = getBootstrapMethod(bootstrapMethods, constantInvokeDynamic);
+        var bootstrapMethodInfo = getBootstrapMethodInfo(bootstrapMethod, constantPool);
 
         var lookup = MethodHandles.lookup();
-        var bootstrapMethod = getBootstrapMethod(bootstrapMethods, constantInvokeDynamic);
-        var handler = getBootstrapMethodHandle(bootstrapMethod, lookup, cp);
-        var bootstrapMethodArguments = getBootstrapMethodArguments(invokeDynamicInterfaceInfo, bootstrapMethod, lookup, cp);
-        return new BootstrapMethodAndArguments(handler, bootstrapMethodArguments);
+        var handler = lookupReference(lookup,
+                bootstrapMethodInfo.referenceKind,
+                getClassByName(bootstrapMethodInfo.className),
+                bootstrapMethodInfo.methodName,
+                bootstrapMethodInfo.methodType);
+        var bootstrapMethodArguments = getBootstrapMethodArguments(invokeDynamicInterfaceInfo, bootstrapMethod,
+                lookup, constantPool, bootstrapMethodInfo);
+        return new BootstrapMethodHandlerAndArguments(handler, bootstrapMethodArguments);
     }
 
-    private static MethodHandle getBootstrapMethodHandle(BootstrapMethod bootstrapMethod, Lookup lookup, ConstantPool cp) {
-        var bootstrapMethodHandle = cp.getConstant(bootstrapMethod.getBootstrapMethodRef(),
-                CONSTANT_MethodHandle, ConstantMethodHandle.class);
-        var bootstrapMethodRef = cp.getConstant(bootstrapMethodHandle.getReferenceIndex(),
-                CONSTANT_Methodref, ConstantMethodref.class);
-        var bootstrapMethodNameAndType = cp.getConstant(bootstrapMethodRef.getNameAndTypeIndex(),
-                CONSTANT_NameAndType, ConstantNameAndType.class);
+    private static BootstrapMethodInfo getBootstrapMethodInfo(BootstrapMethod bootstrapMethod, ConstantPool constantPool) {
+        var index = bootstrapMethod.getBootstrapMethodRef();
+        var constantMethodHandle = constantPool.getConstant(index, CONSTANT_MethodHandle, ConstantMethodHandle.class);
+        var bootstrapMethodRef = getBootstrapMethodRef(constantMethodHandle.getReferenceIndex(), constantPool);
+        var className = bootstrapMethodRef.getClass(constantPool);
+        var bootstrapMethodNameAndType = getBootstrapMethodNameAndType(bootstrapMethodRef, constantPool);
+        var methodName = bootstrapMethodNameAndType.getName(constantPool);
+        var referenceKind = constantMethodHandle.getReferenceKind();
+        var methodType = fromMethodDescriptorString(bootstrapMethodNameAndType.getSignature(constantPool), null);
+        return new BootstrapMethodInfo(className, methodName, referenceKind, methodType);
+    }
 
-        var methodHandle = lookupReference(lookup, bootstrapMethodHandle.getReferenceKind(),
-                getClassByName(bootstrapMethodRef.getClass(cp)),
-                bootstrapMethodNameAndType.getName(cp),
-                fromMethodDescriptorString(bootstrapMethodNameAndType.getSignature(cp), null));
-        return methodHandle;
+    private static ConstantNameAndType getBootstrapMethodNameAndType(ConstantMethodref bootstrapMethodRef, ConstantPool cp) {
+        return cp.getConstant(bootstrapMethodRef.getNameAndTypeIndex(),
+                CONSTANT_NameAndType, ConstantNameAndType.class);
+    }
+
+    private static ConstantMethodref getBootstrapMethodRef(int referenceIndex, ConstantPool cp) {
+        return cp.getConstant(referenceIndex, CONSTANT_Methodref, ConstantMethodref.class);
     }
 
     private static List<Object> getBootstrapMethodArguments(InvokeDynamicInterfaceInfo invokeDynamicInterfaceInfo,
                                                             BootstrapMethod bootstrapMethod,
-                                                            Lookup lookup, ConstantPool cp) {
-        var bootstrabMethodArguments = getBootstrapMethodArguments(bootstrapMethod, cp).stream().map(constant -> {
+                                                            Lookup lookup, ConstantPool cp, BootstrapMethodInfo bootstrapMethodInfo) {
+        var bootstrabMethodArguments = getBootstrapMethodArgumentsFromConstants(bootstrapMethod, cp).stream().map(constant -> {
             if (constant instanceof ConstantMethodType) {
                 return newMethodType((ConstantMethodType) constant, cp);
             } else if (constant instanceof ConstantMethodHandle) {
-                return newMethodHandleAndLookup((ConstantMethodHandle) constant, cp, lookup);
+                return newMethodHandleAndLookup((ConstantMethodHandle) constant, lookup, cp);
             } else if (constant instanceof ConstantObject) {
                 return ((ConstantObject) constant).getConstantValue(cp);
             } else {
@@ -100,7 +111,7 @@ public class InvokeDynamicUtils {
         return bootstrapMethods.getBootstrapMethods()[constantInvokeDynamic.getBootstrapMethodAttrIndex()];
     }
 
-    public static List<Constant> getBootstrapMethodArguments(BootstrapMethod bootstrapMethod, ConstantPool cp) {
+    public static List<Constant> getBootstrapMethodArgumentsFromConstants(BootstrapMethod bootstrapMethod, ConstantPool cp) {
         return IntStream.of(bootstrapMethod.getBootstrapArguments()).mapToObj(cp::<Constant>getConstant).collect(toList());
     }
 
@@ -119,12 +130,12 @@ public class InvokeDynamicUtils {
     }
 
     private static MethodHandleAndLookup newMethodHandleAndLookup(ConstantMethodHandle constant,
-                                                                  ConstantPool cp, Lookup lookup) {
+                                                                  Lookup lookup, ConstantPool cp) {
         var methodInfo = requireNonNull(newMethodInfo(constant, cp), "cannot extract invokedynamic methodInfo");
 
         var methodType = fromMethodDescriptorString(methodInfo.getSignature(), null);
-        var targetClass = methodInfo.objectType;
-        var methodName = methodInfo.name;
+        var targetClass = methodInfo.getObjectType();
+        var methodName = methodInfo.getName();
         setAccessibleMethod(targetClass, methodName, methodType);
 
         var privateLookup = getPrivateLookup(targetClass, lookup);
@@ -205,33 +216,41 @@ public class InvokeDynamicUtils {
 
     public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, JavaClass javaClass,
                                                             ConstantPoolGen constantPoolGen) {
-        var cp = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
-        var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
+        var constantPool = constantPoolGen.getConstantPool();
+        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
         var bootstrapMethods = getBootstrapMethods(javaClass);
-        var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
-        var bootstrapMethodArguments = getBootstrapMethodArguments(bootstrapMethod, cp);
+        var bootstrapMethod = getBootstrapMethod(bootstrapMethods, constantInvokeDynamic);
+        var bootstrapMethodArguments = getBootstrapMethodArgumentsFromConstants(bootstrapMethod, constantPool);
         return bootstrapMethodArguments.stream().map(constant -> constant instanceof ConstantMethodHandle
-                ? newMethodInfo((ConstantMethodHandle) constant, cp) : null
+                ? newMethodInfo((ConstantMethodHandle) constant, constantPool) : null
         ).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    @Getter
-    @RequiredArgsConstructor
-    public static class BootstrapMethodAndArguments {
-        private final MethodHandle handler;
-        private final List<Object> bootstrapMethodArguments;
+    @Data
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class BootstrapMethodInfo {
+        String className;
+        String methodName;
+        int referenceKind;
+        MethodType methodType;
     }
 
     @Data
-    @FieldDefaults(makeFinal = true)
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public static class BootstrapMethodHandlerAndArguments {
+        MethodHandle handler;
+        List<Object> bootstrapMethodArguments;
+    }
+
+    @Data
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class InvokeDynamicInterfaceInfo {
-        public final String methodName;
-        public final MethodType methodType;
+        String methodName;
+        MethodType methodType;
     }
 
     @Data
-    @FieldDefaults(makeFinal = true)
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
     private static class MethodHandleAndLookup {
         MethodHandle methodHandle;
         Lookup lookup;

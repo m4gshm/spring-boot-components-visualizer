@@ -1,16 +1,21 @@
 package io.github.m4gshm.connections.bytecode;
 
 import lombok.Data;
+import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.Type;
 
 import java.util.Arrays;
 
+import static lombok.AccessLevel.PRIVATE;
+
 @Data
+@FieldDefaults(makeFinal = true, level = PRIVATE)
 public class MethodInfo {
-    public final Class<?> objectType;
-    public final String name;
-    public final String signature;
+    Class<?> objectType;
+    String name;
+    String signature;
+    int referenceKind;
 
     public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool cp) {
         var constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
@@ -19,14 +24,15 @@ public class MethodInfo {
             var methodName = constantNameAndType.getName(cp);
             var methodSignature = constantNameAndType.getSignature(cp);
             var targetClass = InvokeDynamicUtils.getClassByName(constantCP.getClass(cp));
-            return newMethodInfo(targetClass, methodName, methodSignature);
+            var referenceKind = constant.getReferenceKind();
+            return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
         } else {
             return null;
         }
     }
 
-    public static MethodInfo newMethodInfo(Class<?> objectClass, String methodName, String signature) {
-        return new MethodInfo(objectClass, methodName, signature);
+    public static MethodInfo newMethodInfo(Class<?> objectClass, String methodName, String signature, int referenceKind) {
+        return new MethodInfo(objectClass, methodName, signature, referenceKind);
     }
 
 //    public static MethodInfo newMethodInfo(EvalBytecode.Result.Variable methodArgument) {

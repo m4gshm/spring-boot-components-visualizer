@@ -1,12 +1,19 @@
 package io.github.m4gshm.connections.bytecode;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.Repository;
-import org.apache.bcel.classfile.*;
-import org.apache.bcel.generic.*;
+import org.apache.bcel.classfile.Code;
+import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.classfile.Method;
+import org.apache.bcel.classfile.Utility;
+import org.apache.bcel.generic.ConstantPoolGen;
+import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.InstructionList;
+import org.apache.bcel.generic.Type;
 import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
@@ -26,7 +33,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodAndArguments;
 import static java.util.Arrays.asList;
 import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
@@ -35,15 +41,6 @@ import static org.springframework.aop.support.AopUtils.getTargetClass;
 @Slf4j
 @UtilityClass
 public class EvalBytecodeUtils {
-
-    public static JavaClass lookupClass(Class<?> componentType) {
-        componentType = unproxy(componentType);
-        try {
-            return Repository.lookupClass(componentType);
-        } catch (ClassNotFoundException e) {
-            throw new EvalBytecodeException(e);
-        }
-    }
 
     public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
         ArrayList<JavaClass> classes = new ArrayList<>();
@@ -130,19 +127,20 @@ public class EvalBytecodeUtils {
         }
     }
 
-    static Result callBootstrapMethod(@NonNull Object[] arguments, @NonNull INVOKEDYNAMIC instruction,
-                                      InstructionHandle instructionHandle, @NonNull ConstantPoolGen constantPoolGen,
-                                      @NonNull BootstrapMethods bootstrapMethods, @NonNull InstructionHandle lastArgInstruction,
-                                      EvalBytecode evalBytecode, Result parent) {
-        var result = getBootstrapMethodAndArguments(instruction, bootstrapMethods, constantPoolGen);
-        CallSite metafactory;
+    static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
+                                      @NonNull InstructionHandle lastArgInstruction, EvalBytecode evalBytecode,
+                                      BootstrapMethodHandlerAndArguments methodAndArguments, Result parent) {
+        var callSite = getCallSite(methodAndArguments);
+        var lambdaInstance = callSite.dynamicInvoker();
+        return invoke(lambdaInstance, asList(arguments), instructionHandle, lastArgInstruction, evalBytecode, parent);
+    }
+
+    private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {
         try {
-            metafactory = (CallSite) result.getHandler().invokeWithArguments(result.getBootstrapMethodArguments());
+            return (CallSite) methodAndArguments.getHandler().invokeWithArguments(methodAndArguments.getBootstrapMethodArguments());
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
-        var lambdaInstance = metafactory.dynamicInvoker();
-        return invoke(lambdaInstance, asList(arguments), instructionHandle, lastArgInstruction, evalBytecode, parent);
     }
 
     public static Class<?>[] getArgumentClasses(Type[] argumentTypes) {

@@ -14,7 +14,10 @@ import io.github.m4gshm.connections.model.Component;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.classfile.*;
+import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.Code;
+import org.apache.bcel.classfile.LocalVariable;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
 import java.lang.invoke.MethodHandles;
@@ -29,6 +32,7 @@ import static io.github.m4gshm.connections.CallPointsHelper.getCallsHierarchy;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Illegal.Status.notAccessible;
+import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Illegal.Status.stub;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable.VarType.LocalVar;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable.VarType.MethodArg;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.constant;
@@ -41,15 +45,13 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newInv
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newUnsupportedEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodAndArguments;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
-import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.ofNullable;
 import static lombok.AccessLevel.*;
-import static org.apache.bcel.Const.CONSTANT_Class;
+import static org.apache.bcel.Const.*;
 import static org.apache.bcel.generic.Type.getType;
 
 @Slf4j
@@ -109,39 +111,6 @@ public class EvalBytecode {
         return calledMethodClass;
     }
 
-    private static void extracted(Result result, Map<MethodInfo, List<Result>> perMethod, Set<Result> uniques) {
-        if (!uniques.add(result)) {
-            return;
-        }
-        if (result instanceof ParentAware) {
-            var parentAware = (ParentAware<?>) result;
-            var parent = parentAware.getParent();
-            if (parent instanceof ContextAware) {
-                var parentMethodAware = (ContextAware) parent;
-                var method = parentMethodAware.getMethod();
-
-                var type = parentMethodAware.getComponent().getType();
-//                        method.getName()
-                var methodInfo = newMethodInfo(type, method.getName(), method.getSignature());
-                perMethod.computeIfAbsent(methodInfo, k -> new ArrayList<>()).add(result);
-            } else if (parent == null && result instanceof ContextAware) {
-                var contextAware = (ContextAware) result;
-                var method = contextAware.getMethod();
-                var type = contextAware.getComponent().getType();
-                var methodInfo = newMethodInfo(type, method.getName(), method.getSignature());
-                perMethod.computeIfAbsent(methodInfo, k -> new ArrayList<>()).add(result);
-            } else {
-
-                //log
-            }
-            if (parent != null) {
-                extracted(parent, perMethod, uniques);
-            }
-        } else {
-            //log
-        }
-    }
-
     private static Result getResult(Instruction instruction, InstructionHandle instructionHandle,
                                     ConstantPoolGen constantPoolGen,
                                     InstructionHandle lastInstruction, List<Result> results, Result parent) {
@@ -174,7 +143,7 @@ public class EvalBytecode {
                 populateArgumentsResults(argumentsResults, callContexts, (ContextAware) variant, i);
             }
             if (variant instanceof ParentAware) {
-                var parent = ((ParentAware<?>) variant).getParent();
+                var parent = ((ParentAware) variant).getParent();
                 if (parent instanceof Variable) {
                     var parentMethodArg = (Variable) parent;
                     while (parentMethodArg != null) {
@@ -567,8 +536,10 @@ public class EvalBytecode {
                     var filledVariants = resolveArguments(instruction, argumentsResults, unevaluatedHandler);
                     var results = filledVariants.stream().map(firstVariantResults -> {
                         var arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
-                        return callBootstrapMethod(arguments, (INVOKEDYNAMIC) instruction, instructionHandle,
-                                constantPoolGen, bootstrapMethods, invokeObject.lastInstruction, this, thisDelay);
+                        var bootstrapMethodAndArguments = getBootstrapMethodAndArguments((INVOKEDYNAMIC) instruction,
+                                bootstrapMethods, constantPoolGen);
+                        return callBootstrapMethod(arguments, instructionHandle, invokeObject.lastInstruction,
+                                this, bootstrapMethodAndArguments, thisDelay);
                     }).collect(toList());
                     var result = getResult(instruction, instructionHandle, constantPoolGen,
                             invokeObject.lastInstruction, results, thisDelay);
@@ -790,7 +761,7 @@ public class EvalBytecode {
             var variable = (Variable) value;
 
             var evalContext = variable.evalContext;
-            var component = evalContext.component;
+            var component = evalContext.getComponent();
 
             var dependentOnThisComponent = getDependentOnThisComponent(component);
 
@@ -800,16 +771,25 @@ public class EvalBytecode {
             var argumentTypes = evalContextMethod.getArgumentTypes();
             var methodCallPoints = getCallPoints(componentType, methodName, argumentTypes,
                     dependentOnThisComponent, value, unevaluatedHandler);
-            Map<Component, Map<CallPoint, List<Arguments>>> methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, value, unevaluatedHandler);
-            List<List<Result>> argumentVariants = getArgumentVariants(methodArgumentVariants, variable);
+            var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, value, unevaluatedHandler);
+            var argumentVariants = getArgumentVariants(methodArgumentVariants, variable);
 
             var valueVariants = argumentVariants.stream().map(variant -> {
                 var i = variable.getIndex() - 1;
-                return variant.get(i);
+                if (i >= variant.size()) {
+                    //logs
+                    return Result.stub(value, component, evalContextMethod);
+                } else {
+                    return variant.get(i);
+                }
             }).collect(toList());
 
             if (!valueVariants.isEmpty()) {
                 var resolved = valueVariants.stream().flatMap(variant -> {
+                    if (variant instanceof Result.Stub) {
+                        return Stream.of(variant);
+//                        return Stream.of(((Result.Stub) variant).stubbed);
+                    }
                     try {
                         return resolve(variant, unevaluatedHandler).stream();
                     } catch (UnevaluatedVariableException e) {
@@ -848,11 +828,11 @@ public class EvalBytecode {
         return callPoints.entrySet().stream().map(e -> {
             var dependentComponent = e.getKey();
             var callPointListMap = e.getValue();
-
             var variants = callPointListMap.entrySet().stream().map(ee -> {
                 var dependentMethod = ee.getKey();
                 var matchedCallPoints = ee.getValue();
-                return evalCallPointArgumentVariants(dependentComponent, dependentMethod, matchedCallPoints, parent, unevaluatedHandler);
+                return evalCallPointArgumentVariants(dependentComponent, dependentMethod, matchedCallPoints,
+                        parent, unevaluatedHandler);
             }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
             return entry(dependentComponent, variants);
         }).collect(toMap(Entry::getKey, Entry::getValue));
@@ -906,11 +886,7 @@ public class EvalBytecode {
         return methodCallVariants.values().stream()
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
-                .flatMap(e -> {
-                    var key = e.getKey();
-                    var value = e.getValue();
-                    return value.stream();
-                }).map(Arguments::getArguments)
+                .flatMap(e -> e.getValue().stream()).map(Arguments::getArguments)
                 .distinct().collect(toList());
     }
 
@@ -934,37 +910,37 @@ public class EvalBytecode {
         var javaClass = dependentMethod.getJavaClass();
         var dependentMethodMethod = dependentMethod.getMethod();
         var constantPoolGen = new ConstantPoolGen(dependentMethodMethod.getConstantPool());
+        var invokeInstruction = (InvokeInstruction) instruction;
         if (calledMethod.isInvokeDynamic()) {
             var eval = new EvalBytecode(dependentComponent, this.dependencyToDependentMap, constantPoolGen,
-                    JmsOperationsUtils.getBootstrapMethods(javaClass),
-                    dependentMethodMethod, this.callPointsCache);
+                    JmsOperationsUtils.getBootstrapMethods(javaClass), dependentMethodMethod, this.callPointsCache);
 
-//            InstructionHandle invokeDynamic = instructionHandle;//.getPrev();
-//            var bootstrapMethodAndArguments = getBootstrapMethodAndArguments(
-//                    (INVOKEDYNAMIC) invokeDynamic.getInstruction(), bootstrapMethods, constantPoolGen);
-//
-//            var usedMethodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) invokeDynamic.getInstruction(), javaClass, constantPoolGen);
-//
-//            Type[] expectedArgTypes = calledMethod.getArgumentTypes();
-
-            var invokeDynamicArgumentTypes = ((InvokeInstruction) instruction).getArgumentTypes(eval.constantPoolGen);
-            var removeCallObjectArg = false;
-            if (invokeDynamicArgumentTypes.length > 0) {
-                var first = invokeDynamicArgumentTypes[0];
-                removeCallObjectArg = calledMethod.getOwnerClassName().equals(first.getClassName());
-            }
-
+            var invokeDynamicArgumentTypes = invokeInstruction.getArgumentTypes(eval.constantPoolGen);
+            var referenceKind = calledMethod.getReferenceKind();
+            var removeCallObjectArg = referenceKind == REF_invokeSpecial
+                    || referenceKind == REF_invokeVirtual
+                    || referenceKind == REF_invokeInterface;
             var arguments = eval.evalArguments(instructionHandle, invokeDynamicArgumentTypes, unevaluatedHandler, parent);
             if (removeCallObjectArg) {
                 var withoutCallObject = new ArrayList<>(arguments.getArguments());
                 withoutCallObject.remove(0);
+                arguments = new Arguments(withoutCallObject, arguments.getLastArgInstruction());
+            }
 
-                var lastArgInstruction = arguments.getLastArgInstruction();
-                var nextArg = lastArgInstruction.getPrev();
-                var next = eval.eval(nextArg, unevaluatedHandler);
-                withoutCallObject.add(next);
-                arguments = new Arguments(withoutCallObject, next.getLastInstruction());
+            var expectedArgumentTypes = calledMethod.getArgumentTypes();
+            int consumedByInvokeDynamicArgumentsAmount = arguments.getArguments().size();
+            int functionalInterfaceArgumentsAmount = expectedArgumentTypes.length - consumedByInvokeDynamicArgumentsAmount;
+            if (functionalInterfaceArgumentsAmount > 0 && parent instanceof Variable) {
+                var parentVariable = (Variable) parent;
+                var index = parentVariable.index - 1;
+                if (index >= consumedByInvokeDynamicArgumentsAmount) {
+                    var stubbedArguments = new ArrayList<>(arguments.getArguments());
 
+                    for (var i = 0; i < functionalInterfaceArgumentsAmount; i++) {
+                        stubbedArguments.add(Result.stub(parent, dependentComponent, dependentMethod.getMethod()));
+                    }
+                    arguments = new Arguments(stubbedArguments, arguments.getLastArgInstruction());
+                }
             }
 
             return List.of(arguments);
@@ -972,7 +948,7 @@ public class EvalBytecode {
             var eval = new EvalBytecode(dependentComponent, this.dependencyToDependentMap, constantPoolGen,
                     JmsOperationsUtils.getBootstrapMethods(javaClass),
                     dependentMethodMethod, this.callPointsCache);
-            var argumentTypes = ((InvokeInstruction) instruction).getArgumentTypes(eval.constantPoolGen);
+            var argumentTypes = invokeInstruction.getArgumentTypes(eval.constantPoolGen);
             var arguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, parent);
             return List.of(arguments);
         }
@@ -1044,10 +1020,6 @@ public class EvalBytecode {
         }
     }
 
-    public interface MethodReturnResolver {
-        Object resolve(MethodInfo method);
-    }
-
     public interface Result {
 
 //        static Const constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
@@ -1115,6 +1087,10 @@ public class EvalBytecode {
             return new Multiple(values, firstInstruction, lastInstruction, parent);
         }
 
+        static Result stub(Result value, Component component, Method method) {
+            return new Stub(method, component, value);
+        }
+
         Object getValue(Function<Result, Result> unevaluatedHandler);
 
         InstructionHandle getFirstInstruction();
@@ -1127,15 +1103,40 @@ public class EvalBytecode {
             Component getComponent();
         }
 
-        interface ParentAware<T extends Result> {
-            T withParent(Result parent);
-
+        interface ParentAware {
             Result getParent();
         }
 
         @Data
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
+        class Stub implements Result, ContextAware {
+            Method method;
+            Component component;
+            Result stubbed;
+
+            @Override
+            public Object getValue(Function<Result, Result> unevaluatedHandler) {
+                if (unevaluatedHandler != null) {
+                    return unevaluatedHandler.apply(this).getValue(null);
+                }
+                throw new IllegalInvokeException(Set.of(stub), stubbed, stubbed.getFirstInstruction());
+            }
+
+            @Override
+            public InstructionHandle getFirstInstruction() {
+                return stubbed.getFirstInstruction();
+            }
+
+            @Override
+            public InstructionHandle getLastInstruction() {
+                return stubbed.getLastInstruction();
+            }
+
+        }
+
+        @Data
         @FieldDefaults(level = PRIVATE)
-        class Const implements Result, ContextAware, ParentAware<Const> {
+        class Const implements Result, ContextAware, ParentAware {
             @EqualsAndHashCode.Include
             final Object value;
             @EqualsAndHashCode.Include
@@ -1143,7 +1144,6 @@ public class EvalBytecode {
             @EqualsAndHashCode.Include
             final InstructionHandle lastInstruction;
             final EvalBytecode evalContext;
-            @With
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             final Result parent;
@@ -1171,12 +1171,11 @@ public class EvalBytecode {
 
         @Data
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        class Illegal implements Result, ParentAware<Illegal> {
+        class Illegal implements Result, ParentAware {
             Set<Status> status;
             Object source;
             InstructionHandle firstInstruction;
             InstructionHandle lastInstruction;
-            @With
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             Result parent;
@@ -1190,13 +1189,13 @@ public class EvalBytecode {
             }
 
             public enum Status {
-                notAccessible, notFound
+                notAccessible, notFound, stub
             }
         }
 
         @Data
         @FieldDefaults(makeFinal = true, level = PROTECTED)
-        class Variable implements ContextAware, ParentAware<Variable> {
+        class Variable implements ContextAware, ParentAware {
             VarType varType;
             EvalBytecode evalContext;
             int index;
@@ -1204,7 +1203,6 @@ public class EvalBytecode {
             Type type;
             InstructionHandle firstInstruction;
             InstructionHandle lastInstruction;
-            @With
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             Result parent;
@@ -1247,12 +1245,11 @@ public class EvalBytecode {
         @AllArgsConstructor
         @RequiredArgsConstructor
         @FieldDefaults(level = PRIVATE)
-        class Delay implements ContextAware, ParentAware<Delay> {
+        class Delay implements ContextAware, ParentAware {
             final EvalBytecode evalContext;
             final String description;
             final DelayFunction evaluator;
             final InstructionHandle firstInstruction;
-            @With
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             final Result parent;
@@ -1328,11 +1325,10 @@ public class EvalBytecode {
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        class Multiple implements Result, ParentAware<Multiple> {
+        class Multiple implements Result, ParentAware {
             List<Result> values;
             InstructionHandle firstInstruction;
             InstructionHandle lastInstruction;
-            @With
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             Result parent;

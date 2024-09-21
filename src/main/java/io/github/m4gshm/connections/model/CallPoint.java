@@ -29,4 +29,5 @@ public class CallPoint {
     @Builder.Default
     List<CallPoint> callPoints = List.of();
     boolean invokeDynamic;
+    int referenceKind;
 }

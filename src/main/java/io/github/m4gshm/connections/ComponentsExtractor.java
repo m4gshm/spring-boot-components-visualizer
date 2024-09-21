@@ -1,8 +1,6 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodArgumentResolver;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.MethodReturnResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -11,7 +9,6 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.generic.Type;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -614,27 +611,6 @@ public class ComponentsExtractor {
         @Builder.Default
         boolean ignoreNotFoundDependencies = true;
         boolean cropRootPackagePath;
-        @Builder.Default
-        MethodArgumentResolver methodArgumentResolver = newMethodArgumentResolver(StubFactory.DEFAULT);
-        @Builder.Default
-        MethodReturnResolver methodReturnResolver = newMethodReturnResolver(StubFactory.DEFAULT);
-
-        public static MethodArgumentResolver newMethodArgumentResolver(StubFactory stubFactory) {
-            return (method, argument) -> stubFactory.create(getType(argument.typeName));
-        }
-
-        public static MethodReturnResolver newMethodReturnResolver(StubFactory stubFactory) {
-            return method -> stubFactory.create(getType(Type.getReturnType(method.signature).getClassName()));
-        }
-
-        private static Class<?> getType(String typeName) {
-            try {
-                return Class.forName(typeName);
-            } catch (ClassNotFoundException e) {
-                //log
-                return null;
-            }
-        }
 
         @Data
         @Builder

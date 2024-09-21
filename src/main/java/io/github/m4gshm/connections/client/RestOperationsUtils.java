@@ -96,7 +96,13 @@ public class RestOperationsUtils {
     }
 
     public static Result stringifyVariable(Result result) {
-        if (result instanceof Variable) {
+        if (result instanceof Result.Stub) {
+            var s = (Result.Stub) result;
+            var stubbed = s.getStubbed();
+            if (stubbed != s) {
+                return stringifyVariable(stubbed);
+            }
+        } else if (result instanceof Variable) {
             var variable = (Variable) result;
             var type = variable.getType();
             if (String.class.getName().equals(type.getClassName())) {
