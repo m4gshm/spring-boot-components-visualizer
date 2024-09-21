@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.bytecode.InvokeDynamicUtils;
 import io.github.m4gshm.connections.bytecode.MethodInfo;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
@@ -24,7 +25,7 @@ public class CallPointsHelper {
     public static List<CallPoint> getCallsHierarchy(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
                                                     Function<Result, Result> unevaluatedHandler,
-                                                    Map<Component, List<CallPoint>> callPointsCache) {
+                                                    Map<Component, List<CallPoint>> callPointsCache, Result parent) {
 
 
         if (callPointsCache.containsKey(component)) {
@@ -41,7 +42,7 @@ public class CallPointsHelper {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             return stream(methods).map(method -> newCallPoint(component, componentType, method, javaClass,
-                    dependencyToDependentMap, unevaluatedHandler, constantPoolGen, callPointsCache));
+                    dependencyToDependentMap, unevaluatedHandler, constantPoolGen, callPointsCache, parent));
         }).collect(toList());
         callPointsCache.put(component, points);
         return points;
@@ -56,7 +57,7 @@ public class CallPointsHelper {
                                          Map<Component, List<Component>> dependencyToDependentMap,
                                          Function<Result, Result> unevaluatedHandler,
                                          ConstantPoolGen constantPoolGen,
-                                         Map<Component, List<CallPoint>> callPointsCache) {
+                                         Map<Component, List<CallPoint>> callPointsCache, Result parent) {
         var code = method.getCode();
 
 //        var callPoints = new ArrayList<CallPoint>();
@@ -80,8 +81,8 @@ public class CallPointsHelper {
 
                 var invokeInstruction = (InvokeInstruction) instruction;
                 var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler);
-                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, unevaluatedHandler);
+                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, parent);
+                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, unevaluatedHandler, parent);
 
                 var invokeDynamics = findInvokeDynamicCalls(
                         instructionHandle,
@@ -109,7 +110,7 @@ public class CallPointsHelper {
                             argument.getLastInstruction(),
                             argument.getFirstInstruction(),
                             javaClass, constantPoolGen);
-                    if (!invokeDynamics.isEmpty()) {
+                    if (!invokeDynamicCalls.isEmpty()) {
                         instrCallPoints.addAll(invokeDynamicCalls);
                     } else {
                         var invokeCalls = findInvokeCalls(
@@ -188,14 +189,15 @@ public class CallPointsHelper {
                 .build();
     }
 
-    public static List<CallPoint> findInvokeDynamicCalls(InstructionHandle parent, InstructionHandle fromLast,
-                                                         InstructionHandle toFirst, JavaClass javaClass,
+    public static List<CallPoint> findInvokeDynamicCalls(InstructionHandle parent, InstructionHandle toLast,
+                                                         InstructionHandle fromFirst, JavaClass javaClass,
                                                          ConstantPoolGen constantPoolGen) {
         var dest = new ArrayList<CallPoint>();
         ofNullable(newInvokeDynamicCallPoint(parent, parent, javaClass, constantPoolGen)).ifPresent(dest::add);
-        while (fromLast != null && fromLast.getPosition() >= toFirst.getPosition()) {
-            ofNullable(newInvokeDynamicCallPoint(parent, fromLast, javaClass, constantPoolGen)).ifPresent(dest::add);
-            fromLast = fromLast.getPrev();
+        //reverse loop
+        while (fromFirst != null && fromFirst.getPosition() >= toLast.getPosition()) {
+            ofNullable(newInvokeDynamicCallPoint(parent, fromFirst, javaClass, constantPoolGen)).ifPresent(dest::add);
+            fromFirst = fromFirst.getPrev();
         }
         return dest;
     }
@@ -212,6 +214,7 @@ public class CallPointsHelper {
                         .ownerClassName(methodInfo.objectType.getName())
                         .argumentTypes(argumentTypes)
                         .instruction(parent)
+                        .invokeDynamic(true)
                         .build();
             }
         }
@@ -248,11 +251,11 @@ public class CallPointsHelper {
                                                              ConstantPoolGen constantPoolGen,
                                                              JavaClass javaClass) {
         var cp = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, cp);
+        var constantInvokeDynamic = InvokeDynamicUtils.getConstantInvokeDynamic(instruction, cp);
         var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
         var bootstrapMethods = getBootstrapMethods(javaClass);
         var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
-        var bootstrapMethodArguments = getBootstrapMethodArguments(bootstrapMethod, cp);
+        var bootstrapMethodArguments = InvokeDynamicUtils.getBootstrapMethodArguments(bootstrapMethod, cp);
         return bootstrapMethodArguments.stream().map(constant -> constant instanceof ConstantMethodHandle
                 ? newMethodInfo((ConstantMethodHandle) constant, cp) : null
         ).filter(Objects::nonNull).findFirst().orElse(null);

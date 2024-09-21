@@ -28,4 +28,5 @@ public class CallPoint {
     JavaClass javaClass;
     @Builder.Default
     List<CallPoint> callPoints = List.of();
+    boolean invokeDynamic;
 }

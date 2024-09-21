@@ -18,7 +18,7 @@ public class MethodInfo {
             var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
             var methodName = constantNameAndType.getName(cp);
             var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = EvalBytecodeUtils.getClassByName(constantCP.getClass(cp));
+            var targetClass = InvokeDynamicUtils.getClassByName(constantCP.getClass(cp));
             return newMethodInfo(targetClass, methodName, methodSignature);
         } else {
             return null;
@@ -29,10 +29,10 @@ public class MethodInfo {
         return new MethodInfo(objectClass, methodName, signature);
     }
 
-    public static MethodInfo newMethodInfo(EvalBytecode.Result.MethodArgument methodArgument) {
-        return MethodInfo.newMethodInfo(methodArgument.getComponent().getType(),
-                methodArgument.getMethod().getName(), methodArgument.getMethod().getSignature());
-    }
+//    public static MethodInfo newMethodInfo(EvalBytecode.Result.Variable methodArgument) {
+//        return newMethodInfo(methodArgument.getComponent().getType(),
+//                methodArgument.getMethod().getName(), methodArgument.getMethod().getSignature());
+//    }
 
     @Override
     public String toString() {

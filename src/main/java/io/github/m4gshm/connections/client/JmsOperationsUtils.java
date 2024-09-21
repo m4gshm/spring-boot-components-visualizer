@@ -18,7 +18,6 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -90,7 +89,7 @@ public class JmsOperationsUtils {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = argumentsArguments.get(0);
-                var resolved = eval.resolve(first, unevaluatedHandler);
+                var resolved = eval.resolve(first, null);
                 return resolved.stream().map(v -> newJmsClient(JmsOperationsUtils.getDestination(v.getValue(unevaluatedHandler)),
                         direction, methodName)).collect(toList());
             }

@@ -2,7 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.MethodArgument;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
@@ -80,7 +80,7 @@ public class RestOperationsUtils {
 
         var path = argumentsArguments.get(0);
         var resolvedPaths = eval.resolve(path, unevaluatedHandler);
-        var paths = resolveVariableStrings(resolvedPaths, null);
+        var paths = resolveVariableStrings(resolvedPaths, unevaluatedHandler);
 
         final List<String> httpMethods;
         if ("exchange".equals(methodName)) {
@@ -96,12 +96,12 @@ public class RestOperationsUtils {
     }
 
     public static Result stringifyVariable(Result result) {
-        if (result instanceof MethodArgument) {
-            var methodArgument = (MethodArgument) result;
-            var type = methodArgument.getType();
+        if (result instanceof Variable) {
+            var variable = (Variable) result;
+            var type = variable.getType();
             if (String.class.getName().equals(type.getClassName())) {
-                var name = methodArgument.getName();
-                return constant("{" + name + "}", methodArgument.getLastInstruction(), methodArgument.getEvalContext()).withParent(result);
+                var name = variable.getName();
+                return constant("{" + name + "}", variable.getLastInstruction(), variable.getEvalContext(), result);
             }
         }
         return result;
@@ -113,21 +113,6 @@ public class RestOperationsUtils {
 
     private static List<String> resolveVariableStrings(Result result, Function<Result, Result> unevaluatedHandler) {
         return List.of(String.valueOf(result.getValue(unevaluatedHandler)));
-//        return (result instanceof Multiple
-//                ? ((Multiple) result).getResults().stream()
-//                : Stream.of(result)).map(result1 -> {
-//            if (result1 instanceof MethodArgument) {
-//                var methodArgument = (MethodArgument) result1;
-//                var localVariable = methodArgument.getLocalVariable();
-//                var name = localVariable.getName();
-//                return "{" + name + "}";
-//            } else if (result1 instanceof Illegal) {
-//                var illegal = (Illegal) result1;
-//                return "ERROR:" + illegal.getStatus().stream() + "," + illegal.getSource();
-//            } else {
-//                return String.valueOf(result1.getValue());
-//            }
-//        }).distinct().collect(toList());
     }
 
     private static String getHttpMethod(String methodName) {
