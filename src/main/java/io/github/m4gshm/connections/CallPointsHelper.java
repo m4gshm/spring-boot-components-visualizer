@@ -3,10 +3,8 @@ package io.github.m4gshm.connections;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.InvokeDynamicUtils;
-import io.github.m4gshm.connections.bytecode.MethodInfo;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
-import org.apache.bcel.classfile.ConstantMethodHandle;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
@@ -206,14 +204,14 @@ public class CallPointsHelper {
                                                        JavaClass javaClass, ConstantPoolGen constantPoolGen) {
         var instruction = next.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
-            var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, constantPoolGen, javaClass);
+            var methodInfo = InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, javaClass, constantPoolGen);
             if (methodInfo != null) {
                 var argumentTypes = Type.getArgumentTypes(methodInfo.getSignature());
                 return CallPoint.builder()
                         .methodName(methodInfo.name)
                         .ownerClassName(methodInfo.objectType.getName())
                         .argumentTypes(argumentTypes)
-                        .instruction(parent)
+                        .instruction(next)
                         .invokeDynamic(true)
                         .build();
             }
@@ -247,17 +245,4 @@ public class CallPointsHelper {
                 .build();
     }
 
-    private static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction,
-                                                             ConstantPoolGen constantPoolGen,
-                                                             JavaClass javaClass) {
-        var cp = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = InvokeDynamicUtils.getConstantInvokeDynamic(instruction, cp);
-        var bootstrapMethodAttrIndex = constantInvokeDynamic.getBootstrapMethodAttrIndex();
-        var bootstrapMethods = getBootstrapMethods(javaClass);
-        var bootstrapMethod = bootstrapMethods.getBootstrapMethods()[bootstrapMethodAttrIndex];
-        var bootstrapMethodArguments = InvokeDynamicUtils.getBootstrapMethodArguments(bootstrapMethod, cp);
-        return bootstrapMethodArguments.stream().map(constant -> constant instanceof ConstantMethodHandle
-                ? newMethodInfo((ConstantMethodHandle) constant, cp) : null
-        ).filter(Objects::nonNull).findFirst().orElse(null);
-    }
 }

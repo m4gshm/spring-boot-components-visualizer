@@ -41,6 +41,7 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newInv
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newUnsupportedEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodAndArguments;
+import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
@@ -926,7 +927,7 @@ public class EvalBytecode {
     }
 
     private List<Arguments> evalArguments(Component dependentComponent, CallPoint dependentMethod,
-                                    CallPoint calledMethod, Result parent, Function<Result, Result> unevaluatedHandler) {
+                                          CallPoint calledMethod, Result parent, Function<Result, Result> unevaluatedHandler) {
         var instructionHandle = calledMethod.getInstruction();
         var instruction = instructionHandle.getInstruction();
 
@@ -938,31 +939,35 @@ public class EvalBytecode {
                     JmsOperationsUtils.getBootstrapMethods(javaClass),
                     dependentMethodMethod, this.callPointsCache);
 
-            InstructionHandle invokeDynamic = instructionHandle.getPrev();
+//            InstructionHandle invokeDynamic = instructionHandle;//.getPrev();
+//            var bootstrapMethodAndArguments = getBootstrapMethodAndArguments(
+//                    (INVOKEDYNAMIC) invokeDynamic.getInstruction(), bootstrapMethods, constantPoolGen);
+//
+//            var usedMethodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) invokeDynamic.getInstruction(), javaClass, constantPoolGen);
+//
+//            Type[] expectedArgTypes = calledMethod.getArgumentTypes();
 
-            var bootstrapMethodAndArguments = getBootstrapMethodAndArguments(
-                    (INVOKEDYNAMIC) invokeDynamic.getInstruction(), bootstrapMethods, constantPoolGen);
+            var invokeDynamicArgumentTypes = ((InvokeInstruction) instruction).getArgumentTypes(eval.constantPoolGen);
+            var removeCallObjectArg = false;
+            if (invokeDynamicArgumentTypes.length > 0) {
+                var first = invokeDynamicArgumentTypes[0];
+                removeCallObjectArg = calledMethod.getOwnerClassName().equals(first.getClassName());
+            }
 
-            Result result = eval.eval(instructionHandle, unevaluatedHandler);
-            InstructionHandle lastInstruction = result.getLastInstruction();
+            var arguments = eval.evalArguments(instructionHandle, invokeDynamicArgumentTypes, unevaluatedHandler, parent);
+            if (removeCallObjectArg) {
+                var withoutCallObject = new ArrayList<>(arguments.getArguments());
+                withoutCallObject.remove(0);
 
-            var argumentTypes = ((InvokeInstruction) instruction).getArgumentTypes(eval.constantPoolGen);
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, parent);
+                var lastArgInstruction = arguments.getLastArgInstruction();
+                var nextArg = lastArgInstruction.getPrev();
+                var next = eval.eval(nextArg, unevaluatedHandler);
+                withoutCallObject.add(next);
+                arguments = new Arguments(withoutCallObject, next.getLastInstruction());
 
-            List<Arguments> collect = arguments.getArguments().stream().map(a -> {
-                InstructionHandle firstInstruction = a.getFirstInstruction();
-                Result invokeDynamicResult = eval(firstInstruction, unevaluatedHandler);
+            }
 
-                InvokeInstruction invokeInstruction = (InvokeInstruction) firstInstruction.getInstruction();
-                var argumentTypes1 = invokeInstruction.getArgumentTypes(eval.constantPoolGen);
-                var arguments1 = eval.evalArguments(firstInstruction, argumentTypes1, unevaluatedHandler, a);
-                var invokeObject = evalInvokeObject(invokeInstruction, arguments1, unevaluatedHandler, a);
-
-                return arguments1;
-            }).collect(toList());
-
-            return collect;
-//            throw new UnsupportedOperationException("evalArguments "+ instructionString);
+            return List.of(arguments);
         } else {
             var eval = new EvalBytecode(dependentComponent, this.dependencyToDependentMap, constantPoolGen,
                     JmsOperationsUtils.getBootstrapMethods(javaClass),
