@@ -240,11 +240,11 @@ public class EvalBytecode {
         });
     }
 
-    public Result eval(InstructionHandle instructionHandle, Function<Result, Result> unevaluatedHandler) {
-        return eval(instructionHandle, unevaluatedHandler, null);
+    public Result eval(InstructionHandle instructionHandle) {
+        return eval(instructionHandle, null);
     }
 
-    public Result eval(InstructionHandle instructionHandle, Function<Result, Result> unevaluatedHandler, Result parent) {
+    public Result eval(InstructionHandle instructionHandle, Result parent) {
         var instruction = instructionHandle.getInstruction();
         var consumeStack = instruction.consumeStack(constantPoolGen);
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
@@ -267,9 +267,9 @@ public class EvalBytecode {
                 return constant(getObject(), instructionHandle, this, parent);
             }
 
-            var aStoreResults = findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, unevaluatedHandler, parent);
+            var aStoreResults = findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, parent);
             if (aStoreResults.size() == 1) {
-                return delay(instructionText + " from stored invocation", instructionHandle, this, parent, (thisDelay, needResolve) -> {
+                return delay(instructionText + " from stored invocation", instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                     var storeResult = aStoreResults.get(0);
                     if (needResolve) {
                         var value = storeResult.getValue(unevaluatedHandler);
@@ -279,7 +279,7 @@ public class EvalBytecode {
                     }
                 });
             } else if (!aStoreResults.isEmpty()) {
-                return delay(instructionText + " from stored invocations", instructionHandle, this, parent, (thisDelay, needResolve) -> {
+                return delay(instructionText + " from stored invocations", instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                     return Result.multiple(aStoreResults, instructionHandle, instructionHandle, parent);
                 });
             }
@@ -308,7 +308,7 @@ public class EvalBytecode {
                         ? variable(this, localVariable, instructionHandle, parent)
                         : variable(this, localVarIndex, null, errType, instructionHandle, parent);
             } else {
-                return eval(getPrev(instructionHandle), unevaluatedHandler, parent);
+                return eval(getPrev(instructionHandle), parent);
             }
         } else if (instruction instanceof GETSTATIC) {
             var getStatic = (GETSTATIC) instruction;
@@ -318,21 +318,21 @@ public class EvalBytecode {
             return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, this, parent);
         } else if (instruction instanceof GETFIELD) {
             var getField = (GETFIELD) instruction;
-            var evalFieldOwnedObject = eval(getPrev(instructionHandle), unevaluatedHandler, parent);
+            var evalFieldOwnedObject = eval(getPrev(instructionHandle), parent);
             var fieldName = getField.getFieldName(constantPoolGen);
             var lastInstruction = evalFieldOwnedObject.getLastInstruction();
             return getFieldValue(evalFieldOwnedObject, fieldName, instructionHandle, lastInstruction,
-                    constantPoolGen, unevaluatedHandler, this, parent);
+                    constantPoolGen, this, parent);
         } else if (instruction instanceof CHECKCAST) {
-            return eval(getPrev(instructionHandle), unevaluatedHandler, parent);
+            return eval(getPrev(instructionHandle), parent);
         } else if (instruction instanceof InvokeInstruction) {
-            return evalInvoke(instructionHandle, (InvokeInstruction) instruction, unevaluatedHandler, parent);
+            return evalInvoke(instructionHandle, (InvokeInstruction) instruction, parent);
         } else if (instruction instanceof ANEWARRAY) {
             var anewarray = (ANEWARRAY) instruction;
             var loadClassType = anewarray.getLoadClassType(constantPoolGen);
             var arrayElementType = getClassByName(loadClassType.getClassName());
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
-                var size = eval(getPrev(instructionHandle), unevaluatedHandler, parent);
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
+                var size = eval(getPrev(instructionHandle), parent);
                 return constant(Array.newInstance(arrayElementType, (int) size.getValue(unevaluatedHandler)),
                         instructionHandle, size.getLastInstruction(), this, thisDelay);
             });
@@ -342,10 +342,10 @@ public class EvalBytecode {
             return constant(value, instructionHandle, this, parent);
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackConsumer) {
             //AASTORE
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
-                var element = eval(getPrev(instructionHandle), unevaluatedHandler, thisDelay);
-                var index = eval(getPrev(element.getLastInstruction()), unevaluatedHandler, thisDelay);
-                var array = eval(getPrev(index.getLastInstruction()), unevaluatedHandler, thisDelay);
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
+                var element = eval(getPrev(instructionHandle), thisDelay);
+                var index = eval(getPrev(element.getLastInstruction()), thisDelay);
+                var array = eval(getPrev(index.getLastInstruction()), thisDelay);
                 var lastInstruction = array.getLastInstruction();
                 if (needResolve) {
                     var result = array.getValue(unevaluatedHandler);
@@ -362,10 +362,10 @@ public class EvalBytecode {
             });
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackProducer) {
             //AALOAD
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
-                var element = eval(getPrev(instructionHandle), unevaluatedHandler, thisDelay);
-                var index = eval(getPrev(element.getLastInstruction()), unevaluatedHandler, thisDelay);
-                var array = eval(getPrev(index.getLastInstruction()), unevaluatedHandler, thisDelay);
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
+                var element = eval(getPrev(instructionHandle), thisDelay);
+                var index = eval(getPrev(element.getLastInstruction()), thisDelay);
+                var array = eval(getPrev(index.getLastInstruction()), thisDelay);
                 var result = array.getValue(unevaluatedHandler);
                 if (result instanceof Object[]) {
                     var a = (Object[]) result;
@@ -377,13 +377,13 @@ public class EvalBytecode {
                 }
             });
         } else if (instruction instanceof ARRAYLENGTH) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
-                var arrayRef = eval(getPrev(instructionHandle), unevaluatedHandler, thisDelay);
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
+                var arrayRef = eval(getPrev(instructionHandle), thisDelay);
                 var results = resolve(arrayRef, unevaluatedHandler);
                 return getResult(instruction, instructionHandle, constantPoolGen, arrayRef.getLastInstruction(), results, thisDelay);
             });
         } else if (instruction instanceof NEW) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var newInstance = (NEW) instruction;
                 var loadClassType = newInstance.getLoadClassType(constantPoolGen);
                 var type = getClassByName(loadClassType.getClassName());
@@ -391,9 +391,9 @@ public class EvalBytecode {
                 return result;
             });
         } else if (instruction instanceof DUP) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var prev = instructionHandle.getPrev();
-                var duplicated = eval(prev, unevaluatedHandler, thisDelay);
+                var duplicated = eval(prev, thisDelay);
                 return duplicated;
             });
         } else if (instruction instanceof DUP2) {
@@ -410,7 +410,7 @@ public class EvalBytecode {
                         onRemoveInstruction, constantPoolGen);
             }
             var prev = onRemove.getPrev();
-            return eval(prev, unevaluatedHandler, parent);
+            return eval(prev, parent);
         } else if (instruction instanceof POP2) {
 //            return eval(getPrev(instructionHandle), unevaluatedHandler);
         } else if (instruction instanceof ACONST_NULL) {
@@ -420,19 +420,19 @@ public class EvalBytecode {
             var current = instructionHandle;
             for (var i = consumeStack - 1; i >= 0; --i) {
                 current = getPrev(instructionHandle);
-                args[i] = eval(current, unevaluatedHandler, parent);
+                args[i] = eval(current, parent);
             }
             var lastInstruction = args.length > 0 ? args[0].getLastInstruction() : instructionHandle;
             //now only positive scenario
             //todo need evaluate negative branch
-            return eval(getPrev(lastInstruction), unevaluatedHandler, parent);
+            return eval(getPrev(lastInstruction), parent);
         } else if (instruction instanceof ConversionInstruction) {
             //I2L,
             var conv = (ConversionInstruction) instruction;
             var convertTo = conv.getType(constantPoolGen);
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 if (needResolve) {
-                    var result = eval(getPrev(instructionHandle), unevaluatedHandler, thisDelay);
+                    var result = eval(getPrev(instructionHandle), thisDelay);
                     var value = result.getValue(unevaluatedHandler);
                     var number = (Number) value;
                     var converted = convertNumberTo(number, convertTo);
@@ -447,7 +447,7 @@ public class EvalBytecode {
 
     private List<Result> findStoreInstructionResults(InstructionHandle instructionHandle,
                                                      List<LocalVariable> localVariables, int index,
-                                                     Function<Result, Result> unevaluatedHandler, Result parent) {
+                                                     Result parent) {
         var prev = getPrev(instructionHandle);
         var aStoreResults = new ArrayList<Result>(localVariables.size());
         var cycleCheck = new IdentityHashMap<InstructionHandle, InstructionHandle>();
@@ -461,7 +461,7 @@ public class EvalBytecode {
             if (instruction instanceof StoreInstruction) {
                 var store = (StoreInstruction) instruction;
                 if (store.getIndex() == index) {
-                    var storedInLocal = eval(prev, unevaluatedHandler, parent);
+                    var storedInLocal = eval(prev, parent);
                     aStoreResults.add(storedInLocal);
                     prev = getPrev(prev);
                 }
@@ -471,8 +471,7 @@ public class EvalBytecode {
         return aStoreResults;
     }
 
-    public Result evalInvoke(InstructionHandle instructionHandle, InvokeInstruction instruction,
-                             Function<Result, Result> unevaluatedHandler, Result parent) {
+    public Result evalInvoke(InstructionHandle instructionHandle, InvokeInstruction instruction, Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
         if (log.isTraceEnabled()) {
             log.trace("eval {}", instructionText);
@@ -482,7 +481,7 @@ public class EvalBytecode {
 
         var argumentClasses = getArgumentClasses(argumentTypes);
         if (instruction instanceof INVOKEVIRTUAL) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var evalArguments = evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, thisDelay);
                 var invokeObject = evalInvokeObject(instruction, evalArguments, unevaluatedHandler, thisDelay);
                 var lastInstruction = invokeObject.lastInstruction;
@@ -495,14 +494,22 @@ public class EvalBytecode {
                             arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate arguments of {}", instructionText, e);
-                            return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            if (unevaluatedHandler != null) {
+                                return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            } else {
+                                throw e;
+                            }
                         }
                         List<Result> objectCallsResolved;
                         try {
                             objectCallsResolved = resolve(invokeObject.object, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate 'this' object of {}", instructionText, e);
-                            return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            if (unevaluatedHandler != null) {
+                                return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            } else {
+                                throw e;
+                            }
                         }
                         var callsResult = objectCallsResolved.stream().map(firstResolved -> {
                             var object = firstResolved.getValue(unevaluatedHandler);
@@ -517,7 +524,7 @@ public class EvalBytecode {
                 }
             });
         } else if (instruction instanceof INVOKEINTERFACE) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var evalArguments = evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, thisDelay);
                 var invokeObject = evalInvokeObject(instruction, evalArguments, unevaluatedHandler, thisDelay);
                 var lastInstruction = invokeObject.lastInstruction;
@@ -531,14 +538,22 @@ public class EvalBytecode {
                             arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate arguments of {}", instructionText, e);
-                            return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            if (unevaluatedHandler != null) {
+                                return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            } else {
+                                throw e;
+                            }
                         }
                         List<Result> objectCallsResolved;
                         try {
                             objectCallsResolved = resolve(invokeObject.object, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate 'this' object of {}", instructionText, e);
-                            return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            if (unevaluatedHandler != null) {
+                                return Stream.of(unevaluatedHandler.apply(thisDelay));
+                            } else {
+                                throw e;
+                            }
                         }
                         var callsResult = objectCallsResolved.stream().map(firstResolved -> {
                             var object = firstResolved.getValue(unevaluatedHandler);
@@ -553,7 +568,7 @@ public class EvalBytecode {
                 }
             });
         } else if (instruction instanceof INVOKEDYNAMIC) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var evalArguments = evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, thisDelay);
                 var invokeObject = evalInvokeObject(instruction, evalArguments, unevaluatedHandler, thisDelay);
                 var lastInstruction = invokeObject.lastInstruction;
@@ -566,7 +581,11 @@ public class EvalBytecode {
                             arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate arguments of {}", instructionText, e);
-                            return unevaluatedHandler.apply(thisDelay);
+                            if (unevaluatedHandler != null) {
+                                return unevaluatedHandler.apply(thisDelay);
+                            } else {
+                                throw e;
+                            }
                         }
                         var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments((INVOKEDYNAMIC) instruction,
                                 bootstrapMethods, constantPoolGen);
@@ -581,7 +600,7 @@ public class EvalBytecode {
                 }
             });
         } else if (instruction instanceof INVOKESTATIC) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var evalArguments = evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, thisDelay);
                 var invokeObject = evalInvokeObject(instruction, evalArguments, unevaluatedHandler, thisDelay);
                 var lastInstruction = invokeObject.lastInstruction;
@@ -594,7 +613,11 @@ public class EvalBytecode {
                             arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate arguments of {}", instructionText, e);
-                            return unevaluatedHandler.apply(thisDelay);
+                            if (unevaluatedHandler != null) {
+                                return unevaluatedHandler.apply(thisDelay);
+                            } else {
+                                throw e;
+                            }
                         }
                         var type = getClassByName(instruction.getClassName(constantPoolGen));
                         return callMethod(null, type, methodName, argumentClasses, arguments, instructionHandle,
@@ -607,7 +630,7 @@ public class EvalBytecode {
                 }
             });
         } else if (instruction instanceof INVOKESPECIAL) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve) -> {
+            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
                 var evalArguments = evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, thisDelay);
                 var invokeObject = evalInvokeObject(instruction, evalArguments, unevaluatedHandler, thisDelay);
                 var lastInstruction = invokeObject.lastInstruction;
@@ -620,7 +643,11 @@ public class EvalBytecode {
                             arguments = getArguments(argumentClasses, firstVariantResults, unevaluatedHandler);
                         } catch (UnevaluatedVariableException e) {
                             log.info("cannot evaluate arguments of {}", instructionText, e);
-                            return unevaluatedHandler.apply(thisDelay);
+                            if (unevaluatedHandler != null) {
+                                return unevaluatedHandler.apply(thisDelay);
+                            } else {
+                                throw e;
+                            }
                         }
                         var invokeSpec = (INVOKESPECIAL) instruction;
                         var lookup = MethodHandles.lookup();
@@ -669,7 +696,7 @@ public class EvalBytecode {
             objectCallResult = null;
         } else if (invokeInstruction instanceof INVOKEVIRTUAL || invokeInstruction instanceof INVOKEINTERFACE) {
             var prev = getPrev(lastArgInstruction);
-            objectCallResult = eval(prev, unevaluatedHandler, parent);
+            objectCallResult = eval(prev, parent);
             firstInstruction = objectCallResult.getFirstInstruction();
             lastInstruction = objectCallResult.getLastInstruction();
         } else {
@@ -856,7 +883,7 @@ public class EvalBytecode {
             }
         } else if (value instanceof Delay) {
             try {
-                return resolve(((Delay) value).getDelayed(true), unevaluatedHandler);
+                return resolve(((Delay) value).getDelayed(true, unevaluatedHandler), unevaluatedHandler);
             } catch (UnevaluatedVariableException e) {
                 log("resolve delay invocation", e);
                 return List.of(value);
@@ -1019,7 +1046,7 @@ public class EvalBytecode {
         var current = instructionHandle;
         for (int i = argumentsAmount; i > 0; i--) {
             var prev = getPrev(current);
-            var eval = eval(prev, unevaluatedHandler, parent);
+            var eval = eval(prev, parent);
             var valIndex = i - 1;
             values[valIndex] = eval;
             var lastInstruction = eval.getLastInstruction();
@@ -1314,7 +1341,7 @@ public class EvalBytecode {
 
             @Override
             public Object getValue(Function<Result, Result> unevaluatedHandler) {
-                return getDelayed(true).getValue(unevaluatedHandler);
+                return getDelayed(true, unevaluatedHandler).getValue(unevaluatedHandler);
             }
 
             public InstructionHandle getFirstInstruction() {
@@ -1325,20 +1352,20 @@ public class EvalBytecode {
                 if (evaluated) {
                     return lastInstruction;
                 }
-                var delayed = getDelayed(false);
+                var delayed = getDelayed(false, null);
                 return delayed.getLastInstruction();
             }
 
-            public Result getDelayed(Boolean resolve) {
+            public Result getDelayed(Boolean resolve, Function<Result, Result> unevaluatedHandler) {
                 Result result = this.result;
                 var evaluate = !resolve;
                 if (resolve && !resolved) {
-                    result = evaluator.call(this, true);
+                    result = evaluator.call(this, true, unevaluatedHandler);
                     evaluated(result.getLastInstruction());
                     this.result = result;
                     resolved = true;
                 } else if (evaluate && !evaluated) {
-                    result = evaluator.call(this, false);
+                    result = evaluator.call(this, false, null);
                     this.result = result;
                     evaluated(result.getLastInstruction());
                 }
@@ -1372,7 +1399,7 @@ public class EvalBytecode {
 
             @FunctionalInterface
             public interface DelayFunction {
-                Result call(Delay delay, Boolean needResolve);
+                Result call(Delay delay, Boolean needResolve, Function<Result, Result> unevaluatedHandler);
             }
         }
 

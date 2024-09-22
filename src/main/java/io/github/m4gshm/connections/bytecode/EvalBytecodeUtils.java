@@ -27,8 +27,6 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
@@ -158,10 +156,10 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       Function<Result, Result> unevaluatedHandler, EvalBytecode evalBytecode,
+                                       EvalBytecode evalBytecode,
                                        Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        return delay(instructionText, instructionHandle, evalBytecode, parent, (thisDelay, needResolve) -> {
+        return delay(instructionText, instructionHandle, evalBytecode, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
             var object = result.getValue(unevaluatedHandler);
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
                     lastInstruction, evalBytecode, thisDelay);

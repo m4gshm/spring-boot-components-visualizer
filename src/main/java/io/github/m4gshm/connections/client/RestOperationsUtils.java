@@ -44,8 +44,7 @@ public class RestOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractHttpMethods(component, dependencyToDependentMap, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method,
-                        callPointsCache)
+                        constantPoolGen, bootstrapMethods, method, callPointsCache)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());

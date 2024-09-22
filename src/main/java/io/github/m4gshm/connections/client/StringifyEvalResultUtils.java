@@ -73,7 +73,11 @@ public class StringifyEvalResultUtils {
     }
 
     public static Result forceStringifyVariables(Result result) {
-        if (result instanceof Result.Variable) {
+        if (result instanceof Result.Stub) {
+            var s = (Result.Stub) result;
+            var stubbed = s.getStubbed();
+            return forceStringifyVariables(stubbed);
+        } else if (result instanceof Result.Variable) {
             var variable = (Result.Variable) result;
             var name = variable.getName();
             return constant("{" + name + "}", variable.getLastInstruction(), variable.getEvalContext(), result);

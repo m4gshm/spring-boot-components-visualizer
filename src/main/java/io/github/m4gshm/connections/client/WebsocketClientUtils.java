@@ -76,18 +76,18 @@ public class WebsocketClientUtils {
         var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
                 bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            var value = evalEngine.eval(evalEngine.getPrev(instructionHandle), null);
+            var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             return evalEngine.resolve(value, STRINGIFY_UNRESOLVED).stream().map(result -> result.getValue(STRINGIFY_UNRESOLVED)).map(o -> {
-                        if (o instanceof URI) {
-                            var uri = (URI) o;
-                            return uri.toString();
-                        } else {
-                            return o != null ? o.toString() : null;
-                        }
-                    }).collect(toList());
+                if (o instanceof URI) {
+                    var uri = (URI) o;
+                    return uri.toString();
+                } else {
+                    return o != null ? o.toString() : null;
+                }
+            }).collect(toList());
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle), null);
-            var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()), null);
+            var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
+            var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
             return evalEngine.resolve(utiTemplate, STRINGIFY_UNRESOLVED).stream()
                     .map(result -> result.getValue(STRINGIFY_UNRESOLVED)).map(String::valueOf).collect(toList());
         } else {
