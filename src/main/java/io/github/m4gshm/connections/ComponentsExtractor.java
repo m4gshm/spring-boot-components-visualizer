@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.client.RestOperationsUtils;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -39,7 +40,6 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.lookupClas
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
-import static io.github.m4gshm.connections.client.RestOperationsUtils.stringifyVariable;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
@@ -372,9 +372,8 @@ public class ComponentsExtractor {
                                                  Map<Component, List<CallPoint>> callPointsCache) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
-            var jmsClients = extractJmsClients(component,
-                    dependencyToDependentMap,
-                    result -> stringifyVariable(result), callPointsCache);
+            var jmsClients = extractJmsClients(component, dependencyToDependentMap,
+                    (result, expected) -> RestOperationsUtils.stringifyVariable(result), callPointsCache);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
@@ -389,10 +388,7 @@ public class ComponentsExtractor {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
             var wsClientUris = extractWebsocketClientUris(component,
-                    dependencyToDependentMap,
-                    result -> {
-                        return stringifyVariable(result);
-                    }, callPointsCache);
+                    dependencyToDependentMap, (result, expected) -> RestOperationsUtils.stringifyVariable(result), callPointsCache);
 
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
@@ -414,7 +410,7 @@ public class ComponentsExtractor {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(component, dependencyToDependentMap,
-                    result -> stringifyVariable(result), callPointsCache);
+                    (result, expected) -> RestOperationsUtils.stringifyVariable(result), callPointsCache);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)

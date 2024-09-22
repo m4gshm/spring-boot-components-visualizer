@@ -369,7 +369,7 @@ public class ComponentsExtractorUtils {
         } else if (log.isDebugEnabled()) {
             log.debug("{} {}", errMsg, componentName, e);
         } else {
-            log.info("{} {}, message '{}'", errMsg, componentName, e.getLocalizedMessage());
+            log.warn("{} {}, message '{}'", errMsg, componentName, e.getLocalizedMessage());
         }
     }
 

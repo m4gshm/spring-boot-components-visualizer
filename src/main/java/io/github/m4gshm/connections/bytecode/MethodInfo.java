@@ -23,7 +23,7 @@ public class MethodInfo {
             var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
             var methodName = constantNameAndType.getName(cp);
             var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = InvokeDynamicUtils.getClassByName(constantCP.getClass(cp));
+            var targetClass = EvalBytecodeUtils.getClassByName(constantCP.getClass(cp));
             var referenceKind = constant.getReferenceKind();
             return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
         } else {

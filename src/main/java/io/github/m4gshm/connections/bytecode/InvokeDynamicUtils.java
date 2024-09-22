@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
@@ -38,15 +37,14 @@ public class InvokeDynamicUtils {
             INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods, @NonNull ConstantPoolGen constantPoolGen
     ) {
         var constantPool = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
-        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(constantInvokeDynamic, constantPool);
-        var bootstrapMethod = getBootstrapMethod(bootstrapMethods, constantInvokeDynamic);
+        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(instruction, constantPool);
+        var bootstrapMethod = getBootstrapMethod(instruction, bootstrapMethods, constantPool);
         var bootstrapMethodInfo = getBootstrapMethodInfo(bootstrapMethod, constantPool);
 
         var lookup = MethodHandles.lookup();
         var handler = lookupReference(lookup,
                 bootstrapMethodInfo.referenceKind,
-                getClassByName(bootstrapMethodInfo.className),
+                EvalBytecodeUtils.getClassByName(bootstrapMethodInfo.className),
                 bootstrapMethodInfo.methodName,
                 bootstrapMethodInfo.methodType);
         var bootstrapMethodArguments = getBootstrapMethodArguments(invokeDynamicInterfaceInfo, bootstrapMethod,
@@ -107,7 +105,10 @@ public class InvokeDynamicUtils {
         return bootstrabMethodArguments;
     }
 
-    static BootstrapMethod getBootstrapMethod(BootstrapMethods bootstrapMethods, ConstantInvokeDynamic constantInvokeDynamic) {
+
+    private static BootstrapMethod getBootstrapMethod(INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods,
+                                                      ConstantPool constantPool) {
+        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
         return bootstrapMethods.getBootstrapMethods()[constantInvokeDynamic.getBootstrapMethodAttrIndex()];
     }
 
@@ -115,18 +116,17 @@ public class InvokeDynamicUtils {
         return IntStream.of(bootstrapMethod.getBootstrapArguments()).mapToObj(cp::<Constant>getConstant).collect(toList());
     }
 
-    public static InvokeDynamicInterfaceInfo getInvokeDynamicInterfaceInfo(
-            ConstantInvokeDynamic constantInvokeDynamic, ConstantPool cp
-    ) {
+    private static InvokeDynamicInterfaceInfo getInvokeDynamicInterfaceInfo(INVOKEDYNAMIC instruction, ConstantPool constantPool) {
+        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
         int nameAndTypeIndex = constantInvokeDynamic.getNameAndTypeIndex();
-        var constantNameAndType = cp.getConstant(nameAndTypeIndex, ConstantNameAndType.class);
-        var interfaceMethodName = constantNameAndType.getName(cp);
-        var factoryMethod = fromMethodDescriptorString(constantNameAndType.getSignature(cp), null);
+        var constantNameAndType = constantPool.getConstant(nameAndTypeIndex, ConstantNameAndType.class);
+        var interfaceMethodName = constantNameAndType.getName(constantPool);
+        var factoryMethod = fromMethodDescriptorString(constantNameAndType.getSignature(constantPool), null);
         return new InvokeDynamicInterfaceInfo(interfaceMethodName, factoryMethod);
     }
 
-    public static ConstantInvokeDynamic getConstantInvokeDynamic(INVOKEDYNAMIC instruction, ConstantPool cp) {
-        return cp.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
+    private static ConstantInvokeDynamic getConstantInvokeDynamic(INVOKEDYNAMIC instruction, ConstantPool constantPool) {
+        return constantPool.getConstant(instruction.getIndex(), CONSTANT_InvokeDynamic, ConstantInvokeDynamic.class);
     }
 
     private static MethodHandleAndLookup newMethodHandleAndLookup(ConstantMethodHandle constant,
@@ -206,20 +206,15 @@ public class InvokeDynamicUtils {
         return fromMethodDescriptorString(cp.getConstantUtf8(constantMethodType.getDescriptorIndex()).getBytes(), null);
     }
 
-    static Class<?> getClassByName(String className) {
-        try {
-            return classByName(className);
-        } catch (ClassNotFoundException e) {
-            throw new EvalBytecodeException(e);
-        }
-    }
-
     public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, JavaClass javaClass,
                                                             ConstantPoolGen constantPoolGen) {
+        return getInvokeDynamicUsedMethodInfo(instruction, getBootstrapMethods(javaClass), constantPoolGen);
+    }
+
+    public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods,
+                                                            ConstantPoolGen constantPoolGen) {
         var constantPool = constantPoolGen.getConstantPool();
-        var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
-        var bootstrapMethods = getBootstrapMethods(javaClass);
-        var bootstrapMethod = getBootstrapMethod(bootstrapMethods, constantInvokeDynamic);
+        var bootstrapMethod = getBootstrapMethod(instruction, bootstrapMethods, constantPool);
         var bootstrapMethodArguments = getBootstrapMethodArgumentsFromConstants(bootstrapMethod, constantPool);
         return bootstrapMethodArguments.stream().map(constant -> constant instanceof ConstantMethodHandle
                 ? newMethodInfo((ConstantMethodHandle) constant, constantPool) : null

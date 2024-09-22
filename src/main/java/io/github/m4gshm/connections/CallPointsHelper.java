@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
+import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
@@ -71,8 +72,9 @@ public class CallPointsHelper {
                     || instruction instanceof INVOKEDYNAMIC) {
 
                 var instrCallPoints = new LinkedHashSet<CallPoint>();
+                var bootstrapMethods = getBootstrapMethods(javaClass);
                 var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                        getBootstrapMethods(javaClass), method, callPointsCache);
+                        bootstrapMethods, method, callPointsCache);
 
                 //debug info
                 var instructionString = instruction.toString(constantPoolGen.getConstantPool());
@@ -86,7 +88,7 @@ public class CallPointsHelper {
                         instructionHandle,
                         invokeObject.getLastInstruction(),
                         invokeObject.getFirstInstruction(),
-                        javaClass, constantPoolGen
+                        bootstrapMethods, constantPoolGen
                 );
                 if (!invokeDynamics.isEmpty()) {
                     instrCallPoints.addAll(invokeDynamics);
@@ -107,7 +109,7 @@ public class CallPointsHelper {
                             instructionHandle,
                             argument.getLastInstruction(),
                             argument.getFirstInstruction(),
-                            javaClass, constantPoolGen);
+                            bootstrapMethods, constantPoolGen);
                     if (!invokeDynamicCalls.isEmpty()) {
                         instrCallPoints.addAll(invokeDynamicCalls);
                     } else {
@@ -187,24 +189,24 @@ public class CallPointsHelper {
                 .build();
     }
 
-    public static List<CallPoint> findInvokeDynamicCalls(InstructionHandle parent, InstructionHandle toLast,
-                                                         InstructionHandle fromFirst, JavaClass javaClass,
-                                                         ConstantPoolGen constantPoolGen) {
+    public static List<CallPoint> findInvokeDynamicCalls(InstructionHandle parent,
+                                                         InstructionHandle toLast, InstructionHandle fromFirst,
+                                                         BootstrapMethods bootstrapMethods, ConstantPoolGen constantPoolGen) {
         var dest = new ArrayList<CallPoint>();
-        ofNullable(newInvokeDynamicCallPoint(parent, parent, javaClass, constantPoolGen)).ifPresent(dest::add);
+        ofNullable(newInvokeDynamicCallPoint(parent, bootstrapMethods, constantPoolGen)).ifPresent(dest::add);
         //reverse loop
         while (fromFirst != null && fromFirst.getPosition() >= toLast.getPosition()) {
-            ofNullable(newInvokeDynamicCallPoint(parent, fromFirst, javaClass, constantPoolGen)).ifPresent(dest::add);
+            ofNullable(newInvokeDynamicCallPoint(fromFirst, bootstrapMethods, constantPoolGen)).ifPresent(dest::add);
             fromFirst = fromFirst.getPrev();
         }
         return dest;
     }
 
-    private static CallPoint newInvokeDynamicCallPoint(InstructionHandle parent, InstructionHandle next,
-                                                       JavaClass javaClass, ConstantPoolGen constantPoolGen) {
+    private static CallPoint newInvokeDynamicCallPoint(InstructionHandle next, BootstrapMethods bootstrapMethods,
+                                                       ConstantPoolGen constantPoolGen) {
         var instruction = next.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
-            var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, javaClass, constantPoolGen);
+            var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
             if (methodInfo != null) {
                 var argumentTypes = Type.getArgumentTypes(methodInfo.getSignature());
                 var methodName = methodInfo.getName();

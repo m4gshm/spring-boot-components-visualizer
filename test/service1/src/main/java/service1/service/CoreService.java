@@ -43,7 +43,7 @@ public class CoreService {
 
     public String makeAll() {
         var jmsQueue1 = getJmsQueue();
-        List.of("0", "1").forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + i));
+        List.of(0, 1).forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + i));
         return null;
     }
 

@@ -27,10 +27,12 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
+import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
 import static java.util.Arrays.asList;
@@ -149,14 +151,15 @@ public class EvalBytecodeUtils {
             var argumentType = argumentTypes[i];
             var rawClassName = argumentType.getClassName();
             var className = rawClassName.replace("/", ".");
-            args[i] = InvokeDynamicUtils.getClassByName(className);
+            args[i] = getClassByName(className);
         }
         return args;
     }
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       Function<Result, Result> unevaluatedHandler, EvalBytecode evalBytecode, Result parent) {
+                                       Function<Result, Result> unevaluatedHandler, EvalBytecode evalBytecode,
+                                       Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
         return delay(instructionText, instructionHandle, evalBytecode, parent, (thisDelay, needResolve) -> {
             var object = result.getValue(unevaluatedHandler);
@@ -212,6 +215,14 @@ public class EvalBytecodeUtils {
     public static String toString(Method method) {
         final String access = Utility.accessToString(method.getAccessFlags());
         return Utility.methodSignatureToString(method.getSignature(), method.getName(), access, true, method.getLocalVariableTable());
+    }
+
+    public static Class<?> getClassByName(String className) {
+        try {
+            return classByName(className);
+        } catch (ClassNotFoundException e) {
+            throw new EvalBytecodeException(e);
+        }
     }
 
     @FunctionalInterface

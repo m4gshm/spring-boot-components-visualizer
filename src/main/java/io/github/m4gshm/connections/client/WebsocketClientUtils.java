@@ -13,21 +13,24 @@ import org.springframework.web.socket.client.WebSocketClient;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.client.JmsOperationsUtils.withExpected;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
+import static org.apache.bcel.generic.Type.getType;
 
 @Slf4j
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
                                                           Map<Component, List<Component>> dependentOnMap,
-                                                          Function<Result, Result> unevaluatedHandler,
+                                                          BiFunction<Result, Type, Result> unevaluatedHandler,
                                                           Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -66,7 +69,7 @@ public class WebsocketClientUtils {
                                                   Map<Component, List<Component>> dependentOnMap,
                                                   InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  Function<Result, Result> unevaluatedHandler,
+                                                  BiFunction<Result, Type, Result> unevaluatedHandler,
                                                   Map<Component, List<CallPoint>> callPointsCache) throws ClassNotFoundException,
             InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
@@ -78,23 +81,23 @@ public class WebsocketClientUtils {
         var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
                 bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            //todo use eva.getPrev
-            var value = evalEngine.eval(instructionHandle.getPrev(), unevaluatedHandler);
-            return evalEngine.resolve(value, unevaluatedHandler).stream().map(result->result.getValue(unevaluatedHandler)).map(o -> {
-                if (o instanceof URI) {
-                    var uri = (URI) o;
-                    return uri.toString();
-                } else {
-                    return o != null ? o.toString() : null;
-                }
-            }).collect(toList());
+            var resolver = withExpected(unevaluatedHandler, Object.class);
+            var value = evalEngine.eval(evalEngine.getPrev(instructionHandle), resolver);
+            return evalEngine.resolve(value, resolver).stream()
+                    .map(result -> result.getValue(resolver)).map(o -> {
+                        if (o instanceof URI) {
+                            var uri = (URI) o;
+                            return uri.toString();
+                        } else {
+                            return o != null ? o.toString() : null;
+                        }
+                    }).collect(toList());
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            //todo use eva.getPrev
-            var uriTemplates = evalEngine.eval(instructionHandle.getPrev(), unevaluatedHandler);
-            //todo use eva.getPrev
-            var utiTemplate = evalEngine.eval(uriTemplates.getLastInstruction().getPrev(), unevaluatedHandler);
-            return evalEngine.resolve(utiTemplate, unevaluatedHandler).stream()
-                    .map(result -> result.getValue(unevaluatedHandler)).map(String::valueOf).collect(toList());
+            var resolver = withExpected(unevaluatedHandler, String.class);
+            var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle), resolver);
+            var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()), resolver);
+            return evalEngine.resolve(utiTemplate, resolver).stream()
+                    .map(result -> result.getValue(resolver)).map(String::valueOf).collect(toList());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
