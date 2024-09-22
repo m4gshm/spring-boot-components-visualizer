@@ -7,8 +7,8 @@ import lombok.Getter;
 public class UnevaluatedVariableException extends EvalBytecodeException {
     private final Variable variable;
 
-    public UnevaluatedVariableException(Variable variable) {
-        super("unresolved " + variable);
+    public UnevaluatedVariableException(String message, Variable variable) {
+        super(message + " " + variable);
         this.variable = variable;
     }
 }

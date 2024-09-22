@@ -28,6 +28,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
+import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRINGIFY_UNRESOLVED;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -43,7 +44,6 @@ public class JmsOperationsUtils {
 
     public static List<JmsClient> extractJmsClients(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
-                                                    BiFunction<Result, Type, Result> unevaluatedHandler,
                                                     Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -57,7 +57,7 @@ public class JmsOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(component, dependencyToDependentMap, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, unevaluatedHandler, callPointsCache).stream()
+                        constantPoolGen, bootstrapMethods, method, callPointsCache).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -71,7 +71,7 @@ public class JmsOperationsUtils {
             Component component, Map<Component, List<Component>> dependencyToDependentMap,
             InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
             Method method,
-            BiFunction<Result, Type, Result> unevaluatedHandler, Map<Component, List<CallPoint>> callPointsCache) {
+            Map<Component, List<CallPoint>> callPointsCache) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -83,22 +83,17 @@ public class JmsOperationsUtils {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
                     bootstrapMethods, method, callPointsCache);
             var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
-            var stringify = withExpected(unevaluatedHandler, String.class);
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes, stringify);
+            var arguments = eval.evalArguments(instructionHandle, argumentTypes, null);
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = argumentsArguments.get(0);
-                var resolved = eval.resolve(first, stringify);
-                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(stringify)),
+                var resolved = eval.resolve(first, STRINGIFY_UNRESOLVED);
+                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(STRINGIFY_UNRESOLVED)),
                         direction, methodName)).collect(toList());
             }
         }
-    }
-
-    public static Function<Result, Result> withExpected(BiFunction<Result, Type, Result> unevaluatedHandler, Class<?> expected) {
-        return result -> unevaluatedHandler.apply(result, expected != null ? ObjectType.getType(expected) : null);
     }
 
     private static JmsClient newJmsClient(String destination, Direction direction, String methodName) {

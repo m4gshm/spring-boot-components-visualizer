@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
+import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.getClassByName;
 import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
@@ -33,28 +34,26 @@ import static org.aspectj.apache.bcel.Constants.CONSTANT_Methodref;
 @Slf4j
 @UtilityClass
 public class InvokeDynamicUtils {
-    public static BootstrapMethodHandlerAndArguments getBootstrapMethodAndArguments(
+    public static BootstrapMethodHandlerAndArguments getBootstrapMethodHandlerAndArguments(
             INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods, @NonNull ConstantPoolGen constantPoolGen
     ) {
         var constantPool = constantPoolGen.getConstantPool();
-        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(instruction, constantPool);
         var bootstrapMethod = getBootstrapMethod(instruction, bootstrapMethods, constantPool);
         var bootstrapMethodInfo = getBootstrapMethodInfo(bootstrapMethod, constantPool);
 
         var lookup = MethodHandles.lookup();
         var handler = lookupReference(lookup,
-                bootstrapMethodInfo.referenceKind,
-                EvalBytecodeUtils.getClassByName(bootstrapMethodInfo.className),
-                bootstrapMethodInfo.methodName,
-                bootstrapMethodInfo.methodType);
+                bootstrapMethodInfo.referenceKind, getClassByName(bootstrapMethodInfo.className),
+                bootstrapMethodInfo.methodName, bootstrapMethodInfo.methodType);
+        var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(instruction, constantPool);
         var bootstrapMethodArguments = getBootstrapMethodArguments(invokeDynamicInterfaceInfo, bootstrapMethod,
                 lookup, constantPool, bootstrapMethodInfo);
         return new BootstrapMethodHandlerAndArguments(handler, bootstrapMethodArguments);
     }
 
-    private static BootstrapMethodInfo getBootstrapMethodInfo(BootstrapMethod bootstrapMethod, ConstantPool constantPool) {
-        var index = bootstrapMethod.getBootstrapMethodRef();
-        var constantMethodHandle = constantPool.getConstant(index, CONSTANT_MethodHandle, ConstantMethodHandle.class);
+    public static BootstrapMethodInfo getBootstrapMethodInfo(BootstrapMethod bootstrapMethod, ConstantPool constantPool) {
+        var constantMethodHandle = constantPool.getConstant(bootstrapMethod.getBootstrapMethodRef(),
+                CONSTANT_MethodHandle, ConstantMethodHandle.class);
         var bootstrapMethodRef = getBootstrapMethodRef(constantMethodHandle.getReferenceIndex(), constantPool);
         var className = bootstrapMethodRef.getClass(constantPool);
         var bootstrapMethodNameAndType = getBootstrapMethodNameAndType(bootstrapMethodRef, constantPool);
@@ -105,9 +104,8 @@ public class InvokeDynamicUtils {
         return bootstrabMethodArguments;
     }
 
-
-    private static BootstrapMethod getBootstrapMethod(INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods,
-                                                      ConstantPool constantPool) {
+    public static BootstrapMethod getBootstrapMethod(INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods,
+                                                     ConstantPool constantPool) {
         var constantInvokeDynamic = getConstantInvokeDynamic(instruction, constantPool);
         return bootstrapMethods.getBootstrapMethods()[constantInvokeDynamic.getBootstrapMethodAttrIndex()];
     }
