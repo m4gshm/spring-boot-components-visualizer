@@ -86,10 +86,10 @@ public class EvalBytecodeUtils {
         return componentType;
     }
 
-    static Result invoke(MethodHandle methodHandle, List<Object> arguments, InstructionHandle firstInstruction,
+    static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
                          InstructionHandle lastArgInstruction, EvalBytecode evalBytecode, Result parent) {
         try {
-            var value = methodHandle.invokeWithArguments(arguments);
+            var value = methodHandle.invokeWithArguments(asList(arguments));
             return constant(value, firstInstruction, lastArgInstruction, evalBytecode, parent);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
@@ -132,7 +132,7 @@ public class EvalBytecodeUtils {
                                       BootstrapMethodHandlerAndArguments methodAndArguments, Result parent) {
         var callSite = getCallSite(methodAndArguments);
         var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, asList(arguments), instructionHandle, lastArgInstruction, evalBytecode, parent);
+        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, evalBytecode, parent);
     }
 
     private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {
@@ -143,15 +143,18 @@ public class EvalBytecodeUtils {
         }
     }
 
-    public static Class<?>[] getArgumentClasses(Type[] argumentTypes) {
-        var args = new Class[argumentTypes.length];
-        for (int i = 0; i < argumentTypes.length; i++) {
-            var argumentType = argumentTypes[i];
-            var rawClassName = argumentType.getClassName();
-            var className = rawClassName.replace("/", ".");
-            args[i] = getClassByName(className);
+    public static Class<?>[] toClasses(Type[] types) {
+        var args = new Class[types.length];
+        for (int i = 0; i < types.length; i++) {
+            var argumentType = types[i];
+            args[i] = toClass(argumentType.getClassName());
         }
         return args;
+    }
+
+    public static Class<?> toClass(String rawClassName) {
+        var className = rawClassName.replace("/", ".");
+        return getClassByName(className);
     }
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,

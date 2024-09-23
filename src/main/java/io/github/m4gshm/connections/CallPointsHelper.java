@@ -10,7 +10,6 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
 import java.util.*;
-import java.util.function.Function;
 
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
@@ -23,7 +22,6 @@ import static java.util.stream.Collectors.toList;
 public class CallPointsHelper {
     public static List<CallPoint> getCallsHierarchy(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
-                                                    Function<Result, Result> unevaluatedHandler,
                                                     Map<Component, List<CallPoint>> callPointsCache, Result parent) {
 
 
@@ -41,7 +39,7 @@ public class CallPointsHelper {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             return stream(methods).map(method -> newCallPoint(component, componentType, method, javaClass,
-                    dependencyToDependentMap, unevaluatedHandler, constantPoolGen, callPointsCache, parent));
+                    dependencyToDependentMap, constantPoolGen, callPointsCache, parent));
         }).collect(toList());
         callPointsCache.put(component, points);
         return points;
@@ -54,17 +52,15 @@ public class CallPointsHelper {
     public static CallPoint newCallPoint(Component component, Class<?> componentType,
                                          Method method, JavaClass javaClass,
                                          Map<Component, List<Component>> dependencyToDependentMap,
-                                         Function<Result, Result> unevaluatedHandler,
                                          ConstantPoolGen constantPoolGen,
                                          Map<Component, List<CallPoint>> callPointsCache, Result parent) {
         var code = method.getCode();
-
-//        var callPoints = new ArrayList<CallPoint>();
-        var callPoints1 = new ArrayList<CallPoint>();
-
         var instructionHandles = instructionHandleStream(code).collect(toList());
         var instructionHandle = !instructionHandles.isEmpty()
                 ? instructionHandles.get(instructionHandles.size() - 1) : null;
+
+//        var callPoints = new ArrayList<CallPoint>();
+        var callPoints1 = new ArrayList<CallPoint>();
 
         while (instructionHandle != null) {
             var instruction = instructionHandle.getInstruction();
@@ -76,13 +72,10 @@ public class CallPointsHelper {
                 var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
                         bootstrapMethods, method, callPointsCache);
 
-                //debug info
-                var instructionString = instruction.toString(constantPoolGen.getConstantPool());
-
                 var invokeInstruction = (InvokeInstruction) instruction;
                 var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes, unevaluatedHandler, parent);
-                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, unevaluatedHandler, parent);
+                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes.length, parent);
+                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, parent);
 
                 var invokeDynamics = findInvokeDynamicCalls(
                         instructionHandle,
@@ -93,7 +86,8 @@ public class CallPointsHelper {
                 if (!invokeDynamics.isEmpty()) {
                     instrCallPoints.addAll(invokeDynamics);
                 } else {
-                    var invokeCallPoint = newInvokeCallPoint(instructionHandle, (InvokeInstruction) instruction, constantPoolGen);
+                    var invokeCallPoint = newInvokeCallPoint(instructionHandle,
+                            (InvokeInstruction) instruction, constantPoolGen);
                     instrCallPoints.add(invokeCallPoint);
                     var invokeCalls = findInvokeCalls(
                             invokeObject.getLastInstruction(),
@@ -176,16 +170,6 @@ public class CallPointsHelper {
                 .method(method)
                 .javaClass(javaClass)
                 .callPoints(callPoints1)
-//                    .jumpsTo(jumpsTo)
-                .build();
-    }
-
-    public static CallPoint newCallPoint(InstructionHandle instructionHandle, InvokeInstruction instruction, ConstantPoolGen constantPoolGen) {
-        return CallPoint.builder()
-                .methodName(instruction.getMethodName(constantPoolGen))
-                .ownerClassName(instruction.getClassName(constantPoolGen))
-                .argumentTypes((instruction.getArgumentTypes(constantPoolGen)))
-                .instruction(instructionHandle)
                 .build();
     }
 

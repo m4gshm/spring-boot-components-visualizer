@@ -8,10 +8,10 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.constant;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.getResult;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.*;
-import static java.util.stream.Collectors.toList;
+import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.getClassByName;
+import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClasses;
+import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethod;
+import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
 
 @UtilityClass
 public class StringifyEvalResultUtils {
@@ -48,24 +48,15 @@ public class StringifyEvalResultUtils {
                         "java.lang.invoke.StringConcatFactory".equals(bootstrapMethodInfo.getClassName()) &&
                                 "makeConcatWithConstants".equals(bootstrapMethodInfo.getMethodName());
                 if (stringConcatenation) {
-                    var argumentTypes = invokedynamic.getArgumentTypes(constantPoolGen);
-                    var argumentClasses = getArgumentClasses(argumentTypes);
-
-                    var evalArguments = eval.evalArguments(instructionHandle, argumentTypes,
-                            StringifyEvalResultUtils::forceStringifyVariables, delay);
-                    var invokeObject = eval.evalInvokeObject(invokedynamic, evalArguments, StringifyEvalResultUtils::forceStringifyVariables, delay);
-                    var lastInstruction = invokeObject.getLastInstruction();
-                    var argumentsResults = evalArguments.getArguments();
-
-                    var filledVariants = eval.resolveArguments(invokedynamic, argumentTypes, argumentsResults, StringifyEvalResultUtils::forceStringifyVariables);
-                    var results = filledVariants.stream().map(firstVariantResults -> {
-                        var arguments = eval.getArguments(argumentClasses, firstVariantResults, StringifyEvalResultUtils::forceStringifyVariables);
-                        var string = Stream.of(arguments).map(String::valueOf).reduce(String::concat).orElse("");
-                        return constant(string, delay.getLastInstruction(), delay.getEvalContext(), result);
-                    }).collect(toList());
-                    return getResult(instruction, instructionHandle, constantPoolGen, lastInstruction, results, delay);
-
                     //arg1+arg2
+                    var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
+                    var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
+
+                    return eval.callInvokeDynamic(instructionHandle, delay, arguments, argumentClasses,
+                            StringifyEvalResultUtils::forceStringifyVariables, (objects, parent) -> {
+                                var string = Stream.of(objects).map(String::valueOf).reduce(String::concat).orElse("");
+                                return constant(string, delay.getLastInstruction(), delay.getEvalContext(), result);
+                            });
                 }
             }
         }

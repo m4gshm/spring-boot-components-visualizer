@@ -2,7 +2,6 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -21,8 +20,6 @@ import javax.jms.Topic;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
@@ -83,7 +80,7 @@ public class JmsOperationsUtils {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
                     bootstrapMethods, method, callPointsCache);
             var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes, null);
+            var arguments = eval.evalArguments(instructionHandle, argumentTypes.length, null);
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
