@@ -1121,7 +1121,7 @@ public class EvalBytecode {
                 if (unevaluatedHandler != null) {
                     return unevaluatedHandler.resolve(this, null).getValue(null);
                 }
-                throw new UnevaluatedVariableException("stubbed", stubbed);
+                throw new UnevaluatedResultException("stubbed", stubbed);
             }
 
             @Override
@@ -1214,7 +1214,7 @@ public class EvalBytecode {
                 if (unevaluatedHandler != null) {
                     return unevaluatedHandler.resolve(this, null).getValue(null);
                 }
-                throw new UnevaluatedVariableException("unresolved", this);
+                throw new UnevaluatedResultException("unresolved", this);
             }
 
             @Override

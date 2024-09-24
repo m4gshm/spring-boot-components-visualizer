@@ -37,7 +37,7 @@ public class JmsOperationsUtils {
 
     public static final String UNRECOGNIZED_DESTINATION = "unrecognized";
     public static final String UNDEFINED_DESTINATION = "undefined";
-    public static final String DEFAULT_DESTINATION = "default";
+    public static final String DEFAULT_DESTINATION = "jmsTemplate-default";
 
     public static List<JmsClient> extractJmsClients(Component component,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
