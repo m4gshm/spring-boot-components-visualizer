@@ -69,8 +69,8 @@ cloud "input" as input #line.dotted;line:gray; {
       in.jmsQueueListener.queue2.in )....> jmsQueueListener
     }
     frame "jmsQueueService" as input.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
-      interface "default" as in.jmsQueueService.default.in
-      in.jmsQueueService.default.in )....> jmsQueueService
+      interface "jmsTemplate-default" as in.jmsQueueService.jmsTemplate.default.in
+      in.jmsQueueService.jmsTemplate.default.in )....> jmsQueueService
     }
   }
 }
