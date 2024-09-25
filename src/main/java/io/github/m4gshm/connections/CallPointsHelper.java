@@ -55,121 +55,94 @@ public class CallPointsHelper {
                                          ConstantPoolGen constantPoolGen,
                                          Map<Component, List<CallPoint>> callPointsCache, Result parent) {
         var code = method.getCode();
+        var bootstrapMethods = getBootstrapMethods(javaClass);
         var instructionHandles = instructionHandleStream(code).collect(toList());
-        var instructionHandle = !instructionHandles.isEmpty()
-                ? instructionHandles.get(instructionHandles.size() - 1) : null;
-
-//        var callPoints = new ArrayList<CallPoint>();
-        var callPoints1 = new ArrayList<CallPoint>();
-
-        while (instructionHandle != null) {
-            var instruction = instructionHandle.getInstruction();
-            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE
-                    || instruction instanceof INVOKEDYNAMIC) {
-
-                var instrCallPoints = new LinkedHashSet<CallPoint>();
-                var bootstrapMethods = getBootstrapMethods(javaClass);
-                var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                        bootstrapMethods, method, callPointsCache);
-
-                var invokeInstruction = (InvokeInstruction) instruction;
-                var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes.length, parent);
-                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, parent);
-
-                var invokeDynamics = findInvokeDynamicCalls(
-                        instructionHandle,
-                        invokeObject.getLastInstruction(),
-                        invokeObject.getFirstInstruction(),
-                        bootstrapMethods, constantPoolGen
-                );
-                if (!invokeDynamics.isEmpty()) {
-                    instrCallPoints.addAll(invokeDynamics);
-                } else {
-                    var invokeCallPoint = newInvokeCallPoint(instructionHandle,
-                            (InvokeInstruction) instruction, constantPoolGen);
-                    instrCallPoints.add(invokeCallPoint);
-                    var invokeCalls = findInvokeCalls(
-                            invokeObject.getLastInstruction(),
-                            invokeObject.getFirstInstruction(),
-                            constantPoolGen
-                    );
-                    instrCallPoints.addAll(invokeCalls);
-                }
-
-                var arguments = evalArguments.getArguments();
-                for (var argument : arguments) {
-                    var invokeDynamicCalls = findInvokeDynamicCalls(
-                            instructionHandle,
-                            argument.getLastInstruction(),
-                            argument.getFirstInstruction(),
-                            bootstrapMethods, constantPoolGen);
-                    if (!invokeDynamicCalls.isEmpty()) {
-                        instrCallPoints.addAll(invokeDynamicCalls);
-                    } else {
-                        var invokeCalls = findInvokeCalls(
-                                argument.getLastInstruction(),
-                                argument.getFirstInstruction(),
-                                constantPoolGen
-                        );
-                        instrCallPoints.addAll(invokeCalls);
-                    }
-                }
-
-                callPoints1.addAll(instrCallPoints);
-
-                var lastArgInstructionHandle = invokeObject.getLastInstruction();
-                instructionHandle = lastArgInstructionHandle != null ? lastArgInstructionHandle.getPrev() : null;
-            } else {
-                instructionHandle = instructionHandle.getPrev();
-            }
-        }
-
-//        for (var iterator = instructionHandles.iterator(); iterator.hasNext(); ) {
-//            var instructionHandle1 = iterator.next();
-//            var instruction = instructionHandle1.getInstruction();
-//            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
-//                var invokeInstruction = (InvokeInstruction) instruction;
-//                var methodName = invokeInstruction.getMethodName(constantPoolGen);
-//                var argumentTypes = /*getArgumentTypes*/(invokeInstruction.getArgumentTypes(constantPoolGen));
+//        var instructionHandle = !instructionHandles.isEmpty()
+//                ? instructionHandles.get(instructionHandles.size() - 1) : null;
 //
-//                final CallPoint callPoint;
-//                if (instruction instanceof INVOKEDYNAMIC) {
-//                    var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction,
-//                            constantPoolGen, javaClass);
-//                    InstructionHandle next = instructionHandle1.getNext();
-//                    if (methodInfo != null) {
-//                        var argumentTypes1 = Type.getArgumentTypes(methodInfo.getSignature());
-//                        callPoint = CallPoint.builder()
-//                                .methodName(methodInfo.name)
-//                                .ownerClassName(methodInfo.objectType.getName())
-//                                .argumentTypes(argumentTypes1)
-//                                .instruction(instructionHandle1)
-//                                .build();
-//                    } else {
-//                        //log
-//                        callPoint = null;
-//                    }
+//        var callPoints1 = new ArrayList<CallPoint>();
+//        while (instructionHandle != null) {
+//            var instruction = instructionHandle.getInstruction();
+//            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE
+//                    || instruction instanceof INVOKEDYNAMIC) {
+//
+//                var instrCallPoints = new LinkedHashSet<CallPoint>();
+//                var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
+//                        bootstrapMethods, method, callPointsCache);
+//
+//                var invokeInstruction = (InvokeInstruction) instruction;
+//                var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+//                var evalArguments = eval.evalArguments(instructionHandle, argumentTypes.length, parent);
+//                var invokeObject = eval.evalInvokeObject(invokeInstruction, evalArguments, parent);
+//
+//                var invokeDynamics = findInvokeDynamicCalls(
+//                        instructionHandle,
+//                        invokeObject.getLastInstruction(),
+//                        invokeObject.getFirstInstruction(),
+//                        bootstrapMethods, constantPoolGen
+//                );
+//                if (!invokeDynamics.isEmpty()) {
+//                    instrCallPoints.addAll(invokeDynamics);
 //                } else {
-//                    callPoint = CallPoint.builder()
-//                            .methodName(methodName)
-//                            .ownerClassName(invokeInstruction.getClassName(constantPoolGen))
-//                            .argumentTypes(argumentTypes)
-//                            .instruction(instructionHandle1)
-//                            .build();
+//                    var invokeCallPoint = newInvokeCallPoint(instructionHandle,
+//                            (InvokeInstruction) instruction, constantPoolGen);
+//                    instrCallPoints.add(invokeCallPoint);
+//                    var invokeCalls = findInvokeCalls(
+//                            invokeObject.getLastInstruction(),
+//                            invokeObject.getFirstInstruction(),
+//                            constantPoolGen
+//                    );
+//                    instrCallPoints.addAll(invokeCalls);
 //                }
-//                if (callPoint != null) {
-//                    callPoints.add(callPoint);
+//
+//                var arguments = evalArguments.getArguments();
+//                for (var argument : arguments) {
+//                    var invokeDynamicCalls = findInvokeDynamicCalls(
+//                            instructionHandle,
+//                            argument.getLastInstruction(),
+//                            argument.getFirstInstruction(),
+//                            bootstrapMethods, constantPoolGen);
+//                    if (!invokeDynamicCalls.isEmpty()) {
+//                        instrCallPoints.addAll(invokeDynamicCalls);
+//                    } else {
+//                        var invokeCalls = findInvokeCalls(
+//                                argument.getLastInstruction(),
+//                                argument.getFirstInstruction(),
+//                                constantPoolGen
+//                        );
+//                        instrCallPoints.addAll(invokeCalls);
+//                    }
 //                }
+//
+//                callPoints1.addAll(instrCallPoints);
+//
+//                var lastArgInstructionHandle = invokeObject.getLastInstruction();
+//                instructionHandle = lastArgInstructionHandle != null ? lastArgInstructionHandle.getPrev() : null;
+//            } else {
+//                instructionHandle = instructionHandle.getPrev();
 //            }
 //        }
+
+        var callPoints = new ArrayList<CallPoint>();
+        for (var instructionHandle1 : instructionHandles) {
+            var instruction = instructionHandle1.getInstruction();
+            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
+                var invokeInstruction = (InvokeInstruction) instruction;
+                var callPoint = ofNullable(newInvokeDynamicCallPoint(instructionHandle1, bootstrapMethods, constantPoolGen))
+                        .orElseGet(() -> newInvokeCallPoint(instructionHandle1, invokeInstruction, constantPoolGen));
+                if (callPoint != null) {
+                    callPoints.add(callPoint);
+                }
+            }
+        }
         return CallPoint.builder()
                 .methodName(method.getName())
                 .ownerClass(componentType)
                 .argumentTypes((method.getArgumentTypes()))
                 .method(method)
                 .javaClass(javaClass)
-                .callPoints(callPoints1)
+//                .callPoints(callPoints1)
+                .callPoints(callPoints)
                 .build();
     }
 
@@ -186,9 +159,10 @@ public class CallPointsHelper {
         return dest;
     }
 
-    private static CallPoint newInvokeDynamicCallPoint(InstructionHandle next, BootstrapMethods bootstrapMethods,
+    private static CallPoint newInvokeDynamicCallPoint(InstructionHandle instructionHandle,
+                                                       BootstrapMethods bootstrapMethods,
                                                        ConstantPoolGen constantPoolGen) {
-        var instruction = next.getInstruction();
+        var instruction = instructionHandle.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
             var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
             if (methodInfo != null) {
@@ -200,7 +174,7 @@ public class CallPointsHelper {
                         .methodName(methodName)
                         .ownerClassName(ownerClassName)
                         .argumentTypes(argumentTypes)
-                        .instruction(next)
+                        .instruction(instructionHandle)
                         .invokeDynamic(true)
                         .referenceKind(referenceKind)
                         .build();
