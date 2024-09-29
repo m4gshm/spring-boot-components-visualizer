@@ -7,7 +7,8 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.classfile.*;
+import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
@@ -18,9 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.constant;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRINGIFY_UNRESOLVED;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -75,14 +74,14 @@ public class RestOperationsUtils {
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
-        var resolvedPaths = eval.resolve(path, STRINGIFY_UNRESOLVED);
-        var paths = resolveVariableStrings(resolvedPaths);
+        var resolvedPaths = eval.resolve(path, String.class, STRINGIFY_UNRESOLVED);
+        var paths = resolveVariableStrings(eval, resolvedPaths);
 
         final List<String> httpMethods;
         if ("exchange".equals(methodName)) {
             var httpMethodArg = argumentsArguments.get(1);
-            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, null);
-            httpMethods = resolveVariableStrings(resolvedHttpMethodResults);
+            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, org.springframework.http.HttpMethod.class, null);
+            httpMethods = resolveVariableStrings(eval, resolvedHttpMethodResults);
         } else {
             httpMethods = List.of(getHttpMethod(methodName));
         }
@@ -91,9 +90,12 @@ public class RestOperationsUtils {
                 .collect(toList());
     }
 
-    private static List<String> resolveVariableStrings(Collection<Result> results) {
-        return results.stream().map(result -> String.valueOf(result.getValue(STRINGIFY_UNRESOLVED)))
-                .distinct().collect(toList());
+    private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
+        return results.stream()
+                .flatMap(r -> eval.resolve(r, String.class, STRINGIFY_UNRESOLVED).stream())
+                .map(result -> String.valueOf(result.getValue(String.class, STRINGIFY_UNRESOLVED)))
+                .distinct()
+                .collect(toList());
     }
 
     private static String getHttpMethod(String methodName) {

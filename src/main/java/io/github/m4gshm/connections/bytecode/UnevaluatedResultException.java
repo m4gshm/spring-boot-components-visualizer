@@ -11,4 +11,9 @@ public class UnevaluatedResultException extends EvalBytecodeException {
         super(message + " " + result);
         this.result = result;
     }
+
+    public UnevaluatedResultException(UnevaluatedResultException e) {
+        super(e);
+        this.result = e.getResult();
+    }
 }

@@ -159,10 +159,10 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       EvalBytecode evalBytecode,
-                                       Result parent) {
+                                       EvalBytecode evalBytecode, Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        return delay(instructionText, instructionHandle, evalBytecode, parent, (thisDelay, needResolve, unevaluatedHandler) -> {
+        return delay(instructionText, instructionHandle, evalBytecode, parent, null,
+                (thisDelay, needResolve, expected, unevaluatedHandler) -> {
             var object = result.getValue(unevaluatedHandler);
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
                     lastInstruction, evalBytecode, thisDelay);
@@ -223,6 +223,14 @@ public class EvalBytecodeUtils {
             return classByName(className);
         } catch (ClassNotFoundException e) {
             throw new EvalBytecodeException(e);
+        }
+    }
+
+    public static Class<?> getClassByNameOrNull(String className) {
+        try {
+            return classByName(className);
+        } catch (ClassNotFoundException e) {
+            return null;
         }
     }
 

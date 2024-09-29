@@ -67,8 +67,7 @@ public class JmsOperationsUtils {
     private static List<JmsClient> extractJmsClients(
             Component component, Map<Component, List<Component>> dependencyToDependentMap,
             InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-            Method method,
-            Map<Component, List<CallPoint>> callPointsCache) {
+            Method method, Map<Component, List<CallPoint>> callPointsCache) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -86,8 +85,8 @@ public class JmsOperationsUtils {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = argumentsArguments.get(0);
-                var resolved = eval.resolve(first, STRINGIFY_UNRESOLVED);
-                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(STRINGIFY_UNRESOLVED)),
+                var resolved = eval.resolve(first, String.class, STRINGIFY_UNRESOLVED);
+                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(String.class, STRINGIFY_UNRESOLVED)),
                         direction, methodName)).collect(toList());
             }
         }

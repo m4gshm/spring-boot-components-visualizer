@@ -7,7 +7,10 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
-import org.apache.bcel.generic.*;
+import org.apache.bcel.generic.ConstantPoolGen;
+import org.apache.bcel.generic.INVOKEINTERFACE;
+import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.InvokeInstruction;
 import org.springframework.web.socket.client.WebSocketClient;
 
 import java.lang.reflect.InvocationTargetException;
@@ -20,7 +23,6 @@ import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRIN
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
-import static org.apache.bcel.generic.Type.getType;
 
 @Slf4j
 @UtilityClass
@@ -77,21 +79,24 @@ public class WebsocketClientUtils {
                 bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            return evalEngine.resolve(value, STRINGIFY_UNRESOLVED).stream().map(result -> result.getValue(STRINGIFY_UNRESOLVED)).map(o -> {
-                if (o instanceof URI) {
-                    var uri = (URI) o;
-                    return uri.toString();
-                } else {
-                    return o != null ? o.toString() : null;
-                }
-            }).collect(toList());
+            return evalEngine.resolve(value, String.class, STRINGIFY_UNRESOLVED).stream()
+                    .map(result -> result.getValue(String.class, STRINGIFY_UNRESOLVED)).map(o -> {
+                        if (o instanceof URI) {
+                            var uri = (URI) o;
+                            return uri.toString();
+                        } else {
+                            return o != null ? o.toString() : null;
+                        }
+                    }).collect(toList());
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            return evalEngine.resolve(utiTemplate, STRINGIFY_UNRESOLVED).stream()
-                    .map(result -> result.getValue(STRINGIFY_UNRESOLVED)).map(String::valueOf).collect(toList());
+            return evalEngine.resolve(utiTemplate, String.class, STRINGIFY_UNRESOLVED).stream()
+                    .map(result -> result.getValue(String.class, STRINGIFY_UNRESOLVED))
+                    .map(String::valueOf).collect(toList());
         } else {
-            throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
+            throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " +
+                    Arrays.toString(argumentTypes));
         }
     }
 }

@@ -78,8 +78,8 @@ cloud "output" as output #line.dotted;line:gray; {
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       collections "<#transparent,transparent>|<r>GET: | |\n\
 <#transparent,transparent>|<r>GET: |/{id}|\n\
-<#transparent,transparent>|<r>GET: |/load-deprecated/{id}|\n\
-<#transparent,transparent>|<r>GET: |/load/{id}|" as output.http.http...service2.interfaces
+<#transparent,transparent>|<r>GET: |/load-deprecated/{id},id|\n\
+<#transparent,transparent>|<r>GET: |/load/{id},id|" as output.http.http...service2.interfaces
       service2LegacyImpl ....(0 output.http.http...service2.interfaces
       service2FeignClient ....(0 output.http.http...service2.interfaces
     }

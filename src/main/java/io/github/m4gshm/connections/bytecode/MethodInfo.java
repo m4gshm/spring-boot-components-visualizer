@@ -35,11 +35,6 @@ public class MethodInfo {
         return new MethodInfo(objectClass, methodName, signature, referenceKind);
     }
 
-//    public static MethodInfo newMethodInfo(EvalBytecode.Result.Variable methodArgument) {
-//        return newMethodInfo(methodArgument.getComponent().getType(),
-//                methodArgument.getMethod().getName(), methodArgument.getMethod().getSignature());
-//    }
-
     @Override
     public String toString() {
         return objectType.getName() + "." + name + "(" + Arrays.stream(Type.getArgumentTypes(signature))
