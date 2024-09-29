@@ -1,8 +1,8 @@
 package service1.service.external.jms;
 
 public class AbstractJmsQueueService {
-    public final String wrap(String jmsQueue) {
-        return jmsQueue;
+    public final String wrap(String queue) {
+        return "jms" + queue;
     }
 
     protected String getJmsQueueEvents2() {

@@ -50,6 +50,6 @@ public class CoreService {
     private String getJmsQueue() {
         JmsQueueService jmsQueueService1 = jmsQueueService;
         requireNonNull(jmsQueueService1);
-        return jmsQueueService1.wrap("jmsQueue");
+        return jmsQueueService1.wrap("Queue");
     }
 }

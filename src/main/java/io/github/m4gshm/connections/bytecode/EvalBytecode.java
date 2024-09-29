@@ -6,7 +6,7 @@ import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.ContextAware;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay.DelayFunction;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Multiple;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.ParentAware;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.PrevAware;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.UnevaluatedResolver;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable;
 import io.github.m4gshm.connections.client.JmsOperationsUtils;
@@ -116,12 +116,12 @@ public class EvalBytecode {
 
     public static Result getResult(InstructionHandle instructionHandle,
                                    ConstantPoolGen constantPoolGen, InstructionHandle lastInstruction,
-                                   Collection<? extends Result> results, Result parent) {
+                                   Collection<? extends Result> results, Result prev) {
         if (results.isEmpty()) {
             throw newInvalidEvalException("empty results", instructionHandle.getInstruction(), constantPoolGen);
         }
         if (results.size() > 1)
-            return Result.multiple(new ArrayList<>(results), instructionHandle, lastInstruction, parent);
+            return Result.multiple(new ArrayList<>(results), instructionHandle, lastInstruction, prev);
         return results.iterator().next();
     }
 
@@ -176,11 +176,11 @@ public class EvalBytecode {
                 } else {
                     callContext = null;
                 }
-                var parent = Result.getParent(variant);
-                if (parent != null) {
-                    if (parent instanceof ParentAware && parent instanceof ContextAware) {
-                        var parentAware = (ParentAware) parent;
-                        var contextAware = (ContextAware) parent;
+                var prev = Result.getPrev(variant);
+                if (prev != null) {
+                    if (prev instanceof PrevAware && prev instanceof ContextAware) {
+                        var parentAware = (PrevAware) prev;
+                        var contextAware = (ContextAware) prev;
                         while (parentAware != null) {
                             var parentComponent = contextAware.getComponent();
                             var parentMethod = contextAware.getMethod();
@@ -188,9 +188,9 @@ public class EvalBytecode {
                             hierarchy.computeIfAbsent(callContext, k -> parentContext);
 //                        populateArgumentsResults(argumentsResults, callContexts, variant, i, parentContext);
 
-                            var parent1 = parentAware.getParent();
-                            if (parent1 instanceof ParentAware && parent1 instanceof ContextAware) {
-                                parentAware = (ParentAware) parent1;
+                            var parent1 = parentAware.getPrev();
+                            if (parent1 instanceof PrevAware && parent1 instanceof ContextAware) {
+                                parentAware = (PrevAware) parent1;
                             } else {
                                 parentAware = null;
                             }
@@ -198,7 +198,7 @@ public class EvalBytecode {
                     }
                 }
 
-                if (!(component != null || variant instanceof ParentAware)) {
+                if (!(component != null || variant instanceof PrevAware)) {
                     //todo
                     throw new UnsupportedOperationException(variant.toString() + " of arg " + argumentsResults.get(i).toString());
                 }
@@ -1311,11 +1311,11 @@ public class EvalBytecode {
             return new Stub(method, component, value);
         }
 
-        static Result getParent(Result result) {
-            if (result instanceof ParentAware) return ((ParentAware) result).getParent();
+        static Result getPrev(Result result) {
+            if (result instanceof PrevAware) return ((PrevAware) result).getPrev();
             var wrapped = getWrapped(result);
             if (wrapped != null) {
-                return getParent(wrapped);
+                return getPrev(wrapped);
             }
             return null;
         }
@@ -1385,8 +1385,8 @@ public class EvalBytecode {
             Component getComponent();
         }
 
-        interface ParentAware {
-            Result getParent();
+        interface PrevAware {
+            Result getPrev();
         }
 
         interface Wrapper {
@@ -1441,7 +1441,7 @@ public class EvalBytecode {
 
         @Data
         @FieldDefaults(level = PRIVATE)
-        class Const implements Result, ContextAware, ParentAware {
+        class Const implements Result, ContextAware, PrevAware {
             @EqualsAndHashCode.Include
             final Object value;
             @EqualsAndHashCode.Include
@@ -1452,7 +1452,7 @@ public class EvalBytecode {
             final EvalBytecode evalContext;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
-            final Result parent;
+            final Result prev;
 
             @Override
             public String toString() {
@@ -1482,14 +1482,14 @@ public class EvalBytecode {
 
         @Data
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        class Illegal implements Result, ParentAware {
+        class Illegal implements Result, PrevAware {
             Set<Status> status;
             Object source;
             InstructionHandle firstInstruction;
             InstructionHandle lastInstruction;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
-            Result parent;
+            Result prev;
 
             @Override
             public Object getValue(List<Class<?>> expectedResultClass) {
@@ -1503,7 +1503,7 @@ public class EvalBytecode {
 
         @Data
         @FieldDefaults(makeFinal = true, level = PROTECTED)
-        class Variable implements ContextAware, ParentAware {
+        class Variable implements ContextAware, PrevAware {
             VarType varType;
             EvalBytecode evalContext;
             int index;
@@ -1513,7 +1513,7 @@ public class EvalBytecode {
             InstructionHandle lastInstruction;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
-            Result parent;
+            Result prev;
 
             @Override
             public Object getValue(List<Class<?>> expectedResultClass) {
@@ -1552,10 +1552,10 @@ public class EvalBytecode {
             List<Result> arguments;
 
             public EvaluatedInvoke(EvalBytecode evalContext, String description, DelayFunction evaluator,
-                                   InstructionHandle firstInstruction, Result parent, Type expectedResultType,
+                                   InstructionHandle firstInstruction, Result prev, Type expectedResultType,
                                    InstructionHandle lastInstruction,
                                    Result object, List<Result> arguments) {
-                super(evalContext, description, evaluator, firstInstruction, parent, expectedResultType,
+                super(evalContext, description, evaluator, firstInstruction, prev, expectedResultType,
                         lastInstruction, null, true, false);
                 this.object = object;
                 this.arguments = arguments;
@@ -1566,7 +1566,7 @@ public class EvalBytecode {
         @AllArgsConstructor
         @RequiredArgsConstructor
         @FieldDefaults(level = PRIVATE)
-        class Delay implements ContextAware, ParentAware {
+        class Delay implements ContextAware, PrevAware {
             final EvalBytecode evalContext;
             final String description;
             @EqualsAndHashCode.Exclude
@@ -1576,7 +1576,7 @@ public class EvalBytecode {
             final InstructionHandle firstInstruction;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
-            final Result parent;
+            final Result prev;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
             final Type expectedResultType;
@@ -1625,7 +1625,7 @@ public class EvalBytecode {
 
             public Delay evaluated(InstructionHandle lastInstruction) {
                 this.lastInstruction = lastInstruction;
-                var delay = new Delay(evalContext, description, evaluator, firstInstruction, parent, expectedResultType,
+                var delay = new Delay(evalContext, description, evaluator, firstInstruction, prev, expectedResultType,
                         lastInstruction, null, true, false);
                 return delay;
             }
@@ -1664,13 +1664,13 @@ public class EvalBytecode {
         @Data
         @Builder(toBuilder = true)
         @FieldDefaults(makeFinal = true, level = PRIVATE)
-        class Multiple implements Result, ParentAware {
+        class Multiple implements Result, PrevAware {
             List<? extends Result> values;
             InstructionHandle firstInstruction;
             InstructionHandle lastInstruction;
             @EqualsAndHashCode.Exclude
             @ToString.Exclude
-            Result parent;
+            Result prev;
 
             private void checkState() {
                 if (values.isEmpty()) {
