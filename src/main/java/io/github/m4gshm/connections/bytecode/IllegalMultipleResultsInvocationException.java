@@ -4,10 +4,10 @@ import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Multiple;
 import lombok.Getter;
 
 @Getter
-public class IncorrectMultipleResultsInvocationException extends EvalBytecodeException {
+public class IllegalMultipleResultsInvocationException extends EvalBytecodeException {
     private final Multiple variable;
 
-    public IncorrectMultipleResultsInvocationException(Multiple multiple) {
+    public IllegalMultipleResultsInvocationException(Multiple multiple) {
         super("illegal getValue invocation " + multiple);
         this.variable = multiple;
     }
