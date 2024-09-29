@@ -34,7 +34,7 @@ import static io.github.m4gshm.connections.CallPointsHelper.getCallsHierarchy;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.CallContext.newCallContext;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Illegal.Status.notAccessible;
+import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Illegal.Status.*;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable.VarType.LocalVar;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable.VarType.MethodArg;
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.constant;
@@ -931,12 +931,15 @@ public class EvalBytecode {
         Object result;
         try {
             result = declaredMethod.invoke(object, args);
-        } catch (IllegalAccessException | InvocationTargetException e) {
+        } catch (IllegalAccessException e) {
             //log
-            throw new EvalBytecodeException(e);
+            throw new IllegalInvokeException(Set.of(notAccessible), new MethodCallInfo(declaredMethod, object, args), invokeInstruction);
+        } catch (InvocationTargetException e) {
+            //log
+            throw new IllegalInvokeException(Set.of(illegalTarget), new MethodCallInfo(declaredMethod, object, args), invokeInstruction);
         } catch (IllegalArgumentException e) {
             //log
-            throw e;
+            throw new IllegalInvokeException(Set.of(illegalArgument), new MethodCallInfo(declaredMethod, object, args), invokeInstruction);
         } catch (NullPointerException e) {
             //todo just check the object is null
             throw e;
@@ -954,7 +957,6 @@ public class EvalBytecode {
         }
         return objects;
     }
-
 
     public List<Result> resolve(Result value, Class<?> expectedResultClass, UnevaluatedResolver unevaluatedHandler) {
         return resolve(value, expectedResultClass != null ? List.of(expectedResultClass) : null, unevaluatedHandler);
@@ -1485,7 +1487,7 @@ public class EvalBytecode {
             }
 
             public enum Status {
-                notAccessible, notFound, stub
+                notAccessible, notFound, stub, illegalArgument, illegalTarget;
             }
         }
 

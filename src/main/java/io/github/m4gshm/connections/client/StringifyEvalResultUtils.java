@@ -99,7 +99,7 @@ public class StringifyEvalResultUtils {
                     argumentClasses, StringifyEvalResultUtils::forceStringifyVariables, (parameters, lastInstruction) -> {
                         var argValues = copyOfRange(parameters, 1, parameters.length);
                         var args = stringifyArguments(argValues);
-                        var string = goThroughMethod ? args : stringifyMethodCall(objectClass, methodName, args);
+                        var string = /*goThroughMethod ? args : */stringifyMethodCall(objectClass, methodName, args);
                         return constant(string, delay.getLastInstruction(), delay.getEvalContext(), delay);
                     });
         } else if (instruction instanceof INVOKESTATIC) {
@@ -119,7 +119,7 @@ public class StringifyEvalResultUtils {
             return eval.callInvokeStatic(instructionHandle, delay, expectedResultClass, arguments, argumentClasses,
                     StringifyEvalResultUtils::forceStringifyVariables, (parameters, lastInstruction) -> {
                         var args = stringifyArguments(parameters);
-                        var string = goThroughMethod ? args : stringifyMethodCall(objectClass, methodName, args);
+                        var string = /*goThroughMethod ? args : */stringifyMethodCall(objectClass, methodName, args);
                         return constant(string, delay.getLastInstruction(), delay.getEvalContext(), delay);
                     });
         }
