@@ -20,7 +20,6 @@ import java.util.Objects;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRINGIFY_UNRESOLVED;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -74,7 +73,7 @@ public class RestOperationsUtils {
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
-        var resolvedPaths = eval.resolve(path, String.class, STRINGIFY_UNRESOLVED);
+        var resolvedPaths = eval.resolve(path, String.class, StringifyEvalResultUtils::stringifyUnresolved);
         var paths = resolveVariableStrings(eval, resolvedPaths);
 
         final List<String> httpMethods;
@@ -92,8 +91,8 @@ public class RestOperationsUtils {
 
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
         return results.stream()
-                .flatMap(r -> eval.resolve(r, String.class, STRINGIFY_UNRESOLVED).stream())
-                .map(result -> String.valueOf(result.getValue(String.class, STRINGIFY_UNRESOLVED)))
+                .flatMap(r -> eval.resolve(r, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream())
+                .map(result -> String.valueOf(result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)))
                 .distinct()
                 .collect(toList());
     }

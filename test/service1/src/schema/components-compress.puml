@@ -78,10 +78,14 @@ cloud "output" as output #line.dotted;line:gray; {
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       collections "<#transparent,transparent>|<r>GET: | |\n\
 <#transparent,transparent>|<r>GET: |/{id}|\n\
-<#transparent,transparent>|<r>GET: |/load-deprecated/Objects.requireNonNull({id},id)|\n\
-<#transparent,transparent>|<r>GET: |/load/Objects.requireNonNull({id},id)|" as output.http.http...service2.interfaces
+<#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|" as output.http.http...service2.interfaces
       service2LegacyImpl ....(0 output.http.http...service2.interfaces
       service2FeignClient ....(0 output.http.http...service2.interfaces
+      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.get({id})})}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.save({id})})}|" as output.http.http...service2..load.interfaces
+        service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
+      }
     }
   }
   rectangle "web socket" as output.websocket {
@@ -104,7 +108,7 @@ cloud "output" as output #line.dotted;line:gray; {
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
 <#transparent,transparent>|jmsQueueEvents3|\n\
-<#transparent,transparent>|jmsQueue{i}|" as output.jms.jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueue{CoreService.lambda$makeAll$0({i})}|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }
   }

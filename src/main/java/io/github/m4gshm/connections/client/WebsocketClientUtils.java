@@ -19,7 +19,6 @@ import java.util.*;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRINGIFY_UNRESOLVED;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -79,8 +78,8 @@ public class WebsocketClientUtils {
                 bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            return evalEngine.resolve(value, String.class, STRINGIFY_UNRESOLVED).stream()
-                    .map(result -> result.getValue(String.class, STRINGIFY_UNRESOLVED)).map(o -> {
+            return evalEngine.resolve(value, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream()
+                    .map(result -> result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)).map(o -> {
                         if (o instanceof URI) {
                             var uri = (URI) o;
                             return uri.toString();
@@ -91,8 +90,8 @@ public class WebsocketClientUtils {
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            return evalEngine.resolve(utiTemplate, String.class, STRINGIFY_UNRESOLVED).stream()
-                    .map(result -> result.getValue(String.class, STRINGIFY_UNRESOLVED))
+            return evalEngine.resolve(utiTemplate, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream()
+                    .map(result -> result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved))
                     .map(String::valueOf).collect(toList());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " +

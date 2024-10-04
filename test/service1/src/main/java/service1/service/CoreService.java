@@ -37,8 +37,8 @@ public class CoreService {
         this.jmsQueueService = jmsQueueService;
     }
 
-    public String get(String id) {
-        return service2LegacyImpl.get("load", requireNonNull(Integer.valueOf(id)));
+    public String get(String strId) {
+        return service2LegacyImpl.get("load", requireNonNull(Integer.valueOf(strId)));
     }
 
     public String makeAll() {

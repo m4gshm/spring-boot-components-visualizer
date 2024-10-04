@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Arguments;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.EvalArguments;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.InvokeWithUnresolvedParameters;
@@ -19,12 +20,10 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.getWrapp
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethod;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
-import static java.util.Arrays.copyOfRange;
+import static java.util.stream.Collectors.toList;
 
 @UtilityClass
 public class StringifyEvalResultUtils {
-
-    public static final Result.UnevaluatedResolver STRINGIFY_UNRESOLVED = StringifyEvalResultUtils::stringifyUnresolved;
 
     public static Result stringifyUnresolved(Result current, List<Class<?>> expectedResultClass, EvalBytecodeException unresolved) {
         var wrapped = getWrapped(current);
@@ -37,13 +36,12 @@ public class StringifyEvalResultUtils {
             return stringifyUnresolved(stubbed, expectedResultClass, unresolved);
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
-            var name = variable.getName();
             var resultClass = expectedResultClass != null && !expectedResultClass.isEmpty()
                     ? expectedResultClass.get(expectedResultClass.size() - 1)
                     : getClassByName(variable.getType().getClassName());
-            if (CharSequence.class.isAssignableFrom(resultClass)) {
-                return stringifyVariable(current, name, variable);
-            }
+//            if (CharSequence.class.isAssignableFrom(resultClass)) {
+            return stringifyVariable(variable);
+//            }
         } else if (current instanceof InvokeWithUnresolvedParameters) {
             var invokeWithUnresolvedParameters = (InvokeWithUnresolvedParameters) current;
             return stringifyUnresolved(invokeWithUnresolvedParameters.getDelay(), expectedResultClass, unresolved);
@@ -77,8 +75,9 @@ public class StringifyEvalResultUtils {
                 var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
 
                 return eval.callInvokeDynamic(instructionHandle, delay, expectedResultClass, arguments, argumentClasses,
-                        StringifyEvalResultUtils::forceStringifyVariables, (objects, parent) -> {
-                            var string = Stream.of(objects).map(String::valueOf).reduce(String::concat).orElse("");
+                        null, (parameters, parent) -> {
+                            var values = getValues(parameters, StringifyEvalResultUtils::stringifyUnresolved);
+                            var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             return constant(string, delay.getLastInstruction(), delay.getEvalContext(), delay);
                         });
             }
@@ -97,9 +96,9 @@ public class StringifyEvalResultUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return eval.callInvokeVirtual(instructionHandle, delay, invokeObject, expectedResultClass, arguments,
-                    argumentClasses, StringifyEvalResultUtils::forceStringifyVariables, (parameters, lastInstruction) -> {
-                        var argValues = copyOfRange(parameters, 1, parameters.length);
-                        return stringifyInvokeResult(delay, objectClass, methodName, arguments, argValues);
+                    argumentClasses, null, (parameters, lastInstruction) -> {
+                        var args = parameters.subList(1, parameters.size());
+                        return stringifyInvokeResult(delay, objectClass, methodName, arguments, args);
                     });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeInstruction = (InvokeInstruction) instruction;
@@ -114,7 +113,7 @@ public class StringifyEvalResultUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return eval.callInvokeStatic(instructionHandle, delay, expectedResultClass, arguments, argumentClasses,
-                    StringifyEvalResultUtils::forceStringifyVariables, (parameters, lastInstruction) -> {
+                    null, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, arguments, parameters);
                     });
         }
@@ -122,13 +121,25 @@ public class StringifyEvalResultUtils {
     }
 
     private static Result.Const stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
-                                                      Arguments arguments, Object[] values) {
-        var variableValues = getVariableValues(values, arguments.getArguments());
-        final var string = variableValues.size() > 1
-                ? stringifyMethodCall(objectClass, methodName, stringifyArguments(variableValues.toArray()))
-                : variableValues.size() == 1 ? "" + variableValues.get(0)
-                : stringifyMethodCall(objectClass, methodName, stringifyArguments(values));
+                                                      EvalArguments evalArguments, List<ParameterValue> resolvedArguments
+    ) {
+        var variables = resolvedArguments.stream()
+                .filter(a -> a.getParameter() instanceof Variable)
+                .collect(toList());
+        var args = !variables.isEmpty() ? variables : resolvedArguments;
+        var values = getValues(args, StringifyEvalResultUtils::stringifyUnresolved);
+        var string = stringifyMethodCall(objectClass, methodName, values, stringifyArguments(values));
         return constant(string, delay.getLastInstruction(), delay.getEvalContext(), delay);
+    }
+
+    public static Object[] getValues(List<ParameterValue> parameterValues, Result.UnevaluatedResolver unevaluatedHandler) {
+        return parameterValues.stream().map(pv -> {
+            var exception = pv.getException();
+            if (exception != null) {
+                return unevaluatedHandler.resolve(pv.getParameter(), pv.getExpectedResultClass(), exception).getValue(pv.getExpectedResultClass());
+            }
+            return pv.getValue();
+        }).toArray(Object[]::new);
     }
 
     private static ArrayList<Object> getVariableValues(Object[] values, List<Result> arguments) {
@@ -143,12 +154,15 @@ public class StringifyEvalResultUtils {
         return variables;
     }
 
-    private static Result.Const stringifyVariable(Result current, String name, Variable variable) {
-        return constant("{" + name + "}", variable.getLastInstruction(), variable.getEvalContext(), current);
+    private static Result.Const stringifyVariable(Variable variable) {
+        var methodName = variable.getMethod().getName();
+        var componentType = variable.getComponentType().getSimpleName();
+        var value = "{" + componentType + "." + methodName + "(" + "{" + variable.getName() + "}" + ")" + "}";
+        return constant(value, variable.getLastInstruction(), variable.getEvalContext(), variable);
     }
 
-    private static String stringifyMethodCall(Class<?> objectClass, String methodName, String stringifiedArguments) {
-        return objectClass.getSimpleName() + "." + methodName + "(" + stringifiedArguments + ")";
+    private static String stringifyMethodCall(Class<?> objectClass, String methodName, Object[] argsValues, String arguments) {
+        return "{" + objectClass.getSimpleName() + "." + methodName + "(" + arguments + ")" + "}";
     }
 
     private static String stringifyArguments(Object[] arguments) {
@@ -167,7 +181,7 @@ public class StringifyEvalResultUtils {
             return forceStringifyVariables(stubbed, expectedResultClass, unresolved);
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
-            return stringifyVariable(current, variable.getName(), variable);
+            return stringifyVariable(variable);
         } else if (current instanceof Delay) {
             return stringifyDelay((Delay) current, expectedResultClass);
         }

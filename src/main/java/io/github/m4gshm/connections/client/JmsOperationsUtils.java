@@ -25,7 +25,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
-import static io.github.m4gshm.connections.client.StringifyEvalResultUtils.STRINGIFY_UNRESOLVED;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -85,8 +84,8 @@ public class JmsOperationsUtils {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = argumentsArguments.get(0);
-                var resolved = eval.resolve(first, String.class, STRINGIFY_UNRESOLVED);
-                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(String.class, STRINGIFY_UNRESOLVED)),
+                var resolved = eval.resolve(first, String.class, StringifyEvalResultUtils::stringifyUnresolved);
+                return resolved.stream().map(v -> newJmsClient(getDestination(v.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)),
                         direction, methodName)).collect(toList());
             }
         }
