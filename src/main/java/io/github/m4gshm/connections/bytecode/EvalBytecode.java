@@ -456,7 +456,7 @@ public class EvalBytecode {
             var anewarray = (ANEWARRAY) instruction;
             var loadClassType = anewarray.getLoadClassType(constantPoolGen);
             var arrayElementType = getClassByName(loadClassType.getClassName());
-            return delay(instructionText, instructionHandle, this, parent, ObjectType.getType(arrayElementType.arrayType()),
+            return delay(instructionText, instructionHandle, this, parent, getArrayType(arrayElementType),
                     (thisDelay, needResolve, expectedResultClass, unevaluatedHandler) -> {
                         var size = eval(getPrev(instructionHandle), parent);
                         return constant(Array.newInstance(arrayElementType, (int) size.getValue(int.class)),
@@ -576,6 +576,10 @@ public class EvalBytecode {
                     });
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen);
+    }
+
+    private static Type getArrayType(Class<?> elementType) {
+        return ObjectType.getType(Array.newInstance(elementType, 0).getClass());
     }
 
     private List<Result> findStoreInstructionResults(InstructionHandle instructionHandle,
