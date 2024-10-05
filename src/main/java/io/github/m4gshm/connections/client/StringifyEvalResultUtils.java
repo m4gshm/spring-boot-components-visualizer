@@ -4,7 +4,6 @@ import io.github.m4gshm.connections.bytecode.EvalBytecode.EvalArguments;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.InvokeWithUnresolvedParameters;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable;
 import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.bytecode.UnevaluatedResultException;
@@ -40,9 +39,6 @@ public class StringifyEvalResultUtils {
 //            if (CharSequence.class.isAssignableFrom(resultClass)) {
             return stringifyVariable(variable);
 //            }
-        } else if (current instanceof InvokeWithUnresolvedParameters) {
-            var invokeWithUnresolvedParameters = (InvokeWithUnresolvedParameters) current;
-            return stringifyUnresolved(invokeWithUnresolvedParameters.getDelay(), expectedResultClass, unresolved);
         } else if (current instanceof Result.CallArg) {
             return stringifyUnresolved(((Result.CallArg) current).getResult(), expectedResultClass, unresolved);
         } else if (current instanceof Delay) {
