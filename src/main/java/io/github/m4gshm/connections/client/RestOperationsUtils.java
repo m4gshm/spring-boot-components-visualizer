@@ -73,13 +73,13 @@ public class RestOperationsUtils {
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
-        var resolvedPaths = eval.resolve(path, String.class, StringifyEvalResultUtils::stringifyUnresolved);
+        var resolvedPaths = eval.resolve(path, StringifyEvalResultUtils::stringifyUnresolved);
         var paths = resolveVariableStrings(eval, resolvedPaths);
 
         final List<String> httpMethods;
         if ("exchange".equals(methodName)) {
             var httpMethodArg = argumentsArguments.get(1);
-            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, org.springframework.http.HttpMethod.class, null);
+            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, null);
             httpMethods = resolveVariableStrings(eval, resolvedHttpMethodResults);
         } else {
             httpMethods = List.of(getHttpMethod(methodName));
@@ -91,7 +91,7 @@ public class RestOperationsUtils {
 
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
         return results.stream()
-                .flatMap(r -> eval.resolve(r, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream())
+                .flatMap(r -> eval.resolve(r, StringifyEvalResultUtils::stringifyUnresolved).stream())
                 .map(result -> String.valueOf(result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)))
                 .distinct()
                 .collect(toList());

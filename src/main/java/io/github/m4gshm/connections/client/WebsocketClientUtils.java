@@ -78,7 +78,7 @@ public class WebsocketClientUtils {
                 bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            return evalEngine.resolve(value, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream()
+            return evalEngine.resolve(value, StringifyEvalResultUtils::stringifyUnresolved).stream()
                     .map(result -> result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)).map(o -> {
                         if (o instanceof URI) {
                             var uri = (URI) o;
@@ -90,7 +90,7 @@ public class WebsocketClientUtils {
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            return evalEngine.resolve(utiTemplate, String.class, StringifyEvalResultUtils::stringifyUnresolved).stream()
+            return evalEngine.resolve(utiTemplate, StringifyEvalResultUtils::stringifyUnresolved).stream()
                     .map(result -> result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved))
                     .map(String::valueOf).collect(toList());
         } else {
