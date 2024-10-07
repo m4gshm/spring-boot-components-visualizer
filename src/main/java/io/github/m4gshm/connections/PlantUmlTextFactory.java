@@ -50,7 +50,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
     public static final String INDENT = "  ";
     public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
             "", List.of(" "), ".",
-            List.of("-", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]",
+            List.of("-", "+", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]",
                     "#", "\"", "'", "%"));
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
@@ -334,7 +334,8 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
         } else if (type == storage) {
             Map<String, Map<Interface, List<Component>>> groupedByPackage = interfaceRelations.entrySet().stream()
                     .map(e -> entry(getStorageEntityPackageName(e.getKey()), e)).collect(groupingBy(Entry::getKey,
-                            TreeMap::new, mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new))));
+                            TreeMap::new, mapping(Entry::getValue, toMap(Entry::getKey, Entry::getValue,
+                                    warnDuplicated(), LinkedHashMap::new))));
             var commonPackPrefix = groupedByPackage.keySet().stream().reduce(Strings::commonPrefix).orElse("");
             if (!commonPackPrefix.isEmpty()) {
                 groupedByPackage = groupedByPackage.entrySet().stream().collect(toMap(e -> e.getKey().substring(commonPackPrefix.length()),

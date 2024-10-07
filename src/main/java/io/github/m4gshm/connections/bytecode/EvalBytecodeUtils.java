@@ -167,7 +167,7 @@ public class EvalBytecodeUtils {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
         return delay(instructionText, instructionHandle, evalBytecode, parent, null,
                 (thisDelay, needResolve, expected, unevaluatedHandler) -> {
-            var object = result.getValue(unevaluatedHandler);
+            var object = result.getValue(unevaluatedHandler).get(0);
             return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
                     lastInstruction, evalBytecode, thisDelay);
         });

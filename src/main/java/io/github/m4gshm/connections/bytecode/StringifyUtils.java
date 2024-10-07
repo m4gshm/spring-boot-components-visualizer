@@ -222,7 +222,7 @@ public class StringifyUtils {
     }
 
     private static List<String> neg(Result result) {
-        return getResultVariants(result).stream().map(f -> "-" + f.getValue(StringifyUtils::stringifyUnresolved)).collect(toList());
+        return getResultVariants(result).stream().map(f -> "-" + f.getValue(StringifyUtils::stringifyUnresolved).get(0)).collect(toList());
     }
 
     private static List<String> xor(Result first, Result second) {

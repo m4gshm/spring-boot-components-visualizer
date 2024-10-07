@@ -514,7 +514,7 @@ public class EvalBytecode {
                             var result = array.getValue(Object[].class);
                             if (result instanceof Object[]) {
                                 var indexValue = index.getValue(int.class);
-                                ((Object[]) result)[(int) indexValue] = element.getValue(unevaluatedHandler);
+                                ((Object[]) result)[(int) indexValue] = element.getValue(unevaluatedHandler).get(0);
                             } else {
                                 throw newInvalidEvalException("expectedResultClass array but was " + result.getClass(), instruction, constantPoolGen);
                             }
@@ -1567,6 +1567,7 @@ public class EvalBytecode {
         default Object getValue(List<Class<?>> expectedResultClass) {
             return getValue(expectedResultClass.get(0));
         }
+
 
         default List<Object> getValue(UnevaluatedResolver unevaluatedHandler) {
             return getValue((Class<?>) null, unevaluatedHandler);
