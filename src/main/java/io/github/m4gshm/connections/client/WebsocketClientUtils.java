@@ -80,7 +80,7 @@ public class WebsocketClientUtils {
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             return evalEngine.resolve(value, StringifyUtils::stringifyUnresolved).stream()
-                    .map(result -> result.getValue(String.class, StringifyUtils::stringifyUnresolved)).map(o -> {
+                    .flatMap(result -> result.getValue(String.class, StringifyUtils::stringifyUnresolved).stream()).map(o -> {
                         if (o instanceof URI) {
                             var uri = (URI) o;
                             return uri.toString();
