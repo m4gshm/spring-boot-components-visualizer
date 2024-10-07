@@ -38,7 +38,14 @@ public class CoreService {
     }
 
     public String get(String strId) {
-        return service2LegacyImpl.get("load", requireNonNull(Integer.valueOf(strId)));
+//        return service2LegacyImpl.get("load", requireNonNull(Integer.valueOf(strId)));
+        var intId = requireNonNull(Integer.valueOf(strId));
+        var firstLoad = service2LegacyImpl.get("load", intId);
+        if (firstLoad != null) {
+            return firstLoad;
+        } else {
+            return service2LegacyImpl.get("load", -(intId + 1));
+        }
     }
 
     public String makeAll() {

@@ -1,11 +1,9 @@
-package io.github.m4gshm.connections.client;
+package io.github.m4gshm.connections.bytecode;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Variable;
-import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
-import io.github.m4gshm.connections.bytecode.UnevaluatedResultException;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.generic.*;
 
@@ -19,7 +17,7 @@ import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootst
 import static java.util.stream.Collectors.toList;
 
 @UtilityClass
-public class StringifyEvalResultUtils {
+public class StringifyUtils {
 
     public static Result stringifyUnresolved(Result current, Class<?> expectedResultClass, EvalBytecodeException unresolved) {
         var wrapped = getWrapped(current);
@@ -63,8 +61,8 @@ public class StringifyEvalResultUtils {
                 var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
 
                 return eval.callInvokeDynamic(instructionHandle, delay, expectedResultClass, arguments, argumentClasses,
-                        null, (parameters, parent) -> {
-                            var values = getValues(parameters, StringifyEvalResultUtils::stringifyUnresolved);
+                        StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
+                            var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
                             return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, parameters);
@@ -85,7 +83,7 @@ public class StringifyEvalResultUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return eval.callInvokeVirtual(instructionHandle, delay, invokeObject, expectedResultClass, arguments,
-                    argumentClasses, null, (parameters, lastInstruction) -> {
+                    argumentClasses, StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         var args = parameters.subList(1, parameters.size());
                         return stringifyInvokeResult(delay, objectClass, methodName, args);
                     });
@@ -102,7 +100,7 @@ public class StringifyEvalResultUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return eval.callInvokeStatic(instructionHandle, delay, expectedResultClass, arguments, argumentClasses,
-                    null, (parameters, lastInstruction) -> {
+                    StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, parameters);
                     });
         }
@@ -116,7 +114,7 @@ public class StringifyEvalResultUtils {
                 .filter(a -> a.getParameter() instanceof Variable)
                 .collect(toList());
         var args = !variables.isEmpty() ? variables : resolvedArguments;
-        var values = getValues(args, StringifyEvalResultUtils::stringifyUnresolved);
+        var values = getValues(args, StringifyUtils::stringifyUnresolved);
         var string = stringifyMethodCall(objectClass, methodName, stringifyArguments(values));
         var lastInstruction = delay.getLastInstruction();
         return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
@@ -126,7 +124,9 @@ public class StringifyEvalResultUtils {
         return parameterValues.stream().map(pv -> {
             var exception = pv.getException();
             if (exception != null) {
-                return unevaluatedHandler.resolve(pv.getParameter(), pv.getExpectedResultClass(), exception).getValue();
+                return unevaluatedHandler
+                        .resolve(pv.getParameter(), pv.getExpectedResultClass(), exception)
+                        .getValue();
             }
             return pv.getValue();
         }).toArray(Object[]::new);

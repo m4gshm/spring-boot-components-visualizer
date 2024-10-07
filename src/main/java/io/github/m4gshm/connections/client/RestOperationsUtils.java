@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
@@ -73,7 +74,7 @@ public class RestOperationsUtils {
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
-        var resolvedPaths = eval.resolve(path, StringifyEvalResultUtils::stringifyUnresolved);
+        var resolvedPaths = eval.resolve(path, StringifyUtils::stringifyUnresolved);
         var paths = resolveVariableStrings(eval, resolvedPaths);
 
         final List<String> httpMethods;
@@ -91,8 +92,8 @@ public class RestOperationsUtils {
 
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
         return results.stream()
-                .flatMap(r -> eval.resolve(r, StringifyEvalResultUtils::stringifyUnresolved).stream())
-                .map(result -> String.valueOf(result.getValue(String.class, StringifyEvalResultUtils::stringifyUnresolved)))
+                .flatMap(r -> eval.resolve(r, StringifyUtils::stringifyUnresolved).stream())
+                .map(result -> String.valueOf(result.getValue(String.class, StringifyUtils::stringifyUnresolved)))
                 .distinct()
                 .collect(toList());
     }
