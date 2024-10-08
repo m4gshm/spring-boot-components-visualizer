@@ -93,7 +93,8 @@ public class RestOperationsUtils {
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
         return results.stream()
                 .flatMap(r -> eval.resolve(r, StringifyUtils::stringifyUnresolved).stream())
-                .map(result -> String.valueOf(result.getValue(String.class, StringifyUtils::stringifyUnresolved)))
+                .flatMap(result -> result.getValue(StringifyUtils::stringifyUnresolved).stream())
+                .map(String::valueOf)
                 .distinct()
                 .collect(toList());
     }

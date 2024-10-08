@@ -76,33 +76,33 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:http://service2/{id}" as out.GET.http...service2..id.
-    service2FeignClient ....( out.GET.http...service2..id.
-    interface "GET:[http://service2]" as out.GET..http...service2.
-    service2LegacyImpl ....( out.GET..http...service2.
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
-    frame "[http://service2" as output.http..http...service2 #line.dotted;text:gray {
-      interface "GET:/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}]" as out.GET..http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id....
-      service2LegacyImpl ....( out.GET..http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id....
-      frame "/load" as output.http..http...service2..load #line.dotted;text:gray {
-        interface "GET:/{Integer.valueOf(-{Integer.intValue()}+1)}]" as out.GET..http...service2.load..Integer.valueOf...Integer.intValue....1...
-        service2LegacyImpl ....( out.GET..http...service2.load..Integer.valueOf...Integer.intValue....1...
-        interface "GET:/{Objects.requireNonNull({Integer.valueOf({MainController.get({id})})})}]" as out.GET..http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.get..id........
-        service2LegacyImpl ....( out.GET..http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.get..id........
-        interface "GET:/{Objects.requireNonNull({Integer.valueOf({MainController.save({id})})})}]" as out.GET..http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.save..id........
-        service2LegacyImpl ....( out.GET..http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.save..id........
+    frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
+      interface "GET:" as out.GET.http...service2
+      service2LegacyImpl ....( out.GET.http...service2
+      interface "GET:/{id}" as out.GET.http...service2..id.
+      service2FeignClient ....( out.GET.http...service2..id.
+      interface "GET:/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}" as out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
+      service2LegacyImpl ....( out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
+      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
+        interface "GET:/{Integer.valueOf(-{{Objects.requireNonNull({Integer.valueOf({MainController.save({id})})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf....Objects.requireNonNull..Integer.valueOf..MainController.save..id........intValue....1..
+        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf....Objects.requireNonNull..Integer.valueOf..MainController.save..id........intValue....1..
+        interface "GET:/{Objects.requireNonNull({Integer.valueOf({MainController.get({id})})})}" as out.GET.http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.get..id.......
+        service2LegacyImpl ....( out.GET.http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.get..id.......
+        interface "GET:/{Objects.requireNonNull({Integer.valueOf({MainController.save({id})})})}" as out.GET.http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.save..id.......
+        service2LegacyImpl ....( out.GET.http...service2.load..Objects.requireNonNull..Integer.valueOf..MainController.save..id.......
       }
     }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|[ws://service-template/{id}/]|\n\
-<#transparent,transparent>|[ws://service-template]|\n\
-<#transparent,transparent>|ws://currentURI-method|\n\
+      collections "<#transparent,transparent>|ws://currentURI-method|\n\
 <#transparent,transparent>|ws://currentURI-supplier|\n\
 <#transparent,transparent>|ws://defaultURI-static|\n\
 <#transparent,transparent>|ws://service-property-injected|\n\
+<#transparent,transparent>|ws://service-template|\n\
+<#transparent,transparent>|ws://service-template/{id}/|\n\
 <#transparent,transparent>|ws://service2|\n\
 <#transparent,transparent>|ws://service2-value-inject|\n\
 <#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces
@@ -111,11 +111,12 @@ cloud "output" as output #line.dotted;line:gray; {
   }
   queue "jms" as output.jms {
     frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
-      interface "undefined" as outIn.jmsQueueService.undefined.outIn
-      jmsQueueService ....> outIn.jmsQueueService.undefined.outIn
-      jmsQueueService <.... outIn.jmsQueueService.undefined.outIn#line.dotted
-      interface "undefined" as out.jmsQueueService.undefined.out
-      jmsQueueService ....> out.jmsQueueService.undefined.out
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue2|\n\
+<#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents3|\n\
+<#transparent,transparent>|jmsQueue{CoreService.lambda$makeAll$0({i})}|" as output.jms.jmsQueueService.interfaces
+      jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }
   }
 }

@@ -80,7 +80,10 @@ public class WebsocketClientUtils {
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             return evalEngine.resolve(value, StringifyUtils::stringifyUnresolved).stream()
-                    .flatMap(result -> result.getValue(String.class, StringifyUtils::stringifyUnresolved).stream()).map(o -> {
+                    .flatMap(result -> {
+                        List<Object> objects = result.getValue(StringifyUtils::stringifyUnresolved);
+                        return objects.stream();
+                    }).map(o -> {
                         if (o instanceof URI) {
                             var uri = (URI) o;
                             return uri.toString();
@@ -91,9 +94,15 @@ public class WebsocketClientUtils {
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            return evalEngine.resolve(utiTemplate, StringifyUtils::stringifyUnresolved).stream()
-                    .map(result -> result.getValue(String.class, StringifyUtils::stringifyUnresolved))
-                    .map(String::valueOf).collect(toList());
+            List<EvalBytecode.Result> resolve = evalEngine.resolve(utiTemplate, StringifyUtils::stringifyUnresolved);
+            return resolve.stream()
+                    .flatMap(result -> {
+                        List<Object> value = result.getValue(StringifyUtils::stringifyUnresolved);
+                        return value.stream();
+                    })
+                    .map(obj -> {
+                        return String.valueOf(obj);
+                    }).collect(toList());
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " +
                     Arrays.toString(argumentTypes));
