@@ -39,6 +39,7 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newInv
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeException.newUnsupportedEvalException;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
+import static io.github.m4gshm.connections.bytecode.LocalVariableUtils.getLocalVariable;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Map.entry;
@@ -232,12 +233,6 @@ public class EvalBytecode {
         }
     }
 
-    private static List<LocalVariable> getLocalVariables(Method method, int index) {
-        var localVariableTable = Stream.of(method.getLocalVariableTable().getLocalVariableTable())
-                .collect(groupingBy(LocalVariable::getIndex));
-        return localVariableTable.getOrDefault(index, List.of());
-    }
-
     private static Object convertNumberTo(Number number, Type convertTo) {
         if (Type.INT.equals(convertTo)) {
             return number.intValue();
@@ -405,22 +400,6 @@ public class EvalBytecode {
                 '}';
     }
 
-    private LocalVariable findLocalVariable(InstructionHandle instructionHandle, List<LocalVariable> localVariables) {
-        if (localVariables.isEmpty()) {
-            log.info("no matched local variables for instruction {}, method {}", instructionHandle,
-                    EvalBytecodeUtils.toString(method));
-            return null;
-        }
-        var position = instructionHandle.getPosition();
-        return localVariables.stream().filter(variable -> {
-            int startPC = variable.getStartPC();
-            var endPC = startPC + variable.getLength();
-            return startPC <= position && position <= endPC;
-        }).findFirst().orElseGet(() -> {
-            return localVariables.get(0);
-        });
-    }
-
     public Result eval(InstructionHandle instructionHandle) {
         return eval(instructionHandle, null);
     }
@@ -440,8 +419,8 @@ public class EvalBytecode {
         } else if (instruction instanceof LoadInstruction) {
             var aload = (LoadInstruction) instruction;
             var aloadIndex = aload.getIndex();
-            var localVariables = getLocalVariables(this.getMethod(), aloadIndex);
-            var localVariable = findLocalVariable(instructionHandle, localVariables);
+            var localVariables = LocalVariableUtils.getLocalVariables(getMethod(), aloadIndex);
+            var localVariable = LocalVariableUtils.findLocalVariable(method, localVariables, instructionHandle);
 
             var name = localVariable != null ? localVariable.getName() : null;
             if ("this".equals(name)) {
@@ -488,8 +467,7 @@ public class EvalBytecode {
                         codeException.getCatchType(), CONSTANT_Class);
                 var errType = ObjectType.getInstance(catchType);
                 var localVarIndex = ((StoreInstruction) instruction).getIndex();
-                var localVariables = getLocalVariables(method, localVarIndex);
-                var localVariable = findLocalVariable(instructionHandle, localVariables);
+                var localVariable = getLocalVariable(method, localVarIndex, instructionHandle);
                 return localVariable != null
                         ? variable(this, localVariable, instructionHandle, parent)
                         : variable(this, localVarIndex, null, errType, instructionHandle, parent);
@@ -1260,9 +1238,9 @@ public class EvalBytecode {
             } else {
                 return List.of(variable);
             }
-        } else if (value instanceof DelayAware) {
+        } else if (value instanceof Delay) {
             try {
-                var delayed = ((DelayAware) value).getDelayed(true, null, unevaluatedHandler);
+                var delayed = ((Delay) value).getDelayed(true, null, unevaluatedHandler);
                 return getResultVariants(delayed);
             } catch (UnevaluatedResultException e) {
                 log("resolve delay invocation", e);
@@ -1459,7 +1437,17 @@ public class EvalBytecode {
         }
     }
 
-    public interface Result {
+    interface ContextAware {
+        Method getMethod();
+
+        Component getComponent();
+
+        default Class<?> getComponentType() {
+            return getComponent().getType();
+        }
+    }
+
+    public interface Result extends ContextAware {
 
         static Invoked invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
                                EvalBytecode context, Result parent, List<ParameterValue> parameters) {
@@ -1584,26 +1572,12 @@ public class EvalBytecode {
             Result resolve(Result current, EvalBytecodeException cause);
         }
 
-        interface ContextAware extends Result {
-            Method getMethod();
-
-            Component getComponent();
-
-            default Class<?> getComponentType() {
-                return getComponent().getType();
-            }
-        }
-
         interface PrevAware {
             Result getPrev();
         }
 
         interface Wrapper {
             Result wrapped();
-        }
-
-        interface DelayAware {
-            Result getDelayed(boolean resolve, Class<?> expectedResultClass, UnevaluatedResolver unevaluatedHandler);
         }
 
         @Data
@@ -1682,6 +1656,16 @@ public class EvalBytecode {
                 throw new IllegalInvokeException(status, source, firstInstruction);
             }
 
+            @Override
+            public Method getMethod() {
+                return prev.getMethod();
+            }
+
+            @Override
+            public Component getComponent() {
+                return prev.getComponent();
+            }
+
             public enum Status {
                 notAccessible, notFound, stub, illegalArgument, illegalTarget;
             }
@@ -1689,7 +1673,7 @@ public class EvalBytecode {
 
         @Data
         @FieldDefaults(makeFinal = true, level = PROTECTED)
-        class Variable implements ContextAware, PrevAware {
+        class Variable implements Result, ContextAware, PrevAware {
             VarType varType;
             EvalBytecode evalContext;
             int index;
@@ -1758,7 +1742,7 @@ public class EvalBytecode {
         @AllArgsConstructor
         @RequiredArgsConstructor
         @FieldDefaults(level = PRIVATE)
-        class Delay implements DelayAware, ContextAware, PrevAware {
+        class Delay implements Result, ContextAware, PrevAware {
             final EvalBytecode evalContext;
             final String description;
             @EqualsAndHashCode.Exclude
@@ -1796,7 +1780,6 @@ public class EvalBytecode {
                 return delayed.getLastInstruction();
             }
 
-            @Override
             public Result getDelayed(boolean resolve, Class<?> expectedResultClass, UnevaluatedResolver unevaluatedHandler) {
                 var result = this.result;
                 var evaluate = !resolve;
@@ -1880,44 +1863,15 @@ public class EvalBytecode {
                 checkState();
                 return results;
             }
-        }
-
-        @Data
-        @FieldDefaults(makeFinal = true, level = PRIVATE)
-        class CallArg implements Result, Wrapper {
-            String description;
-            Result result;
-            int index;
-            InstructionHandle instructionHandle;
 
             @Override
-            public Object getValue() {
-                return result.getValue();
+            public Method getMethod() {
+                return prev.getMethod();
             }
 
             @Override
-            public InstructionHandle getFirstInstruction() {
-                return instructionHandle;
-            }
-
-            @Override
-            public InstructionHandle getLastInstruction() {
-                return instructionHandle;
-            }
-
-            @Override
-            public Result wrapped() {
-                return result;
-            }
-
-            @Override
-            public boolean isResolved() {
-                return result.isResolved();
-            }
-
-            @Override
-            public String toString() {
-                return "callArgument(i:" + index + "='" + result + "' of '" + description + "')";
+            public Component getComponent() {
+                return prev.getComponent();
             }
         }
     }

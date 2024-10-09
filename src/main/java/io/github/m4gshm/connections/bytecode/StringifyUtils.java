@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.bytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import lombok.experimental.UtilityClass;
+import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.generic.*;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClass;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClasses;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethod;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
+import static io.github.m4gshm.connections.bytecode.LocalVariableUtils.getLocalVariable;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.*;
 
@@ -33,8 +35,6 @@ public class StringifyUtils {
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
             return stringifyVariable(variable);
-        } else if (current instanceof Result.CallArg) {
-            return stringifyUnresolved(((Result.CallArg) current).getResult(), unresolved);
         } else if (current instanceof Delay) {
             return stringifyDelay((Delay) current);
         }
@@ -130,7 +130,7 @@ public class StringifyUtils {
         var args = !variables.isEmpty() ? variables : resolvedArguments;
         var argValues = getValues(args, StringifyUtils::stringifyUnresolved);
         var objectValue = object != null ? getValue(object, StringifyUtils::stringifyUnresolved) : null;
-        var string = stringifyMethodCall(objectClass, (String)objectValue, methodName,
+        var string = stringifyMethodCall(objectClass, (String) objectValue, methodName,
                 stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
         return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
@@ -142,11 +142,34 @@ public class StringifyUtils {
 
     private static Object getValue(ParameterValue pv, UnevaluatedResolver unevaluatedHandler) {
         var exception = pv.getException();
+        var parameter = pv.getParameter();
         if (exception != null) {
-            var resolved = unevaluatedHandler.resolve(pv.getParameter(), exception);
+            var resolved = unevaluatedHandler.resolve(parameter, exception);
             return resolved.getValue();
         }
-        return pv.getValue();
+        Object value = pv.getValue();
+        if (value == null) {
+            return null;
+        }
+        var valueClass = value.getClass();
+        var packageName = valueClass.getPackageName();
+        if (valueClass.isPrimitive() || packageName.startsWith("java")) {
+            return value;
+        }
+        var instructionHandle = parameter.getFirstInstruction();
+        var instruction = instructionHandle.getInstruction();
+        if (instruction instanceof LoadInstruction) {
+            var loadInst = (LoadInstruction) instruction;
+            var localVariable = getLocalVariable(parameter.getMethod(), loadInst.getIndex(), instructionHandle);
+            if (localVariable != null && localVariable.getName() != null) {
+                return localVariable.getName();
+            }
+        }
+        var simpleName = value.getClass().getSimpleName();
+        int length = simpleName.length();
+        var classAsVar = length > 2 ? simpleName.substring(0, 3).toLowerCase() + (length > 3
+                ? simpleName.substring(1) : "") : simpleName;
+        return classAsVar;
     }
 
     private static Result.Const stringifyVariable(Variable variable) {
