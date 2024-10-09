@@ -85,7 +85,7 @@ public class JmsOperationsUtils {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = argumentsArguments.get(0);
-                var resolved = eval.resolve(first, StringifyUtils::stringifyUnresolved);
+                var resolved = eval.resolveExpand(first, StringifyUtils::stringifyUnresolved);
                 return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream()).map(v -> {
                     return newJmsClient(getDestination(v), direction, methodName);
                 }).collect(toList());

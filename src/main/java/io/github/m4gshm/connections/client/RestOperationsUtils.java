@@ -74,13 +74,13 @@ public class RestOperationsUtils {
         var argumentsArguments = evalArguments.getArguments();
 
         var path = argumentsArguments.get(0);
-        var resolvedPaths = eval.resolve(path, StringifyUtils::stringifyUnresolved);
+        var resolvedPaths = eval.resolveExpand(path, StringifyUtils::stringifyUnresolved);
         var paths = resolveVariableStrings(eval, resolvedPaths);
 
         final List<String> httpMethods;
         if ("exchange".equals(methodName)) {
             var httpMethodArg = argumentsArguments.get(1);
-            var resolvedHttpMethodResults = eval.resolve(httpMethodArg, null);
+            var resolvedHttpMethodResults = eval.resolveExpand(httpMethodArg, null);
             httpMethods = resolveVariableStrings(eval, resolvedHttpMethodResults);
         } else {
             httpMethods = List.of(getHttpMethod(methodName));
@@ -92,7 +92,7 @@ public class RestOperationsUtils {
 
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
         return results.stream()
-                .flatMap(r -> eval.resolve(r, StringifyUtils::stringifyUnresolved).stream())
+                .flatMap(r -> eval.resolveExpand(r, StringifyUtils::stringifyUnresolved).stream())
                 .flatMap(result -> result.getValue(StringifyUtils::stringifyUnresolved).stream())
                 .map(String::valueOf)
                 .distinct()

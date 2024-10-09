@@ -3,7 +3,6 @@ package io.github.m4gshm.connections.bytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import lombok.experimental.UtilityClass;
-import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.generic.*;
 
 import java.util.List;
@@ -11,7 +10,8 @@ import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.getResultVariants;
+import static io.github.m4gshm.connections.bytecode.EvalBytecode.collapse;
+import static io.github.m4gshm.connections.bytecode.EvalBytecode.expand;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClass;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClasses;
 import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethod;
@@ -38,7 +38,7 @@ public class StringifyUtils {
         } else if (current instanceof Delay) {
             return stringifyDelay((Delay) current);
         }
-        throw new UnevaluatedResultException("bad stringify", current);
+        throw new UnresolvedResultException("bad stringify", current);
     }
 
     private static Result stringifyDelay(Delay delay) {
@@ -116,9 +116,9 @@ public class StringifyUtils {
             var values = strings.stream()
                     .map(v -> constant(v, instructionHandle, lastInstruction, eval, delay))
                     .collect(toList());
-            return values.size() == 1 ? values.get(0) : multiple(values, instructionHandle, lastInstruction, delay);
+            return collapse(values, instructionHandle, lastInstruction, delay, delay.getMethod().getConstantPool());
         }
-        throw new UnevaluatedResultException("bad stringify delay", delay);
+        throw new UnresolvedResultException("bad stringify delay", delay);
     }
 
     private static Result.Const stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
@@ -136,11 +136,11 @@ public class StringifyUtils {
         return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
     }
 
-    public static Object[] getValues(List<ParameterValue> parameterValues, UnevaluatedResolver unevaluatedHandler) {
+    public static Object[] getValues(List<ParameterValue> parameterValues, Resolver unevaluatedHandler) {
         return parameterValues.stream().map(pv -> getValue(pv, unevaluatedHandler)).toArray(Object[]::new);
     }
 
-    private static Object getValue(ParameterValue pv, UnevaluatedResolver unevaluatedHandler) {
+    private static Object getValue(ParameterValue pv, Resolver unevaluatedHandler) {
         var exception = pv.getException();
         var parameter = pv.getParameter();
         if (exception != null) {
@@ -247,7 +247,8 @@ public class StringifyUtils {
     }
 
     private static List<String> neg(Result result) {
-        return getResultVariants(result).stream().map(f -> "-" + f.getValue(StringifyUtils::stringifyUnresolved).get(0)).collect(toList());
+        return expand(result).stream().flatMap(f -> f.getValue(StringifyUtils::stringifyUnresolved).stream())
+                .map(v -> "-" + v).collect(toList());
     }
 
     private static List<String> xor(Result first, Result second) {
@@ -275,19 +276,19 @@ public class StringifyUtils {
     }
 
     private static List<String> unsignedShiftRight(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), getResultVariants(second), (a, b) -> a + ">>>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b);
     }
 
     private static List<String> shiftRight(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), getResultVariants(second), (a, b) -> a + ">>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b);
     }
 
     private static List<String> shiftLeft(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), getResultVariants(second), (a, b) -> a + "<<" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b);
     }
 
     private static List<String> invoke(Result first, Result second, BiFunction<String, String, String> op) {
-        return invokeVariants(getResultVariants(first), getResultVariants(second), op);
+        return invokeVariants(expand(first), expand(second), op);
     }
 
     private static List<String> invokeVariants(List<Result> firstVariants, List<Result> secondVariants,
@@ -300,12 +301,9 @@ public class StringifyUtils {
     }
 
     private static List<Result> s(Result result, EvalBytecode eval) {
-        var value2Variants = getResultVariants(result);
+        var value2Variants = expand(result);
         return value2Variants.stream()
-                .map(value2 -> {
-                    List<Object> value = value2.getValue(StringifyUtils::stringifyUnresolved);
-                    return value.get(0);
-                })
+                .flatMap(value2 -> value2.getValue(StringifyUtils::stringifyUnresolved).stream())
                 .map(value2 -> value2 instanceof Number
                         ? (((Number) value2).longValue() & 0X1f) + ""
                         : value2 + "")

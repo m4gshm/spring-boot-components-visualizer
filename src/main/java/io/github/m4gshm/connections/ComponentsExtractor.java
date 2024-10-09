@@ -386,8 +386,7 @@ public class ComponentsExtractor {
                                                 Map<Component, List<CallPoint>> callPointsCache) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
-            var wsClientUris = extractWebsocketClientUris(component,
-                    dependencyToDependentMap, callPointsCache);
+            var wsClientUris = extractWebsocketClientUris(component, dependencyToDependentMap, callPointsCache);
 
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()

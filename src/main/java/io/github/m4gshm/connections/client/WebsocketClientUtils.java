@@ -27,9 +27,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @Slf4j
 @UtilityClass
 public class WebsocketClientUtils {
-    public static List<String> extractWebsocketClientUris(Component component,
-                                                          Map<Component, List<Component>> dependentOnMap,
-                                                          Map<Component, List<CallPoint>> callPointsCache) {
+    public static List<String> extractWebsocketClientUris(Component component, Map<Component, List<Component>> dependentOnMap, Map<Component, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -45,9 +43,7 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle,
-                                constantPoolGen, bootstrapMethods, method,
-                                callPointsCache);
+                        var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle, constantPoolGen, bootstrapMethods, method, callPointsCache);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -63,49 +59,39 @@ public class WebsocketClientUtils {
         return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
     }
 
-    private static List<String> getDoHandshakeUri(Component component,
-                                                  Map<Component, List<Component>> dependentOnMap,
-                                                  InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-                                                  BootstrapMethods bootstrapMethods, Method method,
-                                                  Map<Component, List<CallPoint>> callPointsCache) throws ClassNotFoundException,
-            InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    private static List<String> getDoHandshakeUri(Component component, Map<Component, List<Component>> dependentOnMap, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods, Method method, Map<Component, List<CallPoint>> callPointsCache) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen,
-                bootstrapMethods, method, callPointsCache);
+        var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method, callPointsCache);
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
             var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            return evalEngine.resolve(value, StringifyUtils::stringifyUnresolved).stream()
-                    .flatMap(result -> {
-                        List<Object> objects = result.getValue(StringifyUtils::stringifyUnresolved);
-                        return objects.stream();
-                    }).map(o -> {
-                        if (o instanceof URI) {
-                            var uri = (URI) o;
-                            return uri.toString();
-                        } else {
-                            return o != null ? o.toString() : null;
-                        }
-                    }).collect(toList());
+            return evalEngine.resolveExpand(value, StringifyUtils::stringifyUnresolved).stream().flatMap(result -> {
+                var objects = result.getValue(StringifyUtils::stringifyUnresolved);
+                return objects.stream();
+            }).map(o -> {
+                if (o instanceof URI) {
+                    var uri = (URI) o;
+                    return uri.toString();
+                } else {
+                    return o != null ? o.toString() : null;
+                }
+            }).collect(toList());
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
             var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
             var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            List<EvalBytecode.Result> resolve = evalEngine.resolve(utiTemplate, StringifyUtils::stringifyUnresolved);
-            return resolve.stream()
-                    .flatMap(result -> {
-                        List<Object> value = result.getValue(StringifyUtils::stringifyUnresolved);
-                        return value.stream();
-                    })
-                    .map(obj -> {
-                        return String.valueOf(obj);
-                    }).collect(toList());
+            var resolve = evalEngine.resolveExpand(utiTemplate, StringifyUtils::stringifyUnresolved);
+            return resolve.stream().flatMap(result -> {
+                List<Object> value = result.getValue(StringifyUtils::stringifyUnresolved);
+                return value.stream();
+            }).map(obj -> {
+                return String.valueOf(obj);
+            }).collect(toList());
         } else {
-            throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " +
-                    Arrays.toString(argumentTypes));
+            throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }
 }

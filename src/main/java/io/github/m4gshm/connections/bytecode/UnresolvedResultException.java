@@ -4,15 +4,15 @@ import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
 import lombok.Getter;
 
 @Getter
-public class UnevaluatedResultException extends EvalBytecodeException {
+public class UnresolvedResultException extends EvalBytecodeException {
     private final Result result;
 
-    public UnevaluatedResultException(String message, Result result) {
+    public UnresolvedResultException(String message, Result result) {
         super(message + " " + result);
         this.result = result;
     }
 
-    public UnevaluatedResultException(UnevaluatedResultException e) {
+    public UnresolvedResultException(UnresolvedResultException e) {
         super(e);
         this.result = e.getResult();
     }
