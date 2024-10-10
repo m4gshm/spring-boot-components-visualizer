@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.bytecode.NoCallException;
 import io.github.m4gshm.connections.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
@@ -83,12 +84,13 @@ public class JmsOperationsUtils {
             var argumentsArguments = arguments.getArguments();
             if (argumentsArguments.isEmpty()) {
                 return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
-            } else {
+            } else try {
                 var first = argumentsArguments.get(0);
                 var resolved = eval.resolveExpand(first, StringifyUtils::stringifyUnresolved);
-                return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream()).map(v -> {
-                    return newJmsClient(getDestination(v), direction, methodName);
-                }).collect(toList());
+                return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream())
+                        .map(v -> newJmsClient(getDestination(v), direction, methodName)).collect(toList());
+            } catch (NoCallException e) {
+                return List.of();
             }
         }
     }

@@ -62,7 +62,7 @@ public class StringifyUtils {
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
                 var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
 
-                return eval.callInvokeDynamic(instructionHandle, delay, arguments, argumentClasses,
+                return eval.callInvokeDynamic(delay, arguments, argumentClasses,
                         StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
                             var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
@@ -102,7 +102,7 @@ public class StringifyUtils {
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, delay);
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-            return eval.callInvokeStatic(instructionHandle, delay, arguments, argumentClasses,
+            return eval.callInvokeStatic(delay, arguments, argumentClasses,
                     StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, null, parameters);
                     });
