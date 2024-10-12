@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.DelayInvoke;
 import io.github.m4gshm.connections.bytecode.NoCallException;
 import io.github.m4gshm.connections.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
@@ -21,6 +22,7 @@ import java.util.*;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -69,45 +71,37 @@ public class WebsocketClientUtils {
                                                   Map<Component, List<CallPoint>> callPointsCache
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
+        var methodName = method.getName();
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var evalEngine = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method, callPointsCache);
+        var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method, callPointsCache);
+        var result = (DelayInvoke) eval.eval(instructionHandle);
+        var variants = resolveInvokeParameters(eval, result, component, methodName);
+
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            var value = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            try {
-                return evalEngine.resolveExpand(value, StringifyUtils::stringifyUnresolved).stream().flatMap(result -> {
-                    var objects = result.getValue(StringifyUtils::stringifyUnresolved);
-                    return objects.stream();
-                }).map(o -> {
-                    if (o instanceof URI) {
-                        var uri = (URI) o;
-                        return uri.toString();
-                    } else {
-                        return o != null ? o.toString() : null;
-                    }
-                }).collect(toList());
-            } catch (NoCallException e) {
-                return List.of();
-            }
+            return getUrls(variants, 3);
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            var uriTemplates = evalEngine.eval(evalEngine.getPrev(instructionHandle));
-            var utiTemplate = evalEngine.eval(evalEngine.getPrev(uriTemplates.getLastInstruction()));
-            try {
-                var resolve = evalEngine.resolveExpand(utiTemplate, StringifyUtils::stringifyUnresolved);
-                return resolve.stream().flatMap(result -> {
-                    var value = result.getValue(StringifyUtils::stringifyUnresolved);
-                    return value.stream();
-                }).map(obj -> {
-                    return String.valueOf(obj);
-                }).collect(toList());
-            } catch (NoCallException e) {
-                return List.of();
-            }
+            return getUrls(variants, 2);
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
+    }
+
+    private static List<String> getUrls(List<List<EvalBytecode.Result>> variants, int paramIndex) {
+        var results = variants.stream().map(paramVariant -> {
+            var url = paramVariant.get(paramIndex);
+            return url.getValue();
+        }).map(o -> {
+            if (o instanceof URI) {
+                var uri = (URI) o;
+                return uri.toString();
+            } else {
+                return o != null ? o.toString() : null;
+            }
+        }).collect(toList());
+        return results;
     }
 }

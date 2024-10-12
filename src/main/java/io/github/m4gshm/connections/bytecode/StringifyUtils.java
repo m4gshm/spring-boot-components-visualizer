@@ -24,6 +24,9 @@ import static org.apache.bcel.Const.*;
 public class StringifyUtils {
 
     public static Result stringifyUnresolved(Result current, EvalBytecodeException unresolved) {
+        if (unresolved instanceof NoCallException) {
+            throw unresolved;
+        }
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
@@ -81,7 +84,6 @@ public class StringifyUtils {
             var argumentsAmount = argumentTypes.length;
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, delay);
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
-
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return eval.callInvokeVirtual(instructionHandle, delay, invokeObject, arguments,

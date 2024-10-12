@@ -2,7 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.NoCallException;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.DelayInvoke;
 import io.github.m4gshm.connections.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
+import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -79,19 +80,22 @@ public class JmsOperationsUtils {
         } else {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
                     bootstrapMethods, method, callPointsCache);
-            var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes.length, null);
-            var argumentsArguments = arguments.getArguments();
-            if (argumentsArguments.isEmpty()) {
-                return List.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
-            } else try {
-                var first = argumentsArguments.get(0);
-                var resolved = eval.resolveExpand(first, StringifyUtils::stringifyUnresolved);
-                return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream())
-                        .map(v -> newJmsClient(getDestination(v), direction, methodName)).collect(toList());
-            } catch (NoCallException e) {
-                return List.of();
-            }
+
+            var result = (DelayInvoke) eval.eval(instructionHandle);
+
+            var variants = resolveInvokeParameters(eval, result, component, methodName);
+
+            var results = variants.stream().flatMap(paramVariant -> {
+                if (paramVariant.size() < 2) {
+                    return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
+                } else {
+                    var first = paramVariant.get(1);
+                    var resolved = eval.resolveExpand(first, StringifyUtils::stringifyUnresolved);
+                    return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream())
+                            .map(v -> newJmsClient(getDestination(v), direction, methodName));
+                }
+            }).collect(toList());
+            return results;
         }
     }
 

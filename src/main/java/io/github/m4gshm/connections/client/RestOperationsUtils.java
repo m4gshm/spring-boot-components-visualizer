@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.DelayInvoke;
 import io.github.m4gshm.connections.bytecode.NoCallException;
 import io.github.m4gshm.connections.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
@@ -63,32 +64,45 @@ public class RestOperationsUtils {
         var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
         log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
                 instructionText);
+
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var methodName = instruction.getMethodName(constantPoolGen);
         var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen, bootstrapMethods, method, callPointsCache);
-        var argumentTypes = instruction.getArgumentTypes(eval.getConstantPoolGen());
-        var evalArguments = eval.evalArguments(instructionHandle, argumentTypes.length, null);
-        var argumentsArguments = evalArguments.getArguments();
+        var result = (DelayInvoke) eval.eval(instructionHandle);
+        var variants = resolveInvokeParameters(eval, result, component, methodName);
 
-        var path = argumentsArguments.get(0);
-        try {
-            var resolvedPaths = eval.resolveExpand(path, StringifyUtils::stringifyUnresolved);
-            var paths = resolveVariableStrings(eval, resolvedPaths);
-
+        var results = variants.stream().flatMap(variant -> {
+            var pathArg = variant.get(1);
             final List<String> httpMethods;
             if ("exchange".equals(methodName)) {
-                var httpMethodArg = argumentsArguments.get(1);
-                var resolvedHttpMethodResults = eval.resolveExpand(httpMethodArg, null);
-                httpMethods = resolveVariableStrings(eval, resolvedHttpMethodResults);
+                var resolvedHttpMethodArg = variant.get(2);
+                httpMethods = getStrings(resolvedHttpMethodArg.getValue(StringifyUtils::stringifyUnresolved));
             } else {
                 httpMethods = List.of(getHttpMethod(methodName));
             }
+            var paths = getStrings(pathArg.getValue(StringifyUtils::stringifyUnresolved));
+            return paths.stream().flatMap(path -> httpMethods.stream()
+                    .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).build()));
+        }).collect(toList());
+        return results;
+    }
 
-            return httpMethods.stream().flatMap(m -> paths.stream().map(p -> HttpMethod.builder().method(m).path(p).build()))
-                    .collect(toList());
+    static List<List<Result>> resolveInvokeParameters(EvalBytecode eval, DelayInvoke invoke, Component component, String methodName) {
+        List<List<Result>> variants;
+        try {
+            variants = eval.resolveInvokeParameters(invoke.getObject(), invoke.getArguments(),
+                    StringifyUtils::stringifyUnresolved, true, null);
         } catch (NoCallException e) {
-            return null;
+            log.info("no call variants for {}.{}", component.getName(), methodName);
+            variants = List.of();
         }
+        return variants;
+    }
+
+    private static List<String> getStrings(List<Object> values) {
+        return values.stream()
+                .map(value -> value != null ? value.toString() : null)
+                .collect(toList());
     }
 
     private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results) {
