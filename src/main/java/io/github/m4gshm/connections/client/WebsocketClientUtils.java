@@ -1,9 +1,11 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.DelayInvoke;
-import io.github.m4gshm.connections.bytecode.NoCallException;
-import io.github.m4gshm.connections.bytecode.StringifyUtils;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
+import io.github.m4gshm.connections.eval.result.Result;
+import io.github.m4gshm.connections.eval.result.DelayInvoke;
+import io.github.m4gshm.connections.eval.bytecode.NoCallException;
+import io.github.m4gshm.connections.eval.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
@@ -19,9 +21,10 @@ import org.springframework.web.socket.client.WebSocketClient;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -32,7 +35,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
                                                           Map<Component, List<Component>> dependentOnMap,
-                                                          Map<Component, List<CallPoint>> callPointsCache) {
+                                                          Map<Component, List<CallPoint>> callPointsCache,
+                                                          Map<CallCacheKey, Result> callCache) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -49,7 +53,7 @@ public class WebsocketClientUtils {
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
                         var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle, constantPoolGen,
-                                bootstrapMethods, method, callPointsCache);
+                                bootstrapMethods, method, callPointsCache, callCache);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -68,7 +72,8 @@ public class WebsocketClientUtils {
     private static List<String> getDoHandshakeUri(Component component, Map<Component, List<Component>> dependentOnMap,
                                                   InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  Map<Component, List<CallPoint>> callPointsCache
+                                                  Map<Component, List<CallPoint>> callPointsCache,
+                                                  Map<CallCacheKey, Result> callCache
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var methodName = method.getName();
@@ -77,7 +82,8 @@ public class WebsocketClientUtils {
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method, callPointsCache);
+        var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method,
+                callPointsCache, callCache);
         var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName);
 
@@ -90,10 +96,15 @@ public class WebsocketClientUtils {
         }
     }
 
-    private static List<String> getUrls(List<List<EvalBytecode.Result>> variants, int paramIndex) {
-        var results = variants.stream().map(paramVariant -> {
-            var url = paramVariant.get(paramIndex);
-            return url.getValue();
+    private static List<String> getUrls(List<List<Result>> variants, int paramIndex) {
+        var results = variants.stream().flatMap(paramVariant -> {
+            try {
+                var url = paramVariant.get(paramIndex);
+                return url.getValue(StringifyUtils::stringifyUnresolved).stream();
+            } catch (NoCallException e) {
+                //log
+                return Stream.empty();
+            }
         }).map(o -> {
             if (o instanceof URI) {
                 var uri = (URI) o;

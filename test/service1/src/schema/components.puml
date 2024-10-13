@@ -86,10 +86,10 @@ cloud "output" as output #line.dotted;line:gray; {
       interface "GET:/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}" as out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
       service2LegacyImpl ....( out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
-        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Objects.requireNonNull({Integer.valueOf({MainController.get({id})})})}.intValue()}+1)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Objects.requireNonNull({Integer.valueOf({MainController.save({id})})})}.intValue()}+1)}|\n\
-<#transparent,transparent>|<r>GET: |/{Objects.requireNonNull({Integer.valueOf({MainController.get({id})})})}|\n\
-<#transparent,transparent>|<r>GET: |/{Objects.requireNonNull({Integer.valueOf({MainController.save({id})})})}|" as output.http.http...service2..load.interfaces
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.get({id})})}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.save({id})})}|" as output.http.http...service2..load.interfaces
         service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
       }
     }

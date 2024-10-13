@@ -6,7 +6,7 @@ import feign.Target;
 import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
-import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
@@ -244,7 +244,7 @@ public class ComponentsExtractorUtils {
         }).findFirst().orElse(null) : null;
     }
 
-    public static Field getDeclaredField(String name, Class<?> type) {
+    public static Field getDeclaredField(Class<?> type, String name) {
         while (!(type == null || Object.class.equals(type))) try {
             return type.getDeclaredField(name);
         } catch (NoSuchFieldException e) {
@@ -262,7 +262,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static Object getFieldValue(Object object, String name, boolean throwException) {
-        var field = getDeclaredField(name, object.getClass());
+        var field = getDeclaredField(object.getClass(), name);
         return field == null ? null : getFieldValue(object, field, throwException);
     }
 
@@ -279,13 +279,16 @@ public class ComponentsExtractorUtils {
         }
     }
 
-    public static Method getDeclaredMethod(String name, Class<?> type, Class<?>[] argumentTypes) {
-        while (!(type == null || Object.class.equals(type))) try {
-            return type.getDeclaredMethod(name, argumentTypes);
+    public static Method getDeclaredMethod(Class<?> type, String name, Class<?>[] argumentTypes) {
+        var current = type;
+        while (!(current == null || Object.class.equals(current))) try {
+            return current.getDeclaredMethod(name, argumentTypes);
         } catch (NoSuchMethodException e) {
-            type = type.getSuperclass();
+            current = type.getSuperclass();
         }
-        return null;
+        return Optional.ofNullable(type).map(Class::getInterfaces).stream().flatMap(Arrays::stream).map(iface-> {
+            return getDeclaredMethod(iface, name, argumentTypes);
+        }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     public static Interface newInterface(JmsClient jmsClient) {

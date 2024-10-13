@@ -1,4 +1,4 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
 import lombok.Data;
 import lombok.NonNull;
@@ -17,8 +17,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.getClassByName;
-import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getClassByName;
+import static io.github.m4gshm.connections.eval.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;

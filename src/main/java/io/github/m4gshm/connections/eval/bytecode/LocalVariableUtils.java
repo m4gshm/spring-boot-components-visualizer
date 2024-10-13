@@ -1,4 +1,4 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;

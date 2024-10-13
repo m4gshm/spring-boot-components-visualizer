@@ -1,6 +1,6 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Multiple;
+import io.github.m4gshm.connections.eval.result.Multiple;
 import lombok.Getter;
 
 @Getter

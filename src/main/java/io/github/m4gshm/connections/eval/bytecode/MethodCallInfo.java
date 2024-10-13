@@ -1,4 +1,4 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
 import lombok.AccessLevel;
 import lombok.Data;

@@ -1,7 +1,9 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
-import io.github.m4gshm.connections.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
+import io.github.m4gshm.connections.eval.result.Result;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -35,8 +37,8 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.unproxy;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
@@ -126,12 +128,13 @@ public class ComponentsExtractor {
         var components = componentsPerName.values();
         var dependencyToDependentMap = getDependencyToDependentMap(components);
         var callPointsCache = new HashMap<Component, List<CallPoint>>();
+        var callCache = new HashMap<CallCacheKey, Result>();
 
 //        var expectedTypes = components.stream().map(Component::getType).map(Class::getName).collect(toSet());
         Set<Component> filteredComponentsWithInterfaces = components.stream().map(c -> {
             var exists = c.getInterfaces();
             var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(),
-                    dependencyToDependentMap, callPointsCache);
+                    dependencyToDependentMap, callPointsCache, callCache);
             if (exists == null) {
                 exists = interfaces;
             } else if (interfaces != null && !interfaces.isEmpty()) {
@@ -248,15 +251,18 @@ public class ComponentsExtractor {
     private LinkedHashSet<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
                                                    Set<Component> dependencies,
                                                    Map<Component, List<Component>> dependencyToDependentMap,
-                                                   Map<Component, List<CallPoint>> callPointsCache) {
+                                                   Map<Component, List<CallPoint>> callPointsCache,
+                                                   Map<CallCacheKey, Result> callCache) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                 .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 
         var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
-        var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies, dependencyToDependentMap, callPointsCache);
-        var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies, dependencyToDependentMap, callPointsCache);
+        var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies, dependencyToDependentMap,
+                callPointsCache, callCache);
+        var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies, dependencyToDependentMap,
+                callPointsCache, callCache);
         var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(component, componentName,
-                dependencies, dependencyToDependentMap, callPointsCache);
+                dependencies, dependencyToDependentMap, callPointsCache, callCache);
 
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                 .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
@@ -368,11 +374,11 @@ public class ComponentsExtractor {
     protected Set<Interface> getOutJmsInterfaces(Component component, String componentName,
                                                  Collection<Component> dependencies,
                                                  Map<Component, List<Component>> dependencyToDependentMap,
-                                                 Map<Component, List<CallPoint>> callPointsCache) {
+                                                 Map<Component, List<CallPoint>> callPointsCache,
+                                                 Map<CallCacheKey, Result> callCache) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
-            var jmsClients = extractJmsClients(component, dependencyToDependentMap,
-                    callPointsCache);
+            var jmsClients = extractJmsClients(component, dependencyToDependentMap, callPointsCache, callCache);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
@@ -383,11 +389,11 @@ public class ComponentsExtractor {
     protected Set<Interface> getOutWsInterfaces(Component component, String componentName,
                                                 Collection<Component> dependencies,
                                                 Map<Component, List<Component>> dependencyToDependentMap,
-                                                Map<Component, List<CallPoint>> callPointsCache) {
+                                                Map<Component, List<CallPoint>> callPointsCache,
+                                                Map<CallCacheKey, Result> callCache) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
-            var wsClientUris = extractWebsocketClientUris(component, dependencyToDependentMap, callPointsCache);
-
+            var wsClientUris = extractWebsocketClientUris(component, dependencyToDependentMap, callPointsCache, callCache);
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
                             .direction(out).type(ws).name(uri)
@@ -404,11 +410,12 @@ public class ComponentsExtractor {
     protected Set<Interface> getOutRestTemplateInterfaces(Component component, String componentName,
                                                           Collection<Component> dependencies,
                                                           Map<Component, List<Component>> dependencyToDependentMap,
-                                                          Map<Component, List<CallPoint>> callPointsCache) {
+                                                          Map<Component, List<CallPoint>> callPointsCache,
+                                                          Map<CallCacheKey, Result> callCache) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(component, dependencyToDependentMap,
-                    callPointsCache);
+                    callPointsCache, callCache);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)

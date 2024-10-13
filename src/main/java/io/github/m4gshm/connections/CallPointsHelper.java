@@ -9,9 +9,9 @@ import org.apache.bcel.generic.*;
 
 import java.util.*;
 
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.*;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
-import static io.github.m4gshm.connections.bytecode.MethodInfo.newMethodInfo;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
+import static io.github.m4gshm.connections.eval.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
 import static java.util.Arrays.stream;
 import static java.util.Optional.ofNullable;

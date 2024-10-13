@@ -1,6 +1,6 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result.Delay;
+import io.github.m4gshm.connections.eval.result.Delay;
 import lombok.Getter;
 
 @Getter

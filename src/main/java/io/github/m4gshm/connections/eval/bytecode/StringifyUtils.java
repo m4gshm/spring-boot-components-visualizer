@@ -1,7 +1,7 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
+import io.github.m4gshm.connections.eval.result.*;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.generic.*;
 
@@ -9,74 +9,91 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.collapse;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.expand;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClass;
-import static io.github.m4gshm.connections.bytecode.EvalBytecodeUtils.toClasses;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethod;
-import static io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
-import static io.github.m4gshm.connections.bytecode.LocalVariableUtils.getLocalVariable;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.collapse;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.expand;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClass;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClasses;
+import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethod;
+import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
+import static io.github.m4gshm.connections.eval.bytecode.LocalVariableUtils.*;
+import static io.github.m4gshm.connections.eval.result.Result.*;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.*;
 
 @UtilityClass
 public class StringifyUtils {
 
-    public static Result stringifyUnresolved(Result current, EvalBytecodeException unresolved) {
-        if (unresolved instanceof NoCallException) {
-            throw unresolved;
+    public static Result stringifyUnresolved(Result current, EvalBytecodeException ex) {
+        if (ex instanceof NoCallException) {
+            throw ex;
         }
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
         }
-        if (current instanceof Result.Stub) {
-            var s = (Result.Stub) current;
+        if (current instanceof Stub) {
+            var s = (Stub) current;
             var stubbed = s.getStubbed();
-            return stringifyUnresolved(stubbed, unresolved);
+            return stringifyUnresolved(stubbed, ex);
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
             return stringifyVariable(variable);
         } else if (current instanceof Delay) {
-            return stringifyDelay((Delay) current);
+            return stringifyDelay((Delay) current, ex);
         }
         throw new UnresolvedResultException("bad stringify", current);
     }
 
-    private static Result stringifyDelay(Delay delay) {
+    private static Result stringifyDelay(Delay delay, EvalBytecodeException ex) {
+//        if (ex instanceof IllegalInvokeException) {
+//            var illegalInvokeException = (IllegalInvokeException) ex;
+//            var unresolved = illegalInvokeException.getResult();
+//            if (unresolved == delay) {
+//                System.out.println(unresolved);
+//            }
+//        }
         var instructionHandle = delay.getFirstInstruction();
         var instruction = instructionHandle.getInstruction();
+        var eval = delay.getEvalContext();
+        var constantPoolGen = eval.getConstantPoolGen();
+        var constantPool = constantPoolGen.getConstantPool();
         if (instruction instanceof INVOKEDYNAMIC) {
             var invokedynamic = (INVOKEDYNAMIC) instruction;
-            var eval = delay.getEvalContext();
-            var constantPoolGen = eval.getConstantPoolGen();
             var bootstrapMethods = eval.getBootstrapMethods();
 
-            var constantPool = constantPoolGen.getConstantPool();
             var bootstrapMethod = getBootstrapMethod(invokedynamic, bootstrapMethods, constantPool);
             var bootstrapMethodInfo = getBootstrapMethodInfo(bootstrapMethod, constantPool);
 
-            var stringConcatenation =
-                    "java.lang.invoke.StringConcatFactory".equals(bootstrapMethodInfo.getClassName()) &&
-                            "makeConcatWithConstants".equals(bootstrapMethodInfo.getMethodName());
+            var className = bootstrapMethodInfo.getClassName();
+            var methodName = bootstrapMethodInfo.getMethodName();
+            var stringConcatenation = "java.lang.invoke.StringConcatFactory".equals(className) && "makeConcatWithConstants".equals(methodName);
             if (stringConcatenation) {
                 //arg1+arg2
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
                 var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
 
-                return eval.callInvokeDynamic(delay, arguments, argumentClasses,
+                return eval.callInvokeDynamic(methodName, delay, arguments, argumentClasses,
                         StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
                             var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, parameters);
+                            return invoked(string, lastInstruction, lastInstruction, eval, delay, parameters);
                         });
+            } else {
+                var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
+                var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
+
+                var result = eval.callInvokeDynamic(methodName, delay, arguments, argumentClasses,
+                        StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
+                            var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
+                            var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
+                            var lastInstruction = delay.getLastInstruction();
+                            return invoked(string, lastInstruction, lastInstruction, eval, delay, parameters);
+                        });
+                return result;
             }
         } else if (instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEVIRTUAL) {
             var invokeInstruction = (InvokeInstruction) instruction;
-            var eval = delay.getEvalContext();
-            var constantPoolGen = eval.getConstantPoolGen();
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
             var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
             var argumentClasses = toClasses(argumentTypes);
@@ -94,8 +111,6 @@ public class StringifyUtils {
                     });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeInstruction = (InvokeInstruction) instruction;
-            var eval = delay.getEvalContext();
-            var constantPoolGen = eval.getConstantPoolGen();
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
             var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
             var argumentClasses = toClasses(argumentTypes);
@@ -108,35 +123,100 @@ public class StringifyUtils {
                     StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, null, parameters);
                     });
+        } else if (instruction instanceof INVOKESPECIAL) {
+            var invokeInstruction = (InvokeInstruction) instruction;
+            var methodName = invokeInstruction.getMethodName(constantPoolGen);
+            var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+            var argumentClasses = toClasses(argumentTypes);
+
+            var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
+            var argumentsAmount = argumentTypes.length;
+            var arguments = eval.evalArguments(instructionHandle, argumentsAmount, null);
+            var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
+            return eval.callInvokeSpecial(delay, invokeObject, arguments, argumentClasses,
+                    StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
+                        if ("<init>".equals(methodName)) {
+                            return stringifyInvokeNew(delay, objectClass, methodName, parameters);
+                        } else {
+                            var object = parameters.get(0);
+                            var args = parameters.subList(1, parameters.size());
+                            return stringifyInvokeResult(delay, objectClass, methodName, object, args);
+                        }
+                    });
         } else if (instruction instanceof ArithmeticInstruction) {
-            var eval = delay.getEvalContext();
             var first = eval.eval(eval.getPrev(instructionHandle), delay);
-            var second = instruction.consumeStack(eval.getConstantPoolGen()) == 2
+            var second = instruction.consumeStack(constantPoolGen) == 2
                     ? eval.eval(eval.getPrev(first.getLastInstruction())) : null;
             var strings = stringifyArithmetic((ArithmeticInstruction) instruction, first, second, eval);
             var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
             var values = strings.stream()
-                    .map(v -> constant(v, instructionHandle, lastInstruction, eval, delay))
+                    .map(v -> constant(v, instructionHandle, lastInstruction, eval, delay, first, second))
                     .collect(toList());
-            return collapse(values, instructionHandle, lastInstruction, delay, delay.getMethod().getConstantPool());
+            return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), eval);
+        } else if (instruction instanceof ArrayInstruction) {
+            var element = eval.eval(eval.getPrev(instructionHandle), delay);
+            var index = eval.eval(eval.getPrev(element.getLastInstruction()), delay);
+            var array = eval.eval(eval.getPrev(index.getLastInstruction()), delay);
+            var result = array.getValue(StringifyUtils::stringifyUnresolved);
+            var lastInstruction = array.getLastInstruction();
+            return constant(result, lastInstruction, lastInstruction, eval, delay, element, index, array);
+        } else if (instruction instanceof LoadInstruction) {
+            var aload = (LoadInstruction) instruction;
+            var aloadIndex = aload.getIndex();
+            var localVariables = getLocalVariables(eval.getMethod(), aloadIndex);
+            var localVariable = findLocalVariable(eval.getMethod(), localVariables, instructionHandle);
+
+            var name = localVariable != null ? localVariable.getName() : null;
+            if ("this".equals(name)) {
+                var value = eval.getObject();
+                return constant(value, instructionHandle, instructionHandle, eval, delay);
+            }
+
+            var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay);
+
+            var strings = storeResults.stream()
+//                    .flatMap(storeResult -> expand(eval.resolve(storeResult, StringifyUtils::stringifyUnresolved)).stream())
+                    .flatMap(storeResult -> {
+                        return storeResult
+                                .getValue(StringifyUtils::stringifyUnresolved).stream()
+                                .map(String::valueOf)
+                                .map(s -> constant(s, instructionHandle, instructionHandle, eval, delay, storeResult));
+                    })
+                    .collect(toList());
+
+            return strings.size() == 1 ? strings.get(0)
+                    : multiple(strings, instructionHandle, instructionHandle, eval);
         }
         throw new UnresolvedResultException("bad stringify delay", delay);
     }
 
-    private static Result.Const stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
-                                                      ParameterValue object, List<ParameterValue> resolvedArguments
+    private static Const stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
+                                               ParameterValue object, List<ParameterValue> resolvedArguments
     ) {
+        var argValues = getArgValues(resolvedArguments);
+        var objectValue = object != null ? getValue(object, StringifyUtils::stringifyUnresolved) : null;
+        var string = stringifyMethodCall(objectClass, (String) objectValue, methodName, stringifyArguments(argValues));
+        var lastInstruction = delay.getLastInstruction();
+        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
+    }
+
+    private static Const stringifyInvokeNew(Delay delay, Class<?> objectClass, String methodName,
+                                            List<ParameterValue> resolvedArguments
+    ) {
+        var argValues = getArgValues(resolvedArguments);
+        var string = stringifyNewCall(objectClass, stringifyArguments(argValues));
+        var lastInstruction = delay.getLastInstruction();
+        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
+    }
+
+    private static Object[] getArgValues(List<ParameterValue> resolvedArguments) {
         var variables = resolvedArguments.stream()
                 .filter(a -> a.getParameter() instanceof Variable)
                 .collect(toList());
         var args = !variables.isEmpty() ? variables : resolvedArguments;
-        var argValues = getValues(args, StringifyUtils::stringifyUnresolved);
-        var objectValue = object != null ? getValue(object, StringifyUtils::stringifyUnresolved) : null;
-        var string = stringifyMethodCall(objectClass, (String) objectValue, methodName,
-                stringifyArguments(argValues));
-        var lastInstruction = delay.getLastInstruction();
-        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
+        return getValues(args, StringifyUtils::stringifyUnresolved);
     }
+
 
     public static Object[] getValues(List<ParameterValue> parameterValues, Resolver unevaluatedHandler) {
         return parameterValues.stream().map(pv -> getValue(pv, unevaluatedHandler)).toArray(Object[]::new);
@@ -162,7 +242,8 @@ public class StringifyUtils {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof LoadInstruction) {
             var loadInst = (LoadInstruction) instruction;
-            var localVariable = getLocalVariable(parameter.getMethod(), loadInst.getIndex(), instructionHandle);
+            var localVariable = getLocalVariable(parameter.getMethod(), loadInst.getIndex(),
+                    instructionHandle);
             if (localVariable != null && localVariable.getName() != null) {
                 return localVariable.getName();
             }
@@ -174,7 +255,7 @@ public class StringifyUtils {
         return classAsVar;
     }
 
-    private static Result.Const stringifyVariable(Variable variable) {
+    private static Const stringifyVariable(Variable variable) {
         var methodName = variable.getMethod().getName();
         var componentType = variable.getComponentType().getSimpleName();
         var value = "{" + componentType + "." + methodName + "(" + "{" + variable.getName() + "}" + ")" + "}";
@@ -186,8 +267,13 @@ public class StringifyUtils {
         return "{" + (object != null ? object : objectClass.getSimpleName()) + "." + methodName + "(" + arguments + ")" + "}";
     }
 
+    private static String stringifyNewCall(Class<?> objectClass, String arguments) {
+        return "{" + "new " + objectClass.getSimpleName() + "(" + arguments + ")" + "}";
+    }
+
+
     private static String stringifyArguments(Object... arguments) {
-        return Stream.of(arguments).map(a -> (String) a).reduce("", (l, r) -> (l.isEmpty() ? "" : l + ",") + r);
+        return Stream.of(arguments).map(a -> (String) a).reduce("", (l, r) -> (l.isEmpty() ? "" : l + ", ") + r);
     }
 
     public static List<String> stringifyArithmetic(ArithmeticInstruction instruction,
@@ -305,11 +391,15 @@ public class StringifyUtils {
     private static List<Result> s(Result result, EvalBytecode eval) {
         var value2Variants = expand(result);
         return value2Variants.stream()
-                .flatMap(value2 -> value2.getValue(StringifyUtils::stringifyUnresolved).stream())
-                .map(value2 -> value2 instanceof Number
-                        ? (((Number) value2).longValue() & 0X1f) + ""
-                        : value2 + "")
-                .map(v -> constant(v, result.getFirstInstruction(), result.getLastInstruction(), eval, result))
+                .flatMap(resultVariant -> resultVariant.getValue(StringifyUtils::stringifyUnresolved).stream()
+                        .map(value -> value instanceof Number
+                                ? (((Number) value).longValue() & 0X1f) + ""
+                                : value + "")
+                        .map(v -> {
+                            var firstInstruction = result.getFirstInstruction();
+                            var lastInstruction = result.getLastInstruction();
+                            return constant(v, firstInstruction, lastInstruction, eval, result, resultVariant);
+                        }))
                 .collect(toList());
     }
 }

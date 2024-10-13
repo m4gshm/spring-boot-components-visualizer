@@ -1,6 +1,6 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
+import io.github.m4gshm.connections.eval.result.Result;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.generic.ArithmeticInstruction;
 

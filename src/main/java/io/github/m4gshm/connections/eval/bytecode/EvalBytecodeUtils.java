@@ -1,8 +1,8 @@
-package io.github.m4gshm.connections.bytecode;
+package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.bytecode.EvalBytecode.ParameterValue;
-import io.github.m4gshm.connections.bytecode.EvalBytecode.Result;
-import io.github.m4gshm.connections.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
+import io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
+import io.github.m4gshm.connections.eval.result.Result;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +33,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredField;
 import static io.github.m4gshm.connections.Utils.classByName;
 import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.bytecode.EvalBytecode.Result.*;
+import static io.github.m4gshm.connections.eval.result.Result.*;
 import static java.util.Arrays.asList;
 import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
@@ -118,12 +118,11 @@ public class EvalBytecodeUtils {
             throw new EvalBytecodeException(e);
         }
         if (constructor.trySetAccessible()) try {
-            Object value = constructor.newInstance(arguments);
+            var value = constructor.newInstance(arguments);
             return constant(value, instructionHandle, instructionHandle, evalBytecode, parent);
-        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-            throw new EvalBytecodeException(e);
-        } catch (IllegalArgumentException e) {
-            throw e;
+        } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
+                 InvocationTargetException e) {
+            throw new IllegalInvokeException(parent, instructionHandle, e);
         }
         else {
             return notAccessible(constructor, instructionHandle, parent);
@@ -167,10 +166,10 @@ public class EvalBytecodeUtils {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
         return delay(instructionText, instructionHandle, evalBytecode, parent,
                 (thisDelay, needResolve, unevaluatedHandler) -> {
-            var object = result.getValue(unevaluatedHandler).get(0);
-            return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
-                    lastInstruction, evalBytecode, thisDelay);
-        });
+                    var object = result.getValue(unevaluatedHandler).get(0);
+                    return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
+                            lastInstruction, evalBytecode, thisDelay);
+                });
     }
 
     public static Object getTargetObject(Object candidate) {
@@ -186,7 +185,7 @@ public class EvalBytecodeUtils {
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
                                        InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
                                        EvalBytecode evalBytecode, Result parent) {
-        var field = getDeclaredField(name, objectClass);
+        var field = getDeclaredField(objectClass, name);
         return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
                 ? getFieldValue(object, field, lastInstruction, evalBytecode, parent)
                 : notAccessible(field, getFieldInstruction, parent);
