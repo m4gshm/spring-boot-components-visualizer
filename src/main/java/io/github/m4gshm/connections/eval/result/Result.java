@@ -1,7 +1,9 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getInstructionString;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notAccessible;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notFound;
 import static io.github.m4gshm.connections.eval.result.Variable.VarType.LocalVar;
@@ -35,36 +38,37 @@ public abstract class Result implements ContextAware {
     InstructionHandle firstInstruction;
     InstructionHandle lastInstruction;
 
-    public static Const invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                EvalBytecode context, Result parent, List<EvalBytecode.ParameterValue> parameters) {
-        var params = Stream.concat(Stream.ofNullable(parent), parameters.stream().map(EvalBytecode.ParameterValue::getParameter)).collect(toList());
+    public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
+                                   EvalBytecode context, List<ParameterValue> parameters) {
+        var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
         return constant(value, invokeInstruction, lastInstruction, context, params);
     }
 
-    public static Const constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                 EvalBytecode evalBytecode, Result... relations) {
+    public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+                                    EvalBytecode evalBytecode, Result... relations) {
         return constant(value, firstInstruction, lastInstruction, evalBytecode, asList(relations));
     }
 
-    static Const constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                          EvalBytecode evalBytecode, List<Result> relations) {
+    public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+                             EvalBytecode evalBytecode, List<Result> relations) {
         var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Const(firstInstruction, lastInstruction, value, evalBytecode, notNullRelations);
+        return new Constant(firstInstruction, lastInstruction, value, evalBytecode, notNullRelations);
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle, EvalBytecode evalContext,
-                              Result parent, Delay.DelayFunction delayFunction) {
+                              Result parent, DelayFunction<Delay> delayFunction) {
         return new Delay(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent, null, false, false);
     }
 
-    public static DelayInvoke delayInvoke(String description, InstructionHandle instructionHandle, EvalBytecode evalContext,
+    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, EvalBytecode evalContext,
                                           Result parent, EvalBytecode.InvokeObject invokeObject, EvalBytecode.EvalArguments arguments,
-                                          Delay.DelayFunction delayFunction) {
+                                          DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
                 ? invokeObject.getLastInstruction()
                 : arguments.getLastArgInstruction();
         var object = invokeObject != null ? invokeObject.getObject() : null;
-        return new DelayInvoke(evalContext, description, delayFunction, instructionHandle, parent, lastInstruction,
+        return new DelayInvoke(evalContext, getInstructionString(instructionHandle, evalContext.getConstantPoolGen()),
+                delayFunction, instructionHandle, parent, lastInstruction,
                 object, arguments.getArguments());
     }
 

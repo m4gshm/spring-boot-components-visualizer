@@ -19,18 +19,19 @@ import static lombok.AccessLevel.PRIVATE;
 public class Delay extends Result implements ContextAware, PrevAware, Result.RelationsAware {
     final EvalBytecode evalContext;
     final String description;
-    final DelayFunction evaluator;
+    final DelayFunction<Delay> evaluator;
     final Result prev;
     Result result;
     boolean evaluated;
     boolean resolved;
 
     public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, EvalBytecode evalContext,
-                 String description, DelayFunction evaluator, Result prev, Result result, boolean evaluated, boolean resolved) {
+                 String description, DelayFunction<? extends Delay> evaluator, Result prev, Result result,
+                 boolean evaluated, boolean resolved) {
         super(firstInstruction, lastInstruction);
         this.evalContext = evalContext;
         this.description = description;
-        this.evaluator = evaluator;
+        this.evaluator = (DelayFunction<Delay>) evaluator;
         this.prev = prev;
         this.result = result;
         this.evaluated = evaluated;
@@ -104,7 +105,7 @@ public class Delay extends Result implements ContextAware, PrevAware, Result.Rel
     }
 
     @FunctionalInterface
-    public interface DelayFunction {
-        Result call(Delay delay, Boolean needResolve, Resolver resolver);
+    public interface DelayFunction<T extends Delay> {
+        Result call(T delay, Boolean needResolve, Resolver resolver);
     }
 }

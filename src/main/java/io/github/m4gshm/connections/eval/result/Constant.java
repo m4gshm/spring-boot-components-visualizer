@@ -14,13 +14,13 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Const extends Result implements ContextAware, Result.RelationsAware {
+public class Constant extends Result implements ContextAware, Result.RelationsAware {
     Object value;
     EvalBytecode evalContext;
     List<Result> relations;
 
 
-    public Const(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value, EvalBytecode evalContext, List<Result> relations) {
+    public Constant(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value, EvalBytecode evalContext, List<Result> relations) {
         super(firstInstruction, lastInstruction);
         this.value = value;
         this.evalContext = evalContext;
@@ -52,7 +52,7 @@ public class Const extends Result implements ContextAware, Result.RelationsAware
         if (!super.equals(o)) {
             return false;
         }
-        return Objects.equals(value, ((Const) o).value);
+        return Objects.equals(value, ((Constant) o).value);
     }
 
     @Override

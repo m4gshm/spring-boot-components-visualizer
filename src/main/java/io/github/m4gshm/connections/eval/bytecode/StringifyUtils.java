@@ -5,6 +5,7 @@ import io.github.m4gshm.connections.eval.result.*;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.generic.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
@@ -70,25 +71,22 @@ public class StringifyUtils {
             if (stringConcatenation) {
                 //arg1+arg2
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
-                var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
 
-                return eval.callInvokeDynamic(methodName, delay, arguments, argumentClasses,
+                return eval.callInvokeDynamic((DelayInvoke) delay, argumentClasses,
                         StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
                             var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, eval, delay, parameters);
+                            return invoked(string, lastInstruction, lastInstruction, eval, parameters);
                         });
             } else {
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
-                var arguments = eval.evalArguments(instructionHandle, argumentClasses.length, delay);
-
-                var result = eval.callInvokeDynamic(methodName, delay, arguments, argumentClasses,
+                var result = eval.callInvokeDynamic((DelayInvoke) delay, argumentClasses,
                         StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
                             var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, eval, delay, parameters);
+                            return invoked(string, lastInstruction, lastInstruction, eval, parameters);
                         });
                 return result;
             }
@@ -103,7 +101,7 @@ public class StringifyUtils {
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-            return eval.callInvokeVirtual(instructionHandle, delay, invokeObject, arguments,
+            return eval.callInvokeVirtual(instructionHandle, (DelayInvoke) delay,
                     argumentClasses, StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         var object = parameters.get(0);
                         var args = parameters.subList(1, parameters.size());
@@ -119,7 +117,7 @@ public class StringifyUtils {
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, delay);
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-            return eval.callInvokeStatic(delay, arguments, argumentClasses,
+            return eval.callInvokeStatic((DelayInvoke) delay, argumentClasses,
                     StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, null, parameters);
                     });
@@ -133,10 +131,10 @@ public class StringifyUtils {
             var argumentsAmount = argumentTypes.length;
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, null);
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
-            return eval.callInvokeSpecial(delay, invokeObject, arguments, argumentClasses,
+            return eval.callInvokeSpecial((DelayInvoke) delay, argumentClasses,
                     StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
                         if ("<init>".equals(methodName)) {
-                            return stringifyInvokeNew(delay, objectClass, methodName, parameters);
+                            return stringifyInvokeNew(delay, objectClass, parameters);
                         } else {
                             var object = parameters.get(0);
                             var args = parameters.subList(1, parameters.size());
@@ -190,23 +188,33 @@ public class StringifyUtils {
         throw new UnresolvedResultException("bad stringify delay", delay);
     }
 
-    private static Const stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
-                                               ParameterValue object, List<ParameterValue> resolvedArguments
+    private static Constant stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
+                                                  ParameterValue object, List<ParameterValue> resolvedArguments
     ) {
         var argValues = getArgValues(resolvedArguments);
         var objectValue = object != null ? getValue(object, StringifyUtils::stringifyUnresolved) : null;
         var string = stringifyMethodCall(objectClass, (String) objectValue, methodName, stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
-        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
+        var parameterValues = concatCallParameters(object, resolvedArguments);
+        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), parameterValues);
     }
 
-    private static Const stringifyInvokeNew(Delay delay, Class<?> objectClass, String methodName,
-                                            List<ParameterValue> resolvedArguments
+    private static List<ParameterValue> concatCallParameters(ParameterValue object, List<ParameterValue> arguments) {
+        if (object == null) {
+            return arguments;
+        }
+        var parameterValues = new ArrayList<ParameterValue>(arguments.size() + 1);
+        parameterValues.add(object);
+        parameterValues.addAll(arguments);
+        return parameterValues;
+    }
+
+    private static Constant stringifyInvokeNew(Delay delay, Class<?> objectClass, List<ParameterValue> resolvedArguments
     ) {
         var argValues = getArgValues(resolvedArguments);
         var string = stringifyNewCall(objectClass, stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
-        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), delay, resolvedArguments);
+        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), resolvedArguments);
     }
 
     private static Object[] getArgValues(List<ParameterValue> resolvedArguments) {
@@ -251,11 +259,11 @@ public class StringifyUtils {
         var simpleName = value.getClass().getSimpleName();
         int length = simpleName.length();
         var classAsVar = length > 2 ? simpleName.substring(0, 3).toLowerCase() + (length > 3
-                ? simpleName.substring(1) : "") : simpleName;
+                ? simpleName.substring(3) : "") : simpleName;
         return classAsVar;
     }
 
-    private static Const stringifyVariable(Variable variable) {
+    private static Constant stringifyVariable(Variable variable) {
         var methodName = variable.getMethod().getName();
         var componentType = variable.getComponentType().getSimpleName();
         var value = "{" + componentType + "." + methodName + "(" + "{" + variable.getName() + "}" + ")" + "}";

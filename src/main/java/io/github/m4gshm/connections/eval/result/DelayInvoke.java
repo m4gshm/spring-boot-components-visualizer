@@ -18,7 +18,7 @@ public class DelayInvoke extends Delay {
     Result object;
     List<Result> arguments;
 
-    public DelayInvoke(EvalBytecode evalContext, String description, DelayFunction evaluator,
+    public DelayInvoke(EvalBytecode evalContext, String description, DelayFunction<DelayInvoke> evaluator,
                        InstructionHandle firstInstruction, Result prev,
                        InstructionHandle lastInstruction, Result object,
                        List<Result> arguments) {

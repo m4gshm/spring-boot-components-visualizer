@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.eval.bytecode;
 
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
+import io.github.m4gshm.connections.eval.result.Delay;
 import io.github.m4gshm.connections.eval.result.Result;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
@@ -88,11 +89,11 @@ public class EvalBytecodeUtils {
     }
 
     static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
-                         InstructionHandle lastArgInstruction, EvalBytecode evalBytecode, Result parent,
+                         InstructionHandle lastArgInstruction, EvalBytecode evalBytecode,
                          List<ParameterValue> parameters) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, firstInstruction, lastArgInstruction, evalBytecode, parent, parameters);
+            return invoked(value, firstInstruction, lastArgInstruction, evalBytecode, parameters);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
@@ -110,7 +111,7 @@ public class EvalBytecodeUtils {
 
     static Result instantiateObject(InstructionHandle instructionHandle,
                                     Class<?> type, Class<?>[] argumentTypes, Object[] arguments,
-                                    EvalBytecode evalBytecode, Result parent) {
+                                    EvalBytecode evalBytecode, Delay parent) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -119,7 +120,7 @@ public class EvalBytecodeUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, instructionHandle, instructionHandle, evalBytecode, parent);
+            return constant(value, instructionHandle, instructionHandle, evalBytecode, parent.getRelations());
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(parent, instructionHandle, e);
@@ -131,11 +132,11 @@ public class EvalBytecodeUtils {
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
                                       @NonNull InstructionHandle lastArgInstruction, EvalBytecode evalBytecode,
-                                      BootstrapMethodHandlerAndArguments methodAndArguments, Result parent,
+                                      BootstrapMethodHandlerAndArguments methodAndArguments,
                                       List<ParameterValue> parameters) {
         var callSite = getCallSite(methodAndArguments);
         var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, evalBytecode, parent, parameters);
+        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, evalBytecode, parameters);
     }
 
     private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {

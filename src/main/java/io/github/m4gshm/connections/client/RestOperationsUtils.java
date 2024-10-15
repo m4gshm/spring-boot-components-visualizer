@@ -105,10 +105,9 @@ public class RestOperationsUtils {
     static List<List<Result>> resolveInvokeParameters(EvalBytecode eval, DelayInvoke invoke, Component component, String methodName) {
         List<List<Result>> variants;
         try {
-            variants = eval.resolveInvokeParameters(invoke.getObject(), invoke.getArguments(),
+            variants = eval.resolveInvokeParameters(invoke, invoke.getObject(), invoke.getArguments(),
                     StringifyUtils::stringifyUnresolved, true, null);
         } catch (NoCallException e) {
-            var signature = ((InvokeInstruction) invoke.getFirstInstruction().getInstruction()).getSignature(eval.getConstantPoolGen());
             log.info("no call variants for {} inside {}", methodName, component.getName());
             variants = List.of();
         }

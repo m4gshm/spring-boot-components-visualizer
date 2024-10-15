@@ -54,4 +54,9 @@ public class Multiple extends Result {
     public Component getComponent() {
         return evalContext.getComponent();
     }
+
+    @Override
+    public String toString() {
+        return "multiple" + results;
+    }
 }
