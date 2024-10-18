@@ -1,7 +1,7 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.eval.bytecode.UnresolvedResultException;
+import io.github.m4gshm.connections.eval.bytecode.NoCallException;
 import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
@@ -36,7 +36,7 @@ public class Variable extends Result implements ContextAware, PrevAware {
 
     @Override
     public Object getValue() {
-        throw new UnresolvedResultException("unresolved", this);
+        throw new NoCallException(this);
     }
 
     @Override
@@ -47,7 +47,7 @@ public class Variable extends Result implements ContextAware, PrevAware {
     @Override
     public String toString() {
         var methodName = getMethod().getName();
-        var className = evalContext.getComponentType().getName();
+        var className = evalContext.getComponent().getType().getName();
         return varType.code + "(" + className + "." + methodName + "(" + getIndex() + " " + getName() + "))";
     }
 
@@ -63,7 +63,7 @@ public class Variable extends Result implements ContextAware, PrevAware {
 
     @Override
     public Class<?> getComponentType() {
-        return evalContext.getComponentType();
+        return evalContext.getComponent().getType();
     }
 
     @RequiredArgsConstructor

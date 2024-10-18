@@ -73,8 +73,7 @@ public class StringifyUtils {
                 //arg1+arg2
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
 
-                return callInvokeDynamic((DelayInvoke) delay, argumentClasses,
-                        (current, ex1) -> {
+                return callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, false, (current, ex1) -> {
                             try {
                                 Result result = stringifyUnresolved(current, ex1);
                                 return result;
@@ -86,11 +85,11 @@ public class StringifyUtils {
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
                             return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), parameters);
-                        }, eval, false);
+                        });
             } else {
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
                 var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses,
-                        (current, ex1) -> {
+                        eval, true, (current, ex1) -> {
                             try {
                                 Result result1 = stringifyUnresolved(current, ex1);
                                 return result1;
@@ -102,7 +101,7 @@ public class StringifyUtils {
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
                             return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), parameters);
-                        }, eval, true);
+                        });
                 return result;
             }
         } else if (instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEVIRTUAL) {
@@ -117,7 +116,7 @@ public class StringifyUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return callInvokeVirtual(instructionHandle, (DelayInvoke) delay,
-                    argumentClasses, (current, ex1) -> {
+                    argumentClasses, eval, false, (current, ex1) -> {
                         try {
                             Result result = stringifyUnresolved(current, ex1);
                             return result;
@@ -128,7 +127,7 @@ public class StringifyUtils {
                         var object = parameters.get(0);
                         var args = parameters.subList(1, parameters.size());
                         return stringifyInvokeResult(delay, objectClass, methodName, object, args, eval);
-                    }, eval, false);
+                    });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeInstruction = (InvokeInstruction) instruction;
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
@@ -140,7 +139,7 @@ public class StringifyUtils {
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
             return callInvokeStatic((DelayInvoke) delay, argumentClasses,
-                    (current, ex1) -> {
+                    eval, false, (current, ex1) -> {
                         try {
                             Result result = stringifyUnresolved(current, ex1);
                             return result;
@@ -149,7 +148,7 @@ public class StringifyUtils {
                         }
                     }, (parameters, lastInstruction) -> {
                         return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
-                    }, eval, false);
+                    });
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeInstruction = (InvokeInstruction) instruction;
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
@@ -161,7 +160,7 @@ public class StringifyUtils {
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, null);
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
             return callInvokeSpecial((DelayInvoke) delay, argumentClasses,
-                    (current, ex1) -> {
+                    eval, false, (current, ex1) -> {
                         try {
                             Result result = stringifyUnresolved(current, ex1);
                             return result;
@@ -176,7 +175,7 @@ public class StringifyUtils {
                             var args = parameters.subList(1, parameters.size());
                             return stringifyInvokeResult(delay, objectClass, methodName, object, args, eval);
                         }
-                    }, eval, false);
+                    });
         } else if (instruction instanceof ArithmeticInstruction) {
             var first = eval.eval(eval.getPrev(instructionHandle), delay);
             var second = instruction.consumeStack(constantPoolGen) == 2
@@ -186,7 +185,7 @@ public class StringifyUtils {
             var values = strings.stream()
                     .map(v -> constant(v, instructionHandle, lastInstruction, eval.getComponent(), eval.getMethod(), delay, first, second))
                     .collect(toList());
-            return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), eval);
+            return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), eval.getComponent(), eval.getMethod());
         } else if (instruction instanceof ArrayInstruction) {
             var element = eval.eval(eval.getPrev(instructionHandle), delay);
             var index = eval.eval(eval.getPrev(element.getLastInstruction()), delay);
@@ -229,7 +228,7 @@ public class StringifyUtils {
                     .collect(toList());
 
             return strings.size() == 1 ? strings.get(0)
-                    : multiple(strings, instructionHandle, instructionHandle, eval);
+                    : multiple(strings, instructionHandle, instructionHandle, eval.getComponent(), eval.getMethod());
         }
         throw new UnresolvedResultException("bad stringify delay", delay);
     }

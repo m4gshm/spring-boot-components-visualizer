@@ -7,7 +7,6 @@ import org.apache.bcel.generic.Instruction;
 @Getter
 public class EvalBytecodeException extends RuntimeException {
 
-
     public EvalBytecodeException(String message) {
         super(message);
     }
@@ -20,8 +19,7 @@ public class EvalBytecodeException extends RuntimeException {
         return newInvalidEvalException("unsupported instruction", instruction, constantPool);
     }
 
-    public static EvalBytecodeException newInvalidEvalException(String message, Instruction instruction,
-                                                                ConstantPool constantPool) {
+    public static EvalBytecodeException newInvalidEvalException(String message, Instruction instruction, ConstantPool constantPool) {
         return new EvalBytecodeException(message + ": " + instruction.toString(constantPool));
     }
 }

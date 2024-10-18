@@ -90,11 +90,11 @@ public class EvalBytecodeUtils {
     }
 
     static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
-                         InstructionHandle lastArgInstruction, EvalBytecode evalBytecode,
-                         List<ParameterValue> parameters) {
+                         InstructionHandle lastArgInstruction,
+                         List<ParameterValue> parameters, Component component, Method method) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, firstInstruction, lastArgInstruction, evalBytecode.getComponent(), evalBytecode.getMethod(), parameters);
+            return invoked(value, firstInstruction, lastArgInstruction, component, method, parameters);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
@@ -112,7 +112,7 @@ public class EvalBytecodeUtils {
 
     static Result instantiateObject(InstructionHandle instructionHandle,
                                     Class<?> type, Class<?>[] argumentTypes, Object[] arguments,
-                                    EvalBytecode evalBytecode, Delay parent) {
+                                    Delay parent, Component component, Method method) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -121,7 +121,7 @@ public class EvalBytecodeUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, instructionHandle, instructionHandle, parent.getRelations(), evalBytecode.getComponent(), evalBytecode.getMethod());
+            return constant(value, instructionHandle, instructionHandle, parent.getRelations(), component, method);
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(parent, instructionHandle, e);
@@ -137,7 +137,7 @@ public class EvalBytecodeUtils {
                                       List<ParameterValue> parameters) {
         var callSite = getCallSite(methodAndArguments);
         var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, evalBytecode, parameters);
+        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, parameters, evalBytecode.getComponent(), evalBytecode.getMethod());
     }
 
     private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {

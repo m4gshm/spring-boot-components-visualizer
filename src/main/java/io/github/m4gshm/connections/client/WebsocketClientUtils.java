@@ -83,7 +83,7 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method,
-                callPointsCache, callCache, new ArrayList<Result>());
+                callPointsCache, callCache);
         var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName);
 

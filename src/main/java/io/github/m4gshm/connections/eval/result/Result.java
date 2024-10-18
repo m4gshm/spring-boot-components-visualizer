@@ -1,6 +1,8 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.EvalArguments;
+import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.InvokeObject;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
@@ -75,7 +77,7 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, EvalBytecode evalContext,
-                                          Result parent, EvalBytecode.InvokeObject invokeObject, EvalBytecode.EvalArguments arguments,
+                                          Result parent, InvokeObject invokeObject, EvalArguments arguments,
                                           DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
                 ? invokeObject.getLastInstruction()
@@ -90,7 +92,7 @@ public abstract class Result implements ContextAware {
                                      InstructionHandle lastInstruction, Result parent) {
         int startPC = localVariable.getStartPC();
         if (startPC > 0) {
-            var componentType = evalContext.getComponentType();
+            var componentType = evalContext.getComponent().getType();
             var method = evalContext.getMethod();
             throw new EvalBytecodeException("argument's variable ust has 0 startPC, " +
                     localVariable.getName() + ", " + componentType.getName() + "." +
@@ -129,7 +131,7 @@ public abstract class Result implements ContextAware {
     }
 
     public static Result multiple(List<? extends Result> values, InstructionHandle firstInstruction,
-                                  InstructionHandle lastInstruction, EvalBytecode eval) {
+                                  InstructionHandle lastInstruction, Component component, Method method) {
         var flatValues = values.stream().flatMap(v -> v instanceof Multiple
                 ? ((Multiple) v).getResults().stream()
                 : Stream.of(v)).distinct().collect(toList());
@@ -138,7 +140,7 @@ public abstract class Result implements ContextAware {
         } else if (flatValues.size() == 1) {
             return flatValues.get(0);
         } else {
-            return new Multiple(firstInstruction, lastInstruction, flatValues, eval);
+            return new Multiple(firstInstruction, lastInstruction, flatValues, component, method);
         }
     }
 

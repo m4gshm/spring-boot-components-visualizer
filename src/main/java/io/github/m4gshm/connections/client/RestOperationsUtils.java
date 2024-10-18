@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
+import io.github.m4gshm.connections.eval.bytecode.StringifyUtils;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.DelayInvoke;
 import io.github.m4gshm.connections.eval.bytecode.NoCallException;
@@ -70,7 +71,7 @@ public class RestOperationsUtils {
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var methodName = instruction.getMethodName(constantPoolGen);
         var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen, bootstrapMethods, method,
-                callPointsCache, callCache, new ArrayList<Result>());
+                callPointsCache, callCache);
         var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName);
 
@@ -81,7 +82,8 @@ public class RestOperationsUtils {
         return results;
     }
 
-    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg, EvalBytecode eval) {
+    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg,
+                                                          EvalBytecode eval) {
         try {
             final List<String> httpMethods;
             if ("exchange".equals(methodName)) {
@@ -100,12 +102,12 @@ public class RestOperationsUtils {
         }
     }
 
-    static List<List<Result>> resolveInvokeParameters(EvalBytecode eval, DelayInvoke invoke, Component component, String methodName) {
+    static List<List<Result>> resolveInvokeParameters(EvalBytecode eval, DelayInvoke invoke, Component component,
+                                                      String methodName) {
         List<List<Result>> variants;
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
         try {
-            variants = eval.resolveInvokeParameters(parameters, invoke,
-                    (current, ex) -> stringifyUnresolved(current, ex), true, null);
+            variants = eval.resolveInvokeParameters(parameters, StringifyUtils::stringifyUnresolved, true, null);
         } catch (NoCallException e) {
             log.info("no call variants for {} inside {}", methodName, component.getName());
             variants = List.of();

@@ -41,7 +41,7 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
         this.resolved = resolved;
         component = eval.getComponent();
         method = eval.getMethod();
-        componentType = eval.getComponentType();
+        componentType = eval.getComponent().getType();
     }
 
     @Override

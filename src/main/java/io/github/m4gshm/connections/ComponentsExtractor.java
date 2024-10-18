@@ -2,8 +2,8 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
-import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -37,11 +37,11 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
@@ -248,11 +248,10 @@ public class ComponentsExtractor {
         }
     }
 
-    private LinkedHashSet<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
-                                                   Set<Component> dependencies,
-                                                   Map<Component, List<Component>> dependencyToDependentMap,
-                                                   Map<Component, List<CallPoint>> callPointsCache,
-                                                   Map<CallCacheKey, Result> callCache) {
+    private Set<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
+                                         Set<Component> dependencies, Map<Component, List<Component>> dependencyToDependentMap,
+                                         Map<Component, List<CallPoint>> callPointsCache,
+                                         Map<CallCacheKey, Result> callCache) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                 .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 

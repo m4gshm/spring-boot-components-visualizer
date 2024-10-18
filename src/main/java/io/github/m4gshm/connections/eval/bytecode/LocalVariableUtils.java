@@ -27,7 +27,7 @@ public class LocalVariableUtils {
 
     static LocalVariable findLocalVariable(Method method, List<LocalVariable> localVariables, InstructionHandle instructionHandle) {
         if (localVariables.isEmpty()) {
-            log.info("no matched local variables for instruction {}, method {}", instructionHandle,
+            log.debug("no matched local variables for instruction {}, method {}", instructionHandle,
                     EvalBytecodeUtils.toString(method));
             return null;
         }

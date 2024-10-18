@@ -82,7 +82,7 @@ public class JmsOperationsUtils {
             return List.of();
         } else {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                    bootstrapMethods, method, callPointsCache, callCache, new ArrayList<Result>());
+                    bootstrapMethods, method, callPointsCache, callCache);
 
             var result = (DelayInvoke) eval.eval(instructionHandle);
 
