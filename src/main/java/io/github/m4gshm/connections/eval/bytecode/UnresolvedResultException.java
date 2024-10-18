@@ -8,7 +8,7 @@ public class UnresolvedResultException extends EvalBytecodeException {
     private final Result result;
 
     public UnresolvedResultException(String message, Result result, Exception cause) {
-        super(message + " " + result, cause);
+        super(cause);
         this.result = result;
     }
 

@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections.eval.result;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
@@ -16,30 +15,23 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Constant extends Result implements ContextAware, Result.RelationsAware {
     Object value;
-    EvalBytecode evalContext;
     List<Result> relations;
+    Component component;
+    Method method;
 
 
-    public Constant(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value, EvalBytecode evalContext, List<Result> relations) {
+    public Constant(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value,
+                    List<Result> relations, Component component, Method method) {
         super(firstInstruction, lastInstruction);
         this.value = value;
-        this.evalContext = evalContext;
+        this.method = method;
+        this.component = component;
         this.relations = relations;
     }
 
     @Override
     public String toString() {
         return "const(" + value + ")";
-    }
-
-    @Override
-    public Method getMethod() {
-        return getEvalContext().getMethod();
-    }
-
-    @Override
-    public Component getComponent() {
-        return getEvalContext().getComponent();
     }
 
     @Override

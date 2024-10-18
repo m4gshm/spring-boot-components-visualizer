@@ -39,21 +39,35 @@ public abstract class Result implements ContextAware {
     InstructionHandle lastInstruction;
 
     public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                   EvalBytecode context, List<ParameterValue> parameters) {
+                                   Component component, Method method, List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, invokeInstruction, lastInstruction, context, params);
+        return constant(value, invokeInstruction, lastInstruction, params, component, method);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    EvalBytecode evalBytecode, Result... relations) {
-        return constant(value, firstInstruction, lastInstruction, evalBytecode, asList(relations));
+                                    Component component, Method method, Result... relations) {
+        return constant(value, firstInstruction, lastInstruction, asList(relations), component, method);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                             EvalBytecode evalBytecode, List<Result> relations) {
+                                    List<Result> relations, Component component, Method method) {
         var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Constant(firstInstruction, lastInstruction, value, evalBytecode, notNullRelations);
+        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method);
     }
+
+    public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
+                                                         EvalBytecode evalContext, Result parent,
+                                                         List<Result> storeInstructions,
+                                                         DelayFunction<DelayLoadFromStore> delayFunction) {
+        if (storeInstructions.isEmpty()) {
+            throw new IllegalArgumentException("No store instructions found");
+        }
+//        var lastInstruction = storeInstructions.stream().map(Result::getLastInstruction)
+//                .reduce((l, r) -> l.getPosition() <= r.getPosition() ? l : r).orElse(null);
+        return new DelayLoadFromStore(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent,
+                storeInstructions);
+    }
+
 
     public static Delay delay(String description, InstructionHandle instructionHandle, EvalBytecode evalContext,
                               Result parent, DelayFunction<Delay> delayFunction) {
@@ -67,9 +81,9 @@ public abstract class Result implements ContextAware {
                 ? invokeObject.getLastInstruction()
                 : arguments.getLastArgInstruction();
         var object = invokeObject != null ? invokeObject.getObject() : null;
-        return new DelayInvoke(evalContext, getInstructionString(instructionHandle, evalContext.getConstantPoolGen()),
-                delayFunction, instructionHandle, parent, lastInstruction,
-                object, arguments.getArguments());
+        var description = getInstructionString(instructionHandle, evalContext.getConstantPoolGen());
+        return new DelayInvoke(instructionHandle, lastInstruction, evalContext, description,
+                delayFunction, parent, object, arguments.getArguments());
     }
 
     public static Variable methodArg(EvalBytecode evalContext, LocalVariable localVariable,
@@ -128,7 +142,7 @@ public abstract class Result implements ContextAware {
         }
     }
 
-    public static Result stub(Result value, Component component, Method method, Resolver resolver) {
+    public static Result stub(Result value, Component component, Method method, Resolver resolver, EvalBytecode eval) {
         if (resolver != null) {
             //log
             return resolver.resolve(value, null);
@@ -178,7 +192,7 @@ public abstract class Result implements ContextAware {
         return Objects.hash(getComponent(), getMethod(), getInstruction(firstInstruction), getInstruction(lastInstruction));
     }
 
-    public List<Object> getValue(Resolver resolver) {
+    public List<Object> getValue(Resolver resolver, EvalBytecode eval) {
         try {
             return singletonList(getValue());
         } catch (EvalBytecodeException e) {

@@ -21,7 +21,7 @@ public class ArithmeticUtils {
             case DMUL:
                 return invokeDouble(first, second, (a, b) -> a * b);
             case DNEG:
-                return -(double) first.getValue();
+                return -getDouble(first);
             case DREM:
                 return invokeDouble(first, second, (a, b) -> a % b);
             case DSUB:
@@ -33,7 +33,7 @@ public class ArithmeticUtils {
             case FMUL:
                 return (float) invokeDouble(first, second, (a, b) -> a * b);
             case FNEG:
-                return -(float) first.getValue();
+                return -getFloat(first);
             case FREM:
                 return (float) invokeDouble(first, second, (a, b) -> a % b);
             case FSUB:
@@ -47,7 +47,7 @@ public class ArithmeticUtils {
             case IMUL:
                 return (int) invokeLong(first, second, (a, b) -> a * b);
             case INEG:
-                return -(int) first.getValue();
+                return -getInt(first);
             case IOR:
                 return (int) invokeLong(first, second, (a, b) -> a | b);
             case IREM:
@@ -71,7 +71,7 @@ public class ArithmeticUtils {
             case LMUL:
                 return invokeLong(first, second, (a, b) -> a * b);
             case LNEG:
-                return -(long) first.getValue();
+                return -getLong(first);
             case LOR:
                 return invokeLong(first, second, (a, b) -> a | b);
             case LREM:
@@ -91,38 +91,70 @@ public class ArithmeticUtils {
         }
     }
 
+    private static int getInt(Result result) {
+        try {
+            return (int) result.getValue();
+        } catch (ClassCastException e) {
+            throw new UnresolvedResultException(result, e);
+        }
+    }
+
+    private static long getLong(Result result) {
+        try {
+            return (long) result.getValue();
+        } catch (ClassCastException e) {
+            throw new UnresolvedResultException(result, e);
+        }
+    }
+
+    private static float getFloat(Result result) {
+        try {
+            return (float) result.getValue();
+        } catch (ClassCastException e) {
+            throw new UnresolvedResultException(result, e);
+        }
+    }
+
+    private static double getDouble(Result result) {
+        try {
+            return (double) result.getValue();
+        } catch (ClassCastException e) {
+            throw new UnresolvedResultException(result, e);
+        }
+    }
+
     private static double invokeDouble(Result first, Result second, DoubleBinaryOperator add) {
-        var value1 = (double) second.getValue();
-        var value2 = (double) first.getValue();
+        var value1 = getDouble(second);
+        var value2 = getDouble(first);
         return add.applyAsDouble(value1, value2);
     }
 
     private static double invokeLong(Result first, Result second, LongBinaryOperator add) {
-        var value1 = (long) second.getValue();
-        var value2 = (long) first.getValue();
+        var value1 = getLong(second);
+        var value2 = getLong(first);
         return add.applyAsLong(value1, value2);
     }
 
     private static long unsignedShiftRight(Result first, Result second) {
-        var value1 = (long) second.getValue();
+        var value1 = getLong(second);
         var s = s(first);
         return value1 >>> s;
     }
 
     private static long shiftRight(Result first, Result second) {
-        var value1 = (long) second.getValue();
+        var value1 = getLong(second);
         var s = s(first);
         return value1 >> s;
     }
 
     private static long shiftLeft(Result first, Result second) {
-        var value1 = (long) second.getValue();
+        var value1 = getLong(second);
         var s = s(first);
         return value1 << s;
     }
 
     private static long s(Result result) {
-        var value2 = (long) result.getValue();
+        var value2 = getLong(result);
         var s = value2 & 0X1f;
         return s;
     }

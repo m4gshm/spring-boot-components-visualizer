@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.eval.result.*;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.generic.*;
@@ -10,8 +9,7 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.collapse;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.expand;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.*;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClass;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClasses;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethod;
@@ -25,9 +23,12 @@ import static org.apache.bcel.Const.*;
 public class StringifyUtils {
 
     public static Result stringifyUnresolved(Result current, EvalBytecodeException ex) {
-        if (ex instanceof NoCallException) {
-            throw ex;
+        if (current instanceof NoCall) {
+            current = ((NoCall) current).getDelay();
         }
+//        if (ex instanceof NoCallException) {
+//            throw ex;
+//        }
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
@@ -55,7 +56,7 @@ public class StringifyUtils {
 //        }
         var instructionHandle = delay.getFirstInstruction();
         var instruction = instructionHandle.getInstruction();
-        var eval = delay.getEvalContext();
+        var eval = delay.getEval();
         var constantPoolGen = eval.getConstantPoolGen();
         var constantPool = constantPoolGen.getConstantPool();
         if (instruction instanceof INVOKEDYNAMIC) {
@@ -72,22 +73,36 @@ public class StringifyUtils {
                 //arg1+arg2
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
 
-                return eval.callInvokeDynamic((DelayInvoke) delay, argumentClasses,
-                        StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
-                            var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
+                return callInvokeDynamic((DelayInvoke) delay, argumentClasses,
+                        (current, ex1) -> {
+                            try {
+                                Result result = stringifyUnresolved(current, ex1);
+                                return result;
+                            } catch (Exception e) {
+                                throw e;
+                            }
+                        }, (parameters, parent) -> {
+                            var values = getValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1), eval);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, eval, parameters);
-                        });
+                            return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), parameters);
+                        }, eval, false);
             } else {
                 var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
-                var result = eval.callInvokeDynamic((DelayInvoke) delay, argumentClasses,
-                        StringifyUtils::stringifyUnresolved, (parameters, parent) -> {
-                            var values = getValues(parameters, StringifyUtils::stringifyUnresolved);
+                var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses,
+                        (current, ex1) -> {
+                            try {
+                                Result result1 = stringifyUnresolved(current, ex1);
+                                return result1;
+                            } catch (Exception e) {
+                                throw e;
+                            }
+                        }, (parameters, parent) -> {
+                            var values = getValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1), eval);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, eval, parameters);
-                        });
+                            return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), parameters);
+                        }, eval, true);
                 return result;
             }
         } else if (instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEVIRTUAL) {
@@ -101,12 +116,19 @@ public class StringifyUtils {
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-            return eval.callInvokeVirtual(instructionHandle, (DelayInvoke) delay,
-                    argumentClasses, StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
+            return callInvokeVirtual(instructionHandle, (DelayInvoke) delay,
+                    argumentClasses, (current, ex1) -> {
+                        try {
+                            Result result = stringifyUnresolved(current, ex1);
+                            return result;
+                        } catch (Exception e) {
+                            throw e;
+                        }
+                    }, (parameters, lastInstruction) -> {
                         var object = parameters.get(0);
                         var args = parameters.subList(1, parameters.size());
-                        return stringifyInvokeResult(delay, objectClass, methodName, object, args);
-                    });
+                        return stringifyInvokeResult(delay, objectClass, methodName, object, args, eval);
+                    }, eval, false);
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeInstruction = (InvokeInstruction) instruction;
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
@@ -117,10 +139,17 @@ public class StringifyUtils {
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, delay);
             var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-            return eval.callInvokeStatic((DelayInvoke) delay, argumentClasses,
-                    StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
-                        return stringifyInvokeResult(delay, objectClass, methodName, null, parameters);
-                    });
+            return callInvokeStatic((DelayInvoke) delay, argumentClasses,
+                    (current, ex1) -> {
+                        try {
+                            Result result = stringifyUnresolved(current, ex1);
+                            return result;
+                        } catch (Exception e) {
+                            throw e;
+                        }
+                    }, (parameters, lastInstruction) -> {
+                        return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
+                    }, eval, false);
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeInstruction = (InvokeInstruction) instruction;
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
@@ -131,16 +160,23 @@ public class StringifyUtils {
             var argumentsAmount = argumentTypes.length;
             var arguments = eval.evalArguments(instructionHandle, argumentsAmount, null);
             var invokeObject = eval.evalInvokeObject(invokeInstruction, arguments, delay);
-            return eval.callInvokeSpecial((DelayInvoke) delay, argumentClasses,
-                    StringifyUtils::stringifyUnresolved, (parameters, lastInstruction) -> {
+            return callInvokeSpecial((DelayInvoke) delay, argumentClasses,
+                    (current, ex1) -> {
+                        try {
+                            Result result = stringifyUnresolved(current, ex1);
+                            return result;
+                        } catch (Exception e) {
+                            throw e;
+                        }
+                    }, (parameters, lastInstruction) -> {
                         if ("<init>".equals(methodName)) {
-                            return stringifyInvokeNew(delay, objectClass, parameters);
+                            return stringifyInvokeNew(delay, objectClass, parameters, eval);
                         } else {
                             var object = parameters.get(0);
                             var args = parameters.subList(1, parameters.size());
-                            return stringifyInvokeResult(delay, objectClass, methodName, object, args);
+                            return stringifyInvokeResult(delay, objectClass, methodName, object, args, eval);
                         }
-                    });
+                    }, eval, false);
         } else if (instruction instanceof ArithmeticInstruction) {
             var first = eval.eval(eval.getPrev(instructionHandle), delay);
             var second = instruction.consumeStack(constantPoolGen) == 2
@@ -148,16 +184,16 @@ public class StringifyUtils {
             var strings = stringifyArithmetic((ArithmeticInstruction) instruction, first, second, eval);
             var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
             var values = strings.stream()
-                    .map(v -> constant(v, instructionHandle, lastInstruction, eval, delay, first, second))
+                    .map(v -> constant(v, instructionHandle, lastInstruction, eval.getComponent(), eval.getMethod(), delay, first, second))
                     .collect(toList());
             return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), eval);
         } else if (instruction instanceof ArrayInstruction) {
             var element = eval.eval(eval.getPrev(instructionHandle), delay);
             var index = eval.eval(eval.getPrev(element.getLastInstruction()), delay);
             var array = eval.eval(eval.getPrev(index.getLastInstruction()), delay);
-            var result = array.getValue(StringifyUtils::stringifyUnresolved);
+            var result = array.getValue((current, ex1) -> stringifyUnresolved(current, ex1), eval);
             var lastInstruction = array.getLastInstruction();
-            return constant(result, lastInstruction, lastInstruction, eval, delay, element, index, array);
+            return constant(result, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), delay, element, index, array);
         } else if (instruction instanceof LoadInstruction) {
             var aload = (LoadInstruction) instruction;
             var aloadIndex = aload.getIndex();
@@ -167,7 +203,7 @@ public class StringifyUtils {
             var name = localVariable != null ? localVariable.getName() : null;
             if ("this".equals(name)) {
                 var value = eval.getObject();
-                return constant(value, instructionHandle, instructionHandle, eval, delay);
+                return constant(value, instructionHandle, instructionHandle, eval.getComponent(), eval.getMethod(), delay);
             }
 
             var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay);
@@ -175,10 +211,20 @@ public class StringifyUtils {
             var strings = storeResults.stream()
 //                    .flatMap(storeResult -> expand(eval.resolve(storeResult, StringifyUtils::stringifyUnresolved)).stream())
                     .flatMap(storeResult -> {
-                        return storeResult
-                                .getValue(StringifyUtils::stringifyUnresolved).stream()
-                                .map(String::valueOf)
-                                .map(s -> constant(s, instructionHandle, instructionHandle, eval, delay, storeResult));
+                        try {
+                            return storeResult
+                                    .getValue((current, ex1) -> {
+                                        try {
+                                            return stringifyUnresolved(current, ex1);
+                                        } catch (Exception e) {
+                                            throw e;
+                                        }
+                                    }, eval).stream()
+                                    .map(String::valueOf)
+                                    .map(s -> constant(s, instructionHandle, instructionHandle, eval.getComponent(), eval.getMethod(), delay, storeResult));
+                        } catch (Exception e) {
+                            throw e;
+                        }
                     })
                     .collect(toList());
 
@@ -189,14 +235,14 @@ public class StringifyUtils {
     }
 
     private static Constant stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
-                                                  ParameterValue object, List<ParameterValue> resolvedArguments
+                                                  ParameterValue object, List<ParameterValue> resolvedArguments, EvalBytecode eval
     ) {
-        var argValues = getArgValues(resolvedArguments);
-        var objectValue = object != null ? getValue(object, StringifyUtils::stringifyUnresolved) : null;
+        var argValues = getArgValues(resolvedArguments, eval);
+        var objectValue = object != null ? getValue(object, (current, ex) -> stringifyUnresolved(current, ex), eval) : null;
         var string = stringifyMethodCall(objectClass, (String) objectValue, methodName, stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
         var parameterValues = concatCallParameters(object, resolvedArguments);
-        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), parameterValues);
+        return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), parameterValues);
     }
 
     private static List<ParameterValue> concatCallParameters(ParameterValue object, List<ParameterValue> arguments) {
@@ -209,28 +255,28 @@ public class StringifyUtils {
         return parameterValues;
     }
 
-    private static Constant stringifyInvokeNew(Delay delay, Class<?> objectClass, List<ParameterValue> resolvedArguments
+    private static Constant stringifyInvokeNew(Delay delay, Class<?> objectClass, List<ParameterValue> resolvedArguments, EvalBytecode eval
     ) {
-        var argValues = getArgValues(resolvedArguments);
+        var argValues = getArgValues(resolvedArguments, eval);
         var string = stringifyNewCall(objectClass, stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
-        return invoked(string, lastInstruction, lastInstruction, delay.getEvalContext(), resolvedArguments);
+        return invoked(string, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), resolvedArguments);
     }
 
-    private static Object[] getArgValues(List<ParameterValue> resolvedArguments) {
+    private static Object[] getArgValues(List<ParameterValue> resolvedArguments, EvalBytecode eval) {
         var variables = resolvedArguments.stream()
                 .filter(a -> a.getParameter() instanceof Variable)
                 .collect(toList());
         var args = !variables.isEmpty() ? variables : resolvedArguments;
-        return getValues(args, StringifyUtils::stringifyUnresolved);
+        return getValues(args, (current, ex) -> stringifyUnresolved(current, ex), eval);
     }
 
 
-    public static Object[] getValues(List<ParameterValue> parameterValues, Resolver unevaluatedHandler) {
-        return parameterValues.stream().map(pv -> getValue(pv, unevaluatedHandler)).toArray(Object[]::new);
+    private static Object[] getValues(List<ParameterValue> parameterValues, Resolver unevaluatedHandler, EvalBytecode eval) {
+        return parameterValues.stream().map(pv -> getValue(pv, unevaluatedHandler, eval)).toArray(Object[]::new);
     }
 
-    private static Object getValue(ParameterValue pv, Resolver unevaluatedHandler) {
+    private static Object getValue(ParameterValue pv, Resolver unevaluatedHandler, EvalBytecode eval) {
         var exception = pv.getException();
         var parameter = pv.getParameter();
         if (exception != null) {
@@ -268,7 +314,7 @@ public class StringifyUtils {
         var componentType = variable.getComponentType().getSimpleName();
         var value = "{" + componentType + "." + methodName + "(" + "{" + variable.getName() + "}" + ")" + "}";
         var lastInstruction = variable.getLastInstruction();
-        return constant(value, lastInstruction, lastInstruction, variable.getEvalContext(), variable);
+        return constant(value, lastInstruction, lastInstruction, variable.getEvalContext().getComponent(), variable.getEvalContext().getMethod(), variable);
     }
 
     private static String stringifyMethodCall(Class<?> objectClass, String object, String methodName, String arguments) {
@@ -290,41 +336,41 @@ public class StringifyUtils {
         switch (opcode) {
             case DADD:
             case FADD:
-                return invoke(first, second, (a1, b1) -> a1 + "+" + b1);
+                return invoke(first, second, (a1, b1) -> a1 + "+" + b1, eval);
             case DDIV:
             case FDIV:
             case IDIV:
             case LDIV:
-                return invoke(first, second, (a1, b1) -> a1 + "/" + b1);
+                return invoke(first, second, (a1, b1) -> a1 + "/" + b1, eval);
             case DMUL:
             case FMUL:
             case IMUL:
             case LMUL:
-                return invoke(first, second, (a, b) -> a + "*" + b);
+                return invoke(first, second, (a, b) -> a + "*" + b, eval);
             case DNEG:
             case INEG:
             case FNEG:
             case LNEG:
-                return neg(first);
+                return neg(first, eval);
             case DREM:
             case FREM:
             case IREM:
             case LREM:
-                return rem(first, second);
+                return rem(first, second, eval);
             case DSUB:
             case FSUB:
             case ISUB:
             case LSUB:
-                return sub(first, second);
+                return sub(first, second, eval);
             case IADD:
             case LADD:
-                return add(first, second);
+                return add(first, second, eval);
             case IAND:
             case LAND:
-                return and(first, second);
+                return and(first, second, eval);
             case IOR:
             case LOR:
-                return or(first, second);
+                return or(first, second, eval);
             case ISHL:
             case LSHL:
                 return shiftLeft(first, second, eval);
@@ -336,62 +382,62 @@ public class StringifyUtils {
                 return unsignedShiftRight(first, second, eval);
             case IXOR:
             case LXOR:
-                return xor(first, second);
+                return xor(first, second, eval);
             default:
                 throw new IllegalStateException("unsupported arithmetic op " + opcode);
         }
     }
 
-    private static List<String> neg(Result result) {
-        return expand(result).stream().flatMap(f -> f.getValue(StringifyUtils::stringifyUnresolved).stream())
+    private static List<String> neg(Result result, EvalBytecode eval) {
+        return expand(result).stream().flatMap(f -> f.getValue((current, ex) -> stringifyUnresolved(current, ex), eval).stream())
                 .map(v -> "-" + v).collect(toList());
     }
 
-    private static List<String> xor(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "^" + b);
+    private static List<String> xor(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "^" + b, eval);
     }
 
-    private static List<String> or(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "|" + b);
+    private static List<String> or(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "|" + b, eval);
     }
 
-    private static List<String> and(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "&" + b);
+    private static List<String> and(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "&" + b, eval);
     }
 
-    private static List<String> add(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "+" + b);
+    private static List<String> add(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "+" + b, eval);
     }
 
-    private static List<String> sub(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "-" + b);
+    private static List<String> sub(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "-" + b, eval);
     }
 
-    private static List<String> rem(Result first, Result second) {
-        return invoke(first, second, (a, b) -> a + "%" + b);
+    private static List<String> rem(Result first, Result second, EvalBytecode eval) {
+        return invoke(first, second, (a, b) -> a + "%" + b, eval);
     }
 
     private static List<String> unsignedShiftRight(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b, eval);
     }
 
     private static List<String> shiftRight(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b, eval);
     }
 
     private static List<String> shiftLeft(Result first, Result second, EvalBytecode eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b, eval);
     }
 
-    private static List<String> invoke(Result first, Result second, BiFunction<String, String, String> op) {
-        return invokeVariants(expand(first), expand(second), op);
+    private static List<String> invoke(Result first, Result second, BiFunction<String, String, String> op, EvalBytecode eval) {
+        return invokeVariants(expand(first), expand(second), op, eval);
     }
 
     private static List<String> invokeVariants(List<Result> firstVariants, List<Result> secondVariants,
-                                               BiFunction<String, String, String> op) {
+                                               BiFunction<String, String, String> op, EvalBytecode eval) {
         return secondVariants.stream().flatMap(s -> firstVariants.stream().flatMap(f -> {
-            var values1 = s.getValue(StringifyUtils::stringifyUnresolved);
-            var values2 = f.getValue(StringifyUtils::stringifyUnresolved);
+            var values1 = s.getValue((current, ex) -> stringifyUnresolved(current, ex), eval);
+            var values2 = f.getValue((current, ex) -> stringifyUnresolved(current, ex), eval);
             return values1.stream().flatMap(value1 -> values2.stream().map(value2 -> op.apply(value1 + "", value2 + "")));
         })).collect(toList());
     }
@@ -399,14 +445,14 @@ public class StringifyUtils {
     private static List<Result> s(Result result, EvalBytecode eval) {
         var value2Variants = expand(result);
         return value2Variants.stream()
-                .flatMap(resultVariant -> resultVariant.getValue(StringifyUtils::stringifyUnresolved).stream()
+                .flatMap(resultVariant -> resultVariant.getValue((current, ex) -> stringifyUnresolved(current, ex), eval).stream()
                         .map(value -> value instanceof Number
                                 ? (((Number) value).longValue() & 0X1f) + ""
                                 : value + "")
                         .map(v -> {
                             var firstInstruction = result.getFirstInstruction();
                             var lastInstruction = result.getLastInstruction();
-                            return constant(v, firstInstruction, lastInstruction, eval, result, resultVariant);
+                            return constant(v, firstInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), result, resultVariant);
                         }))
                 .collect(toList());
     }

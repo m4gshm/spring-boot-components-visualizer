@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
 import io.github.m4gshm.connections.eval.result.Delay;
 import io.github.m4gshm.connections.eval.result.Result;
+import io.github.m4gshm.connections.model.Component;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -93,7 +94,7 @@ public class EvalBytecodeUtils {
                          List<ParameterValue> parameters) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, firstInstruction, lastArgInstruction, evalBytecode, parameters);
+            return invoked(value, firstInstruction, lastArgInstruction, evalBytecode.getComponent(), evalBytecode.getMethod(), parameters);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
@@ -120,7 +121,7 @@ public class EvalBytecodeUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, instructionHandle, instructionHandle, evalBytecode, parent.getRelations());
+            return constant(value, instructionHandle, instructionHandle, parent.getRelations(), evalBytecode.getComponent(), evalBytecode.getMethod());
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(parent, instructionHandle, e);
@@ -163,13 +164,13 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       EvalBytecode evalBytecode, Result parent) {
+                                       EvalBytecode eval1, Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        return delay(instructionText, instructionHandle, evalBytecode, parent,
+        return delay(instructionText, instructionHandle, eval1, parent,
                 (thisDelay, needResolve, unevaluatedHandler) -> {
-                    var object = result.getValue(unevaluatedHandler).get(0);
+                    var object = result.getValue(unevaluatedHandler, thisDelay.getEval()).get(0);
                     return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
-                            lastInstruction, evalBytecode, thisDelay);
+                            lastInstruction, thisDelay, thisDelay.getComponent(), thisDelay.getMethod());
                 });
     }
 
@@ -185,17 +186,17 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
                                        InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
-                                       EvalBytecode evalBytecode, Result parent) {
+                                       Result parent, Component component, Method method) {
         var field = getDeclaredField(objectClass, name);
         return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
-                ? getFieldValue(object, field, lastInstruction, evalBytecode, parent)
+                ? getFieldValue(object, field, lastInstruction, parent, component, method)
                 : notAccessible(field, getFieldInstruction, parent);
     }
 
     private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
-                                        EvalBytecode evalBytecode, Result parent) {
+                                        Result parent, Component component, Method method) {
         try {
-            return constant(field.get(object), lastInstruction, lastInstruction, evalBytecode, parent);
+            return constant(field.get(object), lastInstruction, lastInstruction, component, method, parent);
         } catch (IllegalAccessException e) {
             throw new EvalBytecodeException(e);
         }

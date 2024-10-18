@@ -22,9 +22,7 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
@@ -84,7 +82,7 @@ public class JmsOperationsUtils {
             return List.of();
         } else {
             var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                    bootstrapMethods, method, callPointsCache, callCache);
+                    bootstrapMethods, method, callPointsCache, callCache, new ArrayList<Result>());
 
             var result = (DelayInvoke) eval.eval(instructionHandle);
 
@@ -104,8 +102,8 @@ public class JmsOperationsUtils {
                 return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = paramVariant.get(1);
-                var resolved = eval.resolveExpand(first, StringifyUtils::stringifyUnresolved);
-                return resolved.stream().flatMap(v -> v.getValue(StringifyUtils::stringifyUnresolved).stream())
+                var resolved = eval.resolveExpand(first, (current, ex) -> StringifyUtils.stringifyUnresolved(current, ex));
+                return resolved.stream().flatMap(v -> v.getValue((current, ex) -> StringifyUtils.stringifyUnresolved(current, ex), eval).stream())
                         .map(v -> newJmsClient(getDestination(v), direction, methodName));
             }
         } catch (NoCallException e) {

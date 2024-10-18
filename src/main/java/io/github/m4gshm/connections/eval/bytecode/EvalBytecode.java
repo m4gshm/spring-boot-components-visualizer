@@ -4,10 +4,7 @@ import io.github.m4gshm.connections.client.JmsOperationsUtils;
 import io.github.m4gshm.connections.eval.result.*;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.*;
@@ -41,32 +38,42 @@ import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
 import static java.util.stream.Stream.ofNullable;
 import static lombok.AccessLevel.PRIVATE;
+import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.Const.*;
 
 @Slf4j
-@Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @FieldDefaults(makeFinal = true, level = PRIVATE)
+@AllArgsConstructor(access = PROTECTED)
 public class EvalBytecode {
+    @Getter
     @EqualsAndHashCode.Include
     Component component;
+    @Getter
     @EqualsAndHashCode.Include
     Method method;
+    @With
+    Map<Integer, Result> arguments;
+
     //for debug
     Code methodCode;
+
+    @Getter
     ConstantPoolGen constantPoolGen;
+    @Getter
     BootstrapMethods bootstrapMethods;
     Map<Integer, List<InstructionHandle>> jumpTo;
-    private final Map<Component, List<Component>> dependencyToDependentMap;
-    private final Map<Component, List<CallPoint>> callPointsCache;
-    private final Map<CallCacheKey, Result> callCache;
+    Map<Component, List<Component>> dependencyToDependentMap;
+    Map<Component, List<CallPoint>> callPointsCache;
+    Map<CallCacheKey, Result> callCache;
+    private final Collection<Result> inResolving;
 
     public EvalBytecode(@NonNull Component component,
                         @NonNull Map<Component, List<Component>> dependencyToDependentMap,
                         @NonNull ConstantPoolGen constantPoolGen,
                         BootstrapMethods bootstrapMethods,
                         @NonNull Method method, Map<Component, List<CallPoint>> callPointsCache,
-                        Map<CallCacheKey, Result> callCache) {
+                        Map<CallCacheKey, Result> callCache, Collection<Result> inResolving) {
         this.component = component;
         this.constantPoolGen = constantPoolGen;
         this.bootstrapMethods = bootstrapMethods;
@@ -83,6 +90,8 @@ public class EvalBytecode {
         }).filter(Objects::nonNull).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
         this.callPointsCache = callPointsCache;
         this.callCache = callCache;
+        this.inResolving = inResolving;
+        this.arguments = null;
     }
 
     private static Class<?> getCalledMethodClass(CallPoint calledMethodInsideDependent) {
@@ -156,8 +165,8 @@ public class EvalBytecode {
         callContext = newCallContext(contextAware.getComponent(), contextAware.getMethod(), variant);
         if (variant instanceof RelationsAware) {
             var relationsAware = (RelationsAware) variant;
-            var parameters = relationsAware.getRelations();
-            var paramContexts = parameters.stream().map(variant1 -> {
+            var relations = relationsAware.getRelations();
+            var parentContexts = relations.stream().map(variant1 -> {
                 var contextHierarchy = getCallContext(variant1);
                 return contextHierarchy;
             }).filter(c -> c.current != null).flatMap(c -> {
@@ -166,12 +175,12 @@ public class EvalBytecode {
                 var collect = concat(l.stream(), r.stream()).filter(h -> h.current != null).collect(toSet());
                 return collect;
             }));
-            var p = paramContexts.entrySet().stream().map(e -> new ContextHierarchy(e.getKey(), e.getValue()))
+            var parents = parentContexts.entrySet().stream().map(e -> new ContextHierarchy(e.getKey(), e.getValue()))
 //                        .filter(c -> {
 //                            return !c.current.equals(callContext);
 //                        })
                     .collect(toSet());
-            return new ContextHierarchy(callContext, p);
+            return new ContextHierarchy(callContext, parents);
         }
 //        ContextHierarchy parent;
 //        if (variant instanceof PrevAware) {
@@ -404,14 +413,14 @@ public class EvalBytecode {
 
     private static Result call(Delay current, InstructionHandle lastInstruction, Resolver resolver,
                                List<List<ParameterValue>> callParameters,
-                               BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+                               BiFunction<List<ParameterValue>, InstructionHandle, Result> call, EvalBytecode eval) {
         try {
             //log
             var values = callParameters.stream().map(cp -> {
                 return call.apply(cp, lastInstruction);
             }).collect(toList());
             return collapse(values, current.getFirstInstruction(), lastInstruction, current,
-                    current.getEvalContext().getConstantPoolGen(), current.getEvalContext());
+                    eval.getConstantPoolGen(), eval);
         } catch (EvalBytecodeException e) {
             //log
             if (resolver == null) {
@@ -425,6 +434,84 @@ public class EvalBytecode {
         return callContexts.values().stream()
                 .filter(args -> Arrays.stream(args).noneMatch(Objects::isNull))
                 .map(Arrays::asList).distinct().collect(toList());
+    }
+
+    public static Result callInvokeSpecial(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, EvalBytecode eval, boolean throwNoCall) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, resolver, call, throwNoCall);
+    }
+
+    public static Result callInvokeStatic(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
+                                          BiFunction<List<ParameterValue>, InstructionHandle, Result> call, EvalBytecode eval, boolean throwNoCall) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, resolver, call, throwNoCall);
+    }
+
+    public static Result callInvokeVirtual(InstructionHandle instructionHandle, DelayInvoke invoke,
+                                           Class<?>[] argumentClasses, Resolver resolver,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, EvalBytecode eval,
+                                           boolean throwNoCall) {
+        var instruction = (InvokeInstruction) instructionHandle.getInstruction();
+        var objectClass = toClass(instruction.getClassName(eval.getConstantPoolGen()));
+        var parameterClasses = concat(ofNullable(objectClass), Stream.of(argumentClasses)).toArray(Class[]::new);
+        return eval.callWithParameterVariants(invoke, parameterClasses, resolver, call, throwNoCall);
+    }
+
+    public static Result callInvokeDynamic(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, EvalBytecode eval, boolean throwNoCall) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, resolver, call, throwNoCall);
+    }
+
+    public static ArrayList<Result> toParameters(Result object, List<Result> arguments) {
+        var parameters = new ArrayList<Result>(arguments.size() + 1);
+        if (object != null) {
+            parameters.add(object);
+        }
+        parameters.addAll(arguments);
+        return parameters;
+    }
+
+    private static ArrayList<Map<Integer, Result>> getEvalContextArgsVariants(int dimensions, Map<Integer, Result> evalContextArgs) {
+        var evalContextArgsVariants = new ArrayList<Map<Integer, Result>>();
+        for (var d = 1; d <= dimensions; d++) {
+            var variant = new HashMap<Integer, Result>();
+            for (var paramIndex : evalContextArgs.keySet()) {
+                var arg = evalContextArgs.get(paramIndex);
+                if (arg instanceof Multiple) {
+                    var multiple = (Multiple) arg;
+                    var results = multiple.getResults();
+                    var index = d <= results.size() ? d - 1 : results.size() % d - 1;
+                    var result = results.get(index);
+                    variant.put(paramIndex, result);
+                } else {
+                    variant.put(paramIndex, arg);
+                }
+            }
+            evalContextArgsVariants.add(variant);
+        }
+        return evalContextArgsVariants;
+    }
+
+    private static HashMap<Integer, List<Result>> getResolvedVars1(List<Result> parameters, Resolver resolver, EvalBytecode evalWithArguments) {
+        var resolvedVars1 = new HashMap<Integer, List<Result>>();
+        for (int i = 0; i < parameters.size(); i++) {
+            var parameter = parameters.get(i);
+            try {
+                if (parameter instanceof Delay) {
+                    parameter = ((Delay) parameter).withEval(evalWithArguments);
+                }
+                var results = evalWithArguments.resolveExpand(parameter, resolver);
+                resolvedVars1.put(i, results);
+            } catch (NoCallException e) {
+                //log
+                if (resolver != null) {
+                    resolvedVars1.put(i, expand(resolver.resolve(parameter, e)));
+                } else {
+                    resolvedVars1 = null;
+                    break;
+                }
+            }
+        }
+        return resolvedVars1;
     }
 
     public String getComponentName() {
@@ -455,51 +542,67 @@ public class EvalBytecode {
         var instruction = instructionHandle.getInstruction();
         var consumeStack = instruction.consumeStack(constantPoolGen);
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
+        Component component2 = getComponent();
+        Component component1 = component2;
+        var component = component1;
+        Method method2 = getMethod();
+        Method method1 = method2;
+        var method = method1;
+
         if (instruction instanceof LDC) {
             var ldc = (LDC) instruction;
             var value = ldc.getValue(constantPoolGen);
-            return constant(value, instructionHandle, instructionHandle, this, parent);
+            return constant(value, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof LDC2_W) {
             var ldc = (LDC2_W) instruction;
             var value = ldc.getValue(constantPoolGen);
-            return constant(value, instructionHandle, instructionHandle, this, parent);
+            return constant(value, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof LoadInstruction) {
             var loadInstruction = (LoadInstruction) instruction;
             var loadIndex = loadInstruction.getIndex();
-            var localVariables = getLocalVariables(getMethod(), loadIndex);
-            var localVariable = findLocalVariable(getMethod(), localVariables, instructionHandle);
+            var localVariables = getLocalVariables(method, loadIndex);
+            var localVariable = findLocalVariable(method, localVariables, instructionHandle);
 
             var name = localVariable != null ? localVariable.getName() : null;
             if ("this".equals(name)) {
                 var value = getObject();
-                return constant(value, instructionHandle, instructionHandle, this, parent);
+                return constant(value, instructionHandle, instructionHandle, component, method, parent);
             }
 
             var storeResults = findStoreInstructionResults(instructionHandle, localVariables, loadIndex, parent);
             if (!storeResults.isEmpty()) {
                 var description = instructionText + " from stored invocation";
-                return delay(description, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
-                    if (needResolve) {
-                        var resolved = storeResults.stream().flatMap(storeResult -> expand(resolve(storeResult, resolver)).stream()).collect(toList());
-                        return collapse(resolved, instructionHandle, instructionHandle, parent, constantPoolGen,
-                                thisDelay.getEvalContext());
-                    } else {
-                        return thisDelay.evaluated(instructionHandle);
-                    }
-                });
+                var storeInstructions = storeResults.stream().map(storeResult -> eval(storeResult.getFirstInstruction(), parent)).collect(toList());
+                return delayLoadFromStored(description, instructionHandle, this, parent, storeInstructions,
+                        (thisDelay, needResolve, resolver) -> {
+                            if (needResolve) {
+                                var resolved = thisDelay.getStoreInstructions().stream()
+                                        .flatMap(storeResult -> expand(resolve(storeResult, resolver)).stream())
+                                        .collect(toList());
+                                return collapse(resolved, instructionHandle, instructionHandle, parent, constantPoolGen,
+                                        thisDelay.getEval());
+                            } else {
+                                return thisDelay;
+                            }
+                        });
             }
             if (log.isDebugEnabled()) {
                 log.debug("not found store for {}", instructionText);
             }
+//            var evaluatedMethodArg = this.arguments.get(loadIndex);
+//            if (evaluatedMethodArg != null) {
+//                log
+//                return evaluatedMethodArg;
+            /*} else */
             if (localVariable == null) {
-                var argumentType = method.getArgumentTypes()[loadIndex - 1];
+                var argumentType = this.method.getArgumentTypes()[loadIndex - 1];
                 return methodArg(this, loadIndex, null, argumentType, instructionHandle, parent);
             } else {
                 return methodArg(this, localVariable, instructionHandle, parent);
             }
         } else if (instruction instanceof StoreInstruction) {
             int position = instructionHandle.getPosition();
-            var codeException = Arrays.stream(method.getCode().getExceptionTable())
+            var codeException = Arrays.stream(this.method.getCode().getExceptionTable())
                     .filter(et -> et.getHandlerPC() == position)
                     .findFirst().orElse(null);
             if (codeException != null) {
@@ -507,7 +610,7 @@ public class EvalBytecode {
                         codeException.getCatchType(), CONSTANT_Class);
                 var errType = ObjectType.getInstance(catchType);
                 var localVarIndex = ((StoreInstruction) instruction).getIndex();
-                var localVariable = getLocalVariable(method, localVarIndex, instructionHandle);
+                var localVariable = getLocalVariable(this.method, localVarIndex, instructionHandle);
                 return localVariable != null
                         ? variable(this, localVariable, instructionHandle, parent)
                         : variable(this, localVarIndex, null, errType, instructionHandle, parent);
@@ -519,7 +622,7 @@ public class EvalBytecode {
             var fieldName = getStatic.getFieldName(constantPoolGen);
             var loadClassType = getStatic.getLoadClassType(constantPoolGen);
             var loadClass = getClassByName(loadClassType.getClassName());
-            return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, this, parent);
+            return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, parent, component, method);
         } else if (instruction instanceof GETFIELD) {
             var getField = (GETFIELD) instruction;
             var evalFieldOwnedObject = eval(getPrev(instructionHandle), parent);
@@ -533,17 +636,18 @@ public class EvalBytecode {
             return evalInvoke(instructionHandle, (InvokeInstruction) instruction, parent);
         } else if (instruction instanceof ANEWARRAY) {
             var anewarray = (ANEWARRAY) instruction;
-            var loadClassType = anewarray.getLoadClassType(constantPoolGen);
-            var arrayElementType = getClassByName(loadClassType.getClassName());
+
             return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
+                var loadClassType = anewarray.getLoadClassType(thisDelay.getEval().constantPoolGen);
+                var arrayElementType = getClassByName(loadClassType.getClassName());
                 var size = eval(getPrev(instructionHandle), parent);
                 return constant(Array.newInstance(arrayElementType, (int) size.getValue()),
-                        instructionHandle, size.getLastInstruction(), this, thisDelay, size);
+                        instructionHandle, size.getLastInstruction(), component1, method1, thisDelay, size);
             });
         } else if (instruction instanceof ConstantPushInstruction) {
             var cpi = (ConstantPushInstruction) instruction;
             var value = cpi.getValue();
-            return constant(value, instructionHandle, instructionHandle, this, parent);
+            return constant(value, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackConsumer) {
             //AASTORE
             return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
@@ -561,7 +665,7 @@ public class EvalBytecode {
                         throw newInvalidEvalException("expectedResultClass array but was " + result.getClass(),
                                 instruction, constantPoolGen.getConstantPool());
                     }
-                    return constant(result, instructionHandle, lastInstruction, this, element, index, array);
+                    return constant(result, instructionHandle, lastInstruction, component2, method2, element, index, array);
                 } else {
                     return thisDelay.evaluated(lastInstruction);
                 }
@@ -579,7 +683,8 @@ public class EvalBytecode {
                         var a = (Object[]) result;
                         var i = (int) index.getValue();
                         var e = a[i];
-                        return constant(e, lastInstruction, lastInstruction, this, element, index, array);
+                        return constant(e, lastInstruction, lastInstruction,
+                                component2, method2, element, index, array);
                     } else {
                         throw newInvalidEvalException("expected result class array but was " + result.getClass(),
                                 instruction, constantPoolGen.getConstantPool());
@@ -602,7 +707,7 @@ public class EvalBytecode {
             var loadClassType = newInstance.getLoadClassType(constantPoolGen);
             return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
                 var type = getClassByName(loadClassType.getClassName());
-                return instantiateObject(instructionHandle, type, new Class[0], new Object[0], this, thisDelay);
+                return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay.getEval(), thisDelay);
             });
         } else if (instruction instanceof DUP) {
             return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
@@ -627,7 +732,7 @@ public class EvalBytecode {
         } else if (instruction instanceof POP2) {
 //            return eval(getPrev(instructionHandle), resolver);
         } else if (instruction instanceof ACONST_NULL) {
-            return constant(null, instructionHandle, instructionHandle, this, parent);
+            return constant(null, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof IfInstruction) {
             var args = new Result[consumeStack];
             var current = instructionHandle;
@@ -648,13 +753,14 @@ public class EvalBytecode {
                 var convertedValueResult = eval(convertedValueInstruction, thisDelay);
                 var lastInstruction = convertedValueResult.getLastInstruction();
                 if (needResolve) {
-                    var values = convertedValueResult.getValue(resolver);
+                    var values = convertedValueResult.getValue(resolver, thisDelay.getEval());
                     var results = values.stream()
                             .map(value -> (Number) value)
                             .map(number -> convertNumberTo(number, convertTo))
-                            .map(converted -> constant(converted, instructionHandle, lastInstruction, this, thisDelay))
+                            .map(converted -> constant(converted, instructionHandle, lastInstruction,
+                                    component1, method1, thisDelay))
                             .collect(toList());
-                    return collapse(results, instructionHandle, lastInstruction, thisDelay, constantPoolGen, thisDelay.getEvalContext());
+                    return collapse(results, instructionHandle, lastInstruction, thisDelay, constantPoolGen, this);
                 } else {
                     return thisDelay.evaluated(lastInstruction);
                 }
@@ -668,7 +774,7 @@ public class EvalBytecode {
                 if (needResolve) {
                     try {
                         var computed = computeArithmetic(arith, first, second);
-                        return constant(computed, instructionHandle, lastInstruction, this, first, second);
+                        return constant(computed, instructionHandle, lastInstruction, component1, method1, first, second);
                     } catch (UnresolvedResultException e) {
                         return resolveOrThrow(thisDelay, resolver, e);
                     }
@@ -730,7 +836,7 @@ public class EvalBytecode {
                             argValues, instructionHandle, lastInstruction,
                             constantPoolGen, thisDelay, parameters);
                     return result;
-                }) : thisDelay;
+                }, thisDelay.getEval(), true) : thisDelay;
             });
         } else if (instruction instanceof INVOKEDYNAMIC) {
             var arguments = evalArguments(instructionHandle, argumentsAmount, null);
@@ -739,8 +845,8 @@ public class EvalBytecode {
                     var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments(
                             (INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
                     return callBootstrapMethod(getValues(parameters), instructionHandle, lastInstruction,
-                            this, bootstrapMethodAndArguments, parameters);
-                }) : thisDelay;
+                            thisDelay.getEval(), bootstrapMethodAndArguments, parameters);
+                }, thisDelay.getEval(), true) : thisDelay;
             });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
@@ -751,7 +857,7 @@ public class EvalBytecode {
                     var result = callMethod(null, objectClass, methodName, argumentClasses, getValues(parameters),
                             instructionHandle, lastInstruction, constantPoolGen, thisDelay, parameters);
                     return result;
-                }) : thisDelay;
+                }, thisDelay.getEval(), true) : thisDelay;
             });
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
@@ -766,59 +872,38 @@ public class EvalBytecode {
                     var methodType = fromMethodDescriptorString(signature, objectClass.getClassLoader());
                     var paramValues = getValues(parameters);
                     if ("<init>".equals(methodName)) {
-                        return instantiateObject(lastInstruction1, objectClass, argumentClasses, paramValues,
-                                this, thisDelay);
+                        return instantiateObject(lastInstruction1, objectClass, argumentClasses, paramValues, thisDelay.getEval(), thisDelay);
                     } else {
                         var privateLookup = InvokeDynamicUtils.getPrivateLookup(objectClass, lookup);
                         var methodHandle = getMethodHandle(() -> privateLookup.findSpecial(objectClass,
                                 methodName, methodType, objectClass));
-                        return invoke(methodHandle, paramValues, instructionHandle, lastInstruction1,
-                                this, parameters);
+                        return invoke(methodHandle, paramValues, instructionHandle, lastInstruction1, thisDelay.getEval(), parameters);
                     }
-                }) : thisDelay;
+                }, this, true) : thisDelay;
             });
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
     }
 
-    public Result callInvokeSpecial(DelayInvoke current, Class<?>[] argumentClasses, Resolver resolver,
-                                    BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
-        return callWithParameterVariants(current, argumentClasses, resolver, call);
-    }
-
-    public Result callInvokeStatic(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
-                                   BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
-        return callWithParameterVariants(invoke, argumentClasses, resolver, call);
-    }
-
-    public Result callInvokeVirtual(InstructionHandle instructionHandle, DelayInvoke current,
-                                    Class<?>[] argumentClasses, Resolver resolver,
-                                    BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
-        var instruction = (InvokeInstruction) instructionHandle.getInstruction();
-        var objectClass = toClass(instruction.getClassName(constantPoolGen));
-        var parameterClasses = concat(ofNullable(objectClass), Stream.of(argumentClasses)).toArray(Class[]::new);
-        return callWithParameterVariants(current, parameterClasses, resolver, call
-        );
-    }
-
-    public Result callInvokeDynamic(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
-                                    BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
-        return callWithParameterVariants(invoke, argumentClasses, resolver, call);
-    }
-
-    private Result callWithParameterVariants(DelayInvoke invoke, Class<?>[] argumentClasses, Resolver resolver,
-                                             BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+    private Result callWithParameterVariants(DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
+                                             BiFunction<List<ParameterValue>, InstructionHandle, Result> call, boolean throwNoCall) {
         var argumentsArguments = invoke.getArguments();
-        var parameterVariants = resolveInvokeParameters(invoke, invoke.getObject(), argumentsArguments, resolver, true, invoke);
+        var parameters = toParameters(invoke.getObject(), argumentsArguments);
+        var parameterVariants = resolveInvokeParameters(parameters, invoke, resolver, true, invoke);
         var lastInstruction = invoke.getLastInstruction();
         var results = parameterVariants.stream().map(parameterVariant -> {
-            var result = resolveAndInvoke(invoke, parameterVariant, argumentClasses, lastInstruction, resolver, call);
+            var result = resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction, resolver, call);
             return result;
         }).collect(toList());
-        return results.isEmpty()
-                ? noCallVariants(invoke)
-                : collapse(results, invoke.getFirstInstruction(), lastInstruction,
-                constantPoolGen.getConstantPool(), invoke.getEvalContext());
+        if (results.isEmpty()) {
+            if (throwNoCall) {
+                throw new NoCallException(invoke);
+            } else {
+                return resolveAndInvoke(invoke, parameters, parameterClasses, lastInstruction, resolver, call);
+            }
+        }
+        return collapse(results, invoke.getFirstInstruction(), lastInstruction,
+                constantPoolGen.getConstantPool(), this);
     }
 
     private Result resolveAndInvoke(Delay current, List<Result> parameters, Class<?>[] parameterClasses,
@@ -835,7 +920,7 @@ public class EvalBytecode {
             return cached;
         }
 
-        var callResult = call(current, lastInstruction, resolver, callParameters, call);
+        var callResult = call(current, lastInstruction, resolver, callParameters, call, this);
         log.trace("no cached call result, call '{}', result '{}'", key, callResult);
         callCache.put(key, callResult);
         return callResult;
@@ -874,122 +959,223 @@ public class EvalBytecode {
         return new InvokeObject(firstInstruction, lastInstruction, objectCallResult);
     }
 
-    public List<List<Result>> resolveInvokeParameters(Result invoke, Result object, List<Result> arguments, Resolver resolver,
+    public List<List<Result>> resolveInvokeParameters(List<Result> parameters, Delay invoke, Resolver resolver,
                                                       boolean resolveUncalledVariants, Result parent) {
-        var parameters = new ArrayList<Result>(arguments.size() + 1);
-        if (object != null) {
-            parameters.add(object);
-        }
-        parameters.addAll(arguments);
         if (parameters.isEmpty()) {
             return List.of(parameters);
         }
 
-        var resolvedAll = new ArrayList<Map<Integer, List<Result>>>();
-        var varPerInd = new IdentityHashMap<Variable, Integer>();
-        var resolvedNorVars = new HashMap<Integer, List<Result>>();
-        for (int i = 0; i < parameters.size(); i++) {
-            var parameter = parameters.get(i);
-            if (parameter instanceof Variable) {
-                varPerInd.put((Variable) parameter, i);
-            } else {
-                var resolved = resolveExpand(parameter, resolver);
-                resolvedNorVars.put(i, resolved);
+        if (!(this.arguments == null || this.arguments.isEmpty())) {
+            var resolvedVars1 = new HashMap<Integer, List<Result>>();
+            for (int i = 0; i < parameters.size(); i++) {
+                var parameter = parameters.get(i);
+                var results = this.resolveExpand(parameter, resolver);
+                resolvedVars1.put(i, results);
             }
-        }
 
-        var variablesPerComponentMethod = varPerInd.keySet().stream()
-                .collect(groupingBy(Variable::getComponent, groupingBy(Variable::getMethod)));
-
-        if (variablesPerComponentMethod.isEmpty()) {
-            resolvedAll.add(resolvedNorVars);
+            var resolvedAll = new ArrayList<Map<Integer, List<Result>>>();
+            var resolved = new HashMap<Integer, List<Result>>();
+            resolved.putAll(resolvedVars1);
+            resolvedAll.add(resolved);
+            var resolvedParamVariants = new ArrayList<List<Result>>();
+            for (var resolvedVariantMap : resolvedAll) {
+                var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
+                int dimensions = getDimensions(parameterVariants);
+                resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
+            }
+            return resolvedParamVariants;
         } else {
-            for (var component : variablesPerComponentMethod.keySet()) {
-                var methodListMap = variablesPerComponentMethod.get(component);
-                for (var method : methodListMap.keySet()) {
-                    var variablesOfMethod = methodListMap.get(method);
-                    var dependentOnThisComponent = getDependentOnThisComponent(this.dependencyToDependentMap, component);
 
-                    var componentType = component.getType();
-                    var methodName = method.getName();
-                    var argumentTypes = method.getArgumentTypes();
-                    var methodCallPoints = getCallPoints(componentType, methodName, argumentTypes, dependentOnThisComponent);
+            var resolvedAll = new ArrayList<Map<Integer, List<Result>>>();
+//        var varPerInd = new IdentityHashMap<Variable, Integer>();
+//        var relatedOnVar = new IdentityHashMap<Variable, List<Delay>>();
+            var resolvedNorVars = new HashMap<Integer, List<Result>>();
+//        for (int i = 0; i < parameters.size(); i++) {
+//            var parameter = parameters.get(i);
+//            if (parameter instanceof Variable) {
+//                varPerInd.put((Variable) parameter, i);
+//            } else if (parameter instanceof DelayInvoke) {
+//                var delayInvoke = (DelayInvoke) parameter;
+//                var delayInvokeArguments = delayInvoke.getArguments();
+//                for (var delayInvokeArgument : delayInvokeArguments) {
+//                    if (delayInvokeArgument instanceof Variable) {
+//                        var delayInvokeArgument1 = (Variable) delayInvokeArgument;
+//                        varPerInd.put(delayInvokeArgument1, i);
+//                        relatedOnVar.computeIfAbsent(delayInvokeArgument1, k -> new ArrayList<>()).add(delayInvoke);
+//                    }
+//                }
+//            } else if (parameter instanceof DelayLoadFromStore) {
+//                var delayLoadFromStore = (DelayLoadFromStore) parameter;
+//                var storeInstructions = delayLoadFromStore.getStoreInstructions();
+//                for (var storeInstruction : storeInstructions) {
+//                    if (storeInstruction instanceof Variable) {
+//                        var delayInvokeArgument1 = (Variable) storeInstruction;
+//                        varPerInd.put(delayInvokeArgument1, i);
+//                        relatedOnVar.computeIfAbsent(delayInvokeArgument1, k -> new ArrayList<>()).add(delayLoadFromStore);
+//                    }
+//                }
+//            } else {
+//                List<Result> results;
+//                try {
+//                    results = resolveExpand(parameter, null);
+//                } catch (Exception e) {
+//                    log.error(e.getMessage());
+//                    results = null;
+//                }
+//                var resolved = resolveExpand(parameter, resolver);
+//                resolvedNorVars.put(i, resolved);
+//            }
+//        }
 
-                    var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, parent);
+//        var variablesPerComponentMethod = varPerInd.keySet().stream()
+//                .collect(groupingBy(Variable::getComponent, groupingBy(Variable::getMethod)));
 
-                    var argumentVariants = getArgumentVariants(methodArgumentVariants);
+//        if (variablesPerComponentMethod.isEmpty()) {
+//            resolvedAll.add(resolvedNorVars);
+//        } else {
+//            for (var component : variablesPerComponentMethod.keySet()) {
+//                var methodListMap = variablesPerComponentMethod.get(component);
+//                for (var method : methodListMap.keySet()) {
+//                    var variablesOfMethod = methodListMap.get(method);
+            var dependentOnThisComponent = getDependentOnThisComponent(this.dependencyToDependentMap, component);
 
-                    var variableVariantMappings = argumentVariants.stream().map(variant -> {
-                        return variablesOfMethod.stream().map(variable -> {
-                            var i = variable.getIndex() - 1;
-                            if (i >= variant.size()) {
-                                //logs
-                                return entry(variable, Result.stub(variable, component, method, resolver));
-                            } else {
-                                return entry(variable, variant.get(i));
-                            }
-                        }).collect(toMap(Entry::getKey, Entry::getValue));
-                    }).collect(toList());
+            var componentType = component.getType();
+            var methodName = method.getName();
+            var argumentTypes = method.getArgumentTypes();
+            var methodCallPoints = getCallPoints(componentType, methodName, argumentTypes, dependentOnThisComponent);
+            if (methodCallPoints.isEmpty()) {
+                log.info("no call points of method, component type {}, method {}, arguments {}",
+                        componentType.getName(), methodName, argumentTypes);
+            }
+            var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, parent);
 
-                    if (variableVariantMappings.isEmpty() && resolveUncalledVariants) {
-                        var resolvedVars = new HashMap<Integer, List<Result>>();
-                        for (int i = 0; i < parameters.size(); i++) {
-                            var parameter = parameters.get(i);
-                            if (parameter instanceof Variable) {
-                                var resolved = resolveExpand(parameter, resolver);
-                                resolvedVars.put(i, resolved);
-                            }
-                        }
-                        var resolved = new HashMap<Integer, List<Result>>();
-                        resolved.putAll(resolvedNorVars);
-                        resolved.putAll(resolvedVars);
-                        //assert resolved.size == parameters.size
-                        resolvedAll.add(resolved);
-                    } else {
-                        for (var variableVariantMapping : variableVariantMappings) {
-                            var resolvedVars = new HashMap<Integer, List<Result>>();
-                            for (var variable : varPerInd.keySet()) {
-                                var varVariant = variableVariantMapping.get(variable);
-                                var resolved = resolveExpand(varVariant, resolver);
-                                var index = varPerInd.get(variable);
-                                resolvedVars.put(index, resolved);
-                            }
+            var argumentVariants = getArgumentVariants(methodArgumentVariants);
+
+//                    var variableVariantMappings = argumentVariants.stream().map(variant -> {
+//                        return variablesOfMethod.stream().map(variable -> {
+//                            var i = variable.getIndex() - 1;
+//                            if (i >= variant.size()) {
+//                                //logs
+//                                return entry(variable, Result.stub(variable, component, method, resolver));
+//                            } else {
+//                                return entry(variable, variant.get(i));
+//                            }
+//                        }).collect(toMap(Entry::getKey, Entry::getValue));
+//                    }).collect(toList());
+
+//                    if (variableVariantMappings.isEmpty() && resolveUncalledVariants) {
+//                        var resolvedVars = new HashMap<Integer, List<Result>>();
+//                        for (int i = 0; i < parameters.size(); i++) {
+//                            var parameter = parameters.get(i);
+//                            if (parameter instanceof Variable) {
+//                                var resolved = resolveExpand(parameter, resolver);
+//                                resolvedVars.put(i, resolved);
+//                            }
+//                        }
+//                        var resolved = new HashMap<Integer, List<Result>>();
+//                        resolved.putAll(resolvedNorVars);
+//                        resolved.putAll(resolvedVars);
+//                        //assert resolved.size == parameters.size
+//                        resolvedAll.add(resolved);
+//                    } else {
+            var variableVariantMappings = argumentVariants;
+            variants:
+            for (var variableVariantMapping : variableVariantMappings) {
+                var evalContextArgs = getEvalContextArgs(resolver, variableVariantMapping);
+                if (evalContextArgs != null) {
+                    var dimensions = evalContextArgs.values().stream()
+                            .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
+                            .reduce(1, (l, r) -> l * r);
+
+
+//                            var evalContextArgs = variableVariantMapping.entrySet().stream().collect(toMap(e -> e.getKey().getIndex(), variableResultEntry -> {
+//                                var value = variableResultEntry.getValue();
+//                                var resolved = resolve(value, resolver);
+//                                return resolved;
+//                            }));
+
+                    var evalContextArgsVariants = getEvalContextArgsVariants(dimensions, evalContextArgs);
+                    for (var variant : evalContextArgsVariants) {
+                        var evalWithArguments = this.withArguments(variant);
+                        var resolvedVars1 = getResolvedVars1(parameters, resolver, evalWithArguments);
+                        if (resolvedVars1 != null) {
+//                            var resolvedVars = new HashMap<Integer, List<Result>>();
+//                            for (var variable : varPerInd.keySet()) {
+//                                var varVariant = variableVariantMapping.get(variable);
+//                                var resolved = resolveExpand(varVariant, resolver);
+//                                var index = varPerInd.get(variable);
+//                                resolvedVars.put(index, resolved);
+//                            }
                             var resolved = new HashMap<Integer, List<Result>>();
                             resolved.putAll(resolvedNorVars);
-                            resolved.putAll(resolvedVars);
+//                            resolved.putAll(resolvedVars);
+                            resolved.putAll(resolvedVars1);
                             //assert resolved.size == parameters.size
                             resolvedAll.add(resolved);
                         }
                     }
                 }
             }
-        }
+//                    }
+//                }
+//            }
+//        }
 
-        var resolvedParamVariants = new ArrayList<List<Result>>();
-        for (var resolvedVariantMap : resolvedAll) {
-            var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
-            int dimensions = getDimensions(parameterVariants);
-            if (dimensions <= 2) {
-                resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
-            } else {
-
-                var callContexts = getCallContexts(parameters, parameterVariants);
-                var result = getFullDistinctCallContexts(callContexts);
-                if (result.isEmpty()) {
-                    var callContexts2 = getCallContexts(parameters, parameterVariants);
-                    //log WARN todo
-                    //no common call contexts ????
-                    resolvedParamVariants.addAll(flatResolvedVariants(1, parameterVariants, parameters));
+            var resolvedParamVariants = new ArrayList<List<Result>>();
+            for (var resolvedVariantMap : resolvedAll) {
+                var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
+                int dimensions = getDimensions(parameterVariants);
+                if (dimensions <= 3) {
+                    resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                 } else {
-                    for (var variantOfVariantOfParameters : result) {
-                        resolvedParamVariants.addAll(flatResolvedVariants(
-                                getDimensions(variantOfVariantOfParameters),
-                                variantOfVariantOfParameters, parameters));
+                    var callContexts = getCallContexts(parameters, parameterVariants);
+                    var result = getFullDistinctCallContexts(callContexts);
+                    if (result.isEmpty()) {
+//                        var callContexts2 = getCallContexts(parameters, parameterVariants);
+                        //log WARN todo
+                        //no common call contexts ????
+                        resolvedParamVariants.addAll(flatResolvedVariants(1, parameterVariants, parameters));
+                    } else {
+                        for (var variantOfVariantOfParameters : result) {
+                            resolvedParamVariants.addAll(flatResolvedVariants(
+                                    getDimensions(variantOfVariantOfParameters),
+                                    variantOfVariantOfParameters, parameters)
+                            );
+                        }
                     }
                 }
             }
+            return resolvedParamVariants;
         }
-        return resolvedParamVariants;
+    }
+
+    private Map<Integer, Result> getEvalContextArgs(Resolver resolver, List<Result> variableVariantMapping) {
+        var evalContextArgs = new HashMap<Integer, Result>();
+        for (int i = 0; i < variableVariantMapping.size(); i++) {
+            var value = variableVariantMapping.get(i);
+            Result resolved;
+            try {
+                resolved = resolve(value, resolver);
+            } catch (EvalBytecodeException e) {
+                //log
+                return null;
+//                if (resolver != null) {
+//                    try {
+//                        resolved = resolver.resolve(value, e);
+//                    } catch (Exception ee) {
+//                        throw ee;
+//                    }
+//                } else {
+//                    throw e;
+//                }
+            }
+            if (resolved instanceof NoCall) {
+                //log
+                return null;
+            }
+            evalContextArgs.put(i + 1, resolved);
+        }
+        return evalContextArgs;
     }
 
     public List<ParameterVariants> getParameterValues(List<Result> parameters, Class<?>[] parameterClasses, Resolver resolver) {
@@ -998,14 +1184,14 @@ public class EvalBytecode {
         for (var i = 0; i < size; i++) {
             var result = parameters.get(i);
             try {
-                var value = result.getValue(resolver);
+                var value = result.getValue(resolver, this);
                 values[i] = new ParameterVariants(result, i, value, null);
             } catch (UnresolvedResultException e) {
                 //log
                 if (resolver != null) {
                     var resolved = resolver.resolve(result, e);
                     if (resolved.isResolved()) {
-                        var variants = resolved.getValue(resolver);
+                        var variants = resolved.getValue(resolver, this);
                         values[i] = new ParameterVariants(result, i, variants, null);
                     } else {
                         //log
@@ -1051,7 +1237,7 @@ public class EvalBytecode {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName,
                     result, EvalBytecodeUtils.toString(invokeInstruction, constantPoolGen));
         }
-        return invoked(result, invokeInstruction, lastInstruction, this, parameters);
+        return invoked(result, invokeInstruction, lastInstruction, this.getComponent(), this.getMethod(), parameters);
     }
 
     private ParameterVariants[] normalizeClasses(ParameterVariants[] objects, Class<?>[] objectTypes) {
@@ -1068,62 +1254,85 @@ public class EvalBytecode {
     }
 
     public Result resolve(Result value, Resolver resolver) {
-        Result result;
-        if (value instanceof Variable && ((Variable) value).getVarType() == MethodArg) {
-            var variable = (Variable) value;
+        var noResolvingBefore = inResolving.add(value);
+        if (!noResolvingBefore) {
+            throw new IllegalStateException("already resolving");
+        }
+        try {
+            Result result;
+            if (value instanceof Variable && ((Variable) value).getVarType() == MethodArg) {
+                var variable = (Variable) value;
 
-            var evalContext = variable.getEvalContext();
-            var component = evalContext.getComponent();
+                var index = variable.getIndex();
+                var argResult = this.arguments != null ? this.arguments.get(index) : null;
 
-            var dependentOnThisComponent = getDependentOnThisComponent(
-                    evalContext.dependencyToDependentMap, component
-            );
-
-            var componentType = evalContext.getComponentType();
-            var evalContextMethod = evalContext.getMethod();
-            var methodName = evalContextMethod.getName();
-            var argumentTypes = evalContextMethod.getArgumentTypes();
-            var methodCallPoints = getCallPoints(componentType, methodName, argumentTypes, dependentOnThisComponent);
-            var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, value);
-            var argumentVariants = getArgumentVariants(methodArgumentVariants);
-
-            var valueVariants = argumentVariants.stream().map(variant -> {
-                var i = variable.getIndex() - 1;
-                if (i >= variant.size()) {
-                    //logs
-                    return Result.stub(variable, component, evalContextMethod, resolver);
-                } else {
-                    return variant.get(i);
+                if (argResult != null) {
+                    //log
+                    return argResult;
                 }
-            }).collect(toList());
 
-            if (!valueVariants.isEmpty()) {
-                var resolvedVariants = valueVariants.stream().map(variant -> {
-                    if (variant instanceof Stub) {
-                        return variant;
-                    }
-                    try {
-                        return resolve(variant, resolver);
-                    } catch (UnresolvedResultException e) {
-                        return resolveOrThrow(value, resolver, e);
+                var evalContext = variable.getEvalContext();
+                var component = evalContext.getComponent();
+
+                var dependentOnThisComponent = getDependentOnThisComponent(
+                        evalContext.dependencyToDependentMap, component
+                );
+
+                var componentType = evalContext.getComponentType();
+                var evalContextMethod = evalContext.getMethod();
+                var methodName = evalContextMethod.getName();
+                var argumentTypes = evalContextMethod.getArgumentTypes();
+                var methodCallPoints = getCallPoints(componentType, methodName, argumentTypes, dependentOnThisComponent);
+                var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, value);
+                var argumentVariants = getArgumentVariants(methodArgumentVariants);
+
+                var valueVariants = argumentVariants.stream().map(variant -> {
+                    var i = index - 1;
+                    if (i >= variant.size()) {
+                        //logs
+                        return stub(variable, component, evalContextMethod, resolver, this);
+                    } else {
+                        return variant.get(i);
                     }
                 }).collect(toList());
-                result = collapse(resolvedVariants, variable.getFirstInstruction(),
-                        variable.getLastInstruction(),
-                        constantPoolGen.getConstantPool(), variable.getEvalContext());
+
+                if (!valueVariants.isEmpty()) {
+                    var resolvedVariants = valueVariants.stream().map(variant -> {
+                        if (variant instanceof Stub) {
+                            return variant;
+                        }
+                        try {
+                            return resolve(variant, resolver);
+                        } catch (UnresolvedResultException e) {
+                            return resolveOrThrow(value, resolver, e);
+                        }
+                    }).collect(toList());
+                    result = collapse(resolvedVariants, variable.getFirstInstruction(),
+                            variable.getLastInstruction(),
+                            constantPoolGen.getConstantPool(), variable.getEvalContext());
+                } else {
+                    //todo may be need to resolve here by resolver
+                    result = variable;
+                }
+            } else if (value instanceof Delay) {
+                try {
+                    var delay = (Delay) value;
+                    var delayComponent = delay.getComponent();
+                    var delayMethod = delay.getMethod();
+                    if (component.equals(delayComponent) && method.equals(delayMethod) && this.arguments != null) {
+                        delay = delay.withEval(this);
+                    }
+                    result = delay.getDelayed(true, resolver);
+                } catch (UnresolvedResultException e) {
+                    result = resolveOrThrow(value, resolver, e);
+                }
             } else {
-                result = variable;
+                result = value;
             }
-        } else if (value instanceof Delay) {
-            try {
-                result = ((Delay) value).getDelayed(true, resolver);
-            } catch (UnresolvedResultException e) {
-                result = resolveOrThrow(value, resolver, e);
-            }
-        } else {
-            result = value;
+            return result;
+        } finally {
+            inResolving.remove(value);
         }
-        return result;
     }
 
     private Map<Component, Map<CallPoint, List<EvalArguments>>> getEvalCallPointVariants(
@@ -1167,8 +1376,7 @@ public class EvalBytecode {
 
     private List<CallPoint> getMatchedCallPoints(CallPoint dependentMethod, String methodName,
                                                  Type[] argumentTypes, Class<?> objectType) {
-        return dependentMethod.getCallPoints().stream(
-        ).filter(calledMethodInsideDependent -> {
+        return dependentMethod.getCallPoints().stream().filter(calledMethodInsideDependent -> {
             var match = isMatch(methodName, argumentTypes, objectType, calledMethodInsideDependent);
             var cycled = isMatch(dependentMethod.getMethodName(), dependentMethod.getArgumentTypes(),
                     dependentMethod.getOwnerClass(), calledMethodInsideDependent);
@@ -1204,16 +1412,10 @@ public class EvalBytecode {
         var instructionHandle = calledMethod.getInstruction();
         var instruction = instructionHandle.getInstruction();
 
-        var javaClass = dependentMethod.getJavaClass();
-        var dependentMethodMethod = dependentMethod.getMethod();
-        var constantPoolGen = new ConstantPoolGen(dependentMethodMethod.getConstantPool());
+        var eval = newEval(dependentComponent, dependentMethod);
         var invokeInstruction = (InvokeInstruction) instruction;
         if (calledMethod.isInvokeDynamic()) {
-            var eval = new EvalBytecode(dependentComponent, this.dependencyToDependentMap, constantPoolGen,
-                    JmsOperationsUtils.getBootstrapMethods(javaClass), dependentMethodMethod,
-                    this.callPointsCache, this.callCache);
-
-            var invokeDynamicArgumentTypes = invokeInstruction.getArgumentTypes(eval.constantPoolGen);
+            var invokeDynamicArgumentTypes = invokeInstruction.getArgumentTypes(eval.getConstantPoolGen());
             var referenceKind = calledMethod.getReferenceKind();
             var removeCallObjectArg = referenceKind == REF_invokeSpecial
                     || referenceKind == REF_invokeVirtual
@@ -1235,7 +1437,7 @@ public class EvalBytecode {
                     var stubbedArguments = new ArrayList<>(arguments.getArguments());
 
                     for (var i = 0; i < functionalInterfaceArgumentsAmount; i++) {
-                        stubbedArguments.add(Result.stub(parentVariable, dependentComponent, dependentMethod.getMethod(), null));
+                        stubbedArguments.add(stub(parentVariable, dependentComponent, dependentMethod.getMethod(), null, eval));
                     }
                     arguments = new EvalArguments(stubbedArguments, arguments.getLastArgInstruction());
                 }
@@ -1243,14 +1445,18 @@ public class EvalBytecode {
 
             return List.of(arguments);
         } else {
-            var eval = new EvalBytecode(dependentComponent, this.dependencyToDependentMap, constantPoolGen,
-                    JmsOperationsUtils.getBootstrapMethods(javaClass),
-                    dependentMethodMethod, this.callPointsCache, this.callCache);
-            var argumentTypes = invokeInstruction.getArgumentTypes(eval.constantPoolGen);
+            var argumentTypes = invokeInstruction.getArgumentTypes(eval.getConstantPoolGen());
             var arguments = eval.evalArguments(instructionHandle, argumentTypes.length, parent);
             return List.of(arguments);
         }
     }
+
+    private EvalBytecode newEval(Component dependentComponent, CallPoint dependentMethod) {
+        return new EvalBytecode(dependentComponent, this.dependencyToDependentMap, new ConstantPoolGen(dependentMethod.getMethod().getConstantPool()),
+                JmsOperationsUtils.getBootstrapMethods(dependentMethod.getJavaClass()), dependentMethod.getMethod(),
+                this.callPointsCache, this.callCache, this.inResolving);
+    }
+
 
     public EvalArguments evalArguments(InstructionHandle instructionHandle, int argumentsAmount, Result parent) {
         var values = new Result[argumentsAmount];

@@ -83,24 +83,24 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method,
-                callPointsCache, callCache);
+                callPointsCache, callCache, new ArrayList<Result>());
         var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName);
 
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            return getUrls(variants, 3);
+            return getUrls(variants, 3, eval);
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            return getUrls(variants, 2);
+            return getUrls(variants, 2, eval);
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }
 
-    private static List<String> getUrls(List<List<Result>> variants, int paramIndex) {
+    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, EvalBytecode eval) {
         var results = variants.stream().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);
-                return url.getValue(StringifyUtils::stringifyUnresolved).stream();
+                return url.getValue((current, ex) -> StringifyUtils.stringifyUnresolved(current, ex), eval).stream();
             } catch (NoCallException e) {
                 //log
                 return Stream.empty();

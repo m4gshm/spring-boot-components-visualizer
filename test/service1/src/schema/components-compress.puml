@@ -65,10 +65,6 @@ cloud "input" as input #line.dotted;line:gray; {
 <#transparent,transparent>|queue2|" as input.jms.jmsQueueListener.interfaces
       input.jms.jmsQueueListener.interfaces 0)....> jmsQueueListener
     }
-    frame "jmsQueueService" as input.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
-      interface "jmsTemplate-default" as in.jmsQueueService.jmsTemplate.default.in
-      in.jmsQueueService.jmsTemplate.default.in )....> jmsQueueService
-    }
   }
 }
 cloud "output" as output #line.dotted;line:gray; {
@@ -76,11 +72,10 @@ cloud "output" as output #line.dotted;line:gray; {
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
-      collections "<#transparent,transparent>|<r>GET: | |\n\
-<#transparent,transparent>|<r>GET: |/{id}|\n\
+      collections "<#transparent,transparent>|<r>GET: |/{id}|\n\
 <#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|" as output.http.http...service2.interfaces
-      service2LegacyImpl ....(0 output.http.http...service2.interfaces
       service2FeignClient ....(0 output.http.http...service2.interfaces
+      service2LegacyImpl ....(0 output.http.http...service2.interfaces
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
         collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
 <#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|\n\

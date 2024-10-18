@@ -42,4 +42,9 @@ public class Stub extends Result implements ContextAware {
     public InstructionHandle getLastInstruction() {
         return stubbed.getLastInstruction();
     }
+
+    @Override
+    public String toString() {
+        return "stub(" + stubbed + ")";
+    }
 }

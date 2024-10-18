@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.eval.result;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.eval.result.Result.PrevAware;
+import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
@@ -10,32 +11,37 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.List;
-import java.util.Objects;
 
-import static lombok.AccessLevel.PRIVATE;
+import static lombok.AccessLevel.PROTECTED;
 
 @Getter
-@FieldDefaults(level = PRIVATE)
-public class Delay extends Result implements ContextAware, PrevAware, Result.RelationsAware {
-    final EvalBytecode evalContext;
+@FieldDefaults(level = PROTECTED)
+public class Delay extends Result implements ContextAware, PrevAware, RelationsAware {
+    final EvalBytecode eval;
     final String description;
     final DelayFunction<Delay> evaluator;
     final Result prev;
+    final Component component;
+    final Method method;
+    final Class<?> componentType;
     Result result;
     boolean evaluated;
     boolean resolved;
 
-    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, EvalBytecode evalContext,
+    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, EvalBytecode eval,
                  String description, DelayFunction<? extends Delay> evaluator, Result prev, Result result,
                  boolean evaluated, boolean resolved) {
         super(firstInstruction, lastInstruction);
-        this.evalContext = evalContext;
+        this.eval = eval;
         this.description = description;
         this.evaluator = (DelayFunction<Delay>) evaluator;
         this.prev = prev;
         this.result = result;
         this.evaluated = evaluated;
         this.resolved = resolved;
+        component = eval.getComponent();
+        method = eval.getMethod();
+        componentType = eval.getComponentType();
     }
 
     @Override
@@ -75,7 +81,11 @@ public class Delay extends Result implements ContextAware, PrevAware, Result.Rel
     }
 
     public Delay evaluated(InstructionHandle lastInstruction) {
-        return new Delay(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true, false);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
+    }
+
+    public Delay withEval(EvalBytecode eval) {
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
     }
 
     @Override
@@ -86,22 +96,22 @@ public class Delay extends Result implements ContextAware, PrevAware, Result.Rel
 
     @Override
     public Method getMethod() {
-        return evalContext.getMethod();
+        return method;
     }
 
     @Override
     public Component getComponent() {
-        return evalContext.getComponent();
+        return component;
     }
 
     @Override
     public Class<?> getComponentType() {
-        return evalContext.getComponentType();
+        return componentType;
     }
 
     @Override
     public List<Result> getRelations() {
-        return prev != null ? List.of(this.prev): List.of();
+        return List.of();
     }
 
     @FunctionalInterface
