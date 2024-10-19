@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.*;
+import static io.github.m4gshm.connections.eval.bytecode.Eval.*;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClass;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClasses;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethod;
@@ -26,8 +26,8 @@ import static org.apache.bcel.Const.*;
 public class StringifyUtils {
 
     public static Result stringifyUnresolved(Result current, EvalBytecodeException ex, Map<CallCacheKey, Result> callCache) {
-        if (current instanceof NoCall) {
-            current = ((NoCall) current).getDelay();
+        if (current instanceof NotInvoked) {
+            current = ((NotInvoked) current).getDelay();
         }
 //        if (ex instanceof NoCallException) {
 //            throw ex;
@@ -239,7 +239,7 @@ public class StringifyUtils {
 
     private static Constant stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
                                                   ParameterValue object, List<ParameterValue> resolvedArguments,
-                                                  EvalBytecode eval, Map<CallCacheKey, Result> callCache
+                                                  Eval eval, Map<CallCacheKey, Result> callCache
     ) {
         var argValues = getArgValues(resolvedArguments, callCache);
         var objectValue = object != null ? getValue(object, (current, ex) -> stringifyUnresolved(current, ex, callCache)) : null;

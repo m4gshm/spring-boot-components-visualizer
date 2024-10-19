@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.eval.result;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.eval.bytecode.Eval;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
@@ -17,7 +17,7 @@ import static lombok.AccessLevel.PROTECTED;
 @Getter
 @FieldDefaults(level = PROTECTED)
 public class Delay extends Result implements ContextAware, PrevAware, RelationsAware {
-    final EvalBytecode eval;
+    final Eval eval;
     final String description;
     final DelayFunction<Delay> evaluator;
     final Result prev;
@@ -28,7 +28,7 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
     boolean evaluated;
     boolean resolved;
 
-    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, EvalBytecode eval,
+    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval eval,
                  String description, DelayFunction<? extends Delay> evaluator, Result prev, Result result,
                  boolean evaluated, boolean resolved) {
         super(firstInstruction, lastInstruction);
@@ -84,7 +84,7 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
         return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
     }
 
-    public Delay withEval(EvalBytecode eval) {
+    public Delay withEval(Eval eval) {
         return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
     }
 

@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.eval.result;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
+import io.github.m4gshm.connections.eval.bytecode.Eval;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.InstructionHandle;
@@ -15,7 +15,7 @@ public class DelayLoadFromStore extends Delay {
     List<Result> storeInstructions;
 
     public DelayLoadFromStore(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                              EvalBytecode evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
+                              Eval evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
                               Result prev, List<Result> storeInstructions) {
         super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true, false);
         this.storeInstructions = storeInstructions;
@@ -28,7 +28,7 @@ public class DelayLoadFromStore extends Delay {
 
 
     @Override
-    public Delay withEval(EvalBytecode eval) {
+    public Delay withEval(Eval eval) {
         Object evaluator1 = evaluator;
         return new DelayLoadFromStore(firstInstruction, lastInstruction, eval, description,
                 (DelayFunction<DelayLoadFromStore>) evaluator1, prev, storeInstructions);

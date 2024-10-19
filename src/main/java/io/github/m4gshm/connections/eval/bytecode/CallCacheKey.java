@@ -13,6 +13,6 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class CallCacheKey {
     Delay call;
-    List<List<EvalBytecode.ParameterValue>> parametersVariants;
+    List<List<Eval.ParameterValue>> parametersVariants;
     Instruction lastInstruction;
 }

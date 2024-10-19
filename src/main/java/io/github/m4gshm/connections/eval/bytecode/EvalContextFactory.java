@@ -9,9 +9,9 @@ import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstra
 
 @FunctionalInterface
 public interface EvalContextFactory {
-    default EvalBytecode getEvalContext(Component component, JavaClass javaClass, Method method) {
+    default Eval getEvalContext(Component component, JavaClass javaClass, Method method) {
         return getEvalContext(component, method, getBootstrapMethods(javaClass));
     }
 
-    EvalBytecode getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods);
+    Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods);
 }

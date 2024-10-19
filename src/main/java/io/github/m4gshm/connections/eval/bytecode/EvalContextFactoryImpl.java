@@ -46,7 +46,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         return methodArgumentVariants.values().stream()
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
-                .flatMap(e -> e.getValue().stream()).map(EvalBytecode.EvalArguments::getArguments)
+                .flatMap(e -> e.getValue().stream()).map(Eval.EvalArguments::getArguments)
                 .distinct().collect(toList());
     }
 
@@ -70,7 +70,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    static Map<Component, Map<CallPoint, List<EvalBytecode.EvalArguments>>> getEvalCallPointVariants(
+    static Map<Component, Map<CallPoint, List<Eval.EvalArguments>>> getEvalCallPointVariants(
             Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
             Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory
     ) {
@@ -90,16 +90,16 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    static Map.Entry<CallPoint, List<EvalBytecode.EvalArguments>> evalCallPointArgumentVariants(
+    static Map.Entry<CallPoint, List<Eval.EvalArguments>> evalCallPointArgumentVariants(
             CallPoint dependentMethod, List<CallPoint> matchedCallPoints,
-            EvalBytecode eval, Map<CallCacheKey, Result> callCache
+            Eval eval, Map<CallCacheKey, Result> callCache
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return EvalBytecode.evalArguments(callPoint, eval, callCache);
+                return Eval.evalArguments(callPoint, eval, callCache);
             } catch (UnresolvedResultException e) {
                 log("evalCallPointArgumentVariants", e);
-                return List.<EvalBytecode.EvalArguments>of();
+                return List.<Eval.EvalArguments>of();
             }
         }).flatMap(Collection::stream).filter(Objects::nonNull).collect(toList());
         return !argVariants.isEmpty() ? entry(dependentMethod, argVariants) : null;
@@ -156,8 +156,8 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     @Override
-    public EvalBytecode getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
-        return new EvalBytecode(component,
+    public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
+        return new Eval(component,
                 new ConstantPoolGen(method.getConstantPool()),
                 bootstrapMethods, method,
                 computeArgumentVariants(component, method,

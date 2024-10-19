@@ -1,9 +1,9 @@
 package io.github.m4gshm.connections.eval.result;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.EvalArguments;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.InvokeObject;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
+import io.github.m4gshm.connections.eval.bytecode.Eval;
+import io.github.m4gshm.connections.eval.bytecode.Eval.EvalArguments;
+import io.github.m4gshm.connections.eval.bytecode.Eval.InvokeObject;
+import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
@@ -58,7 +58,7 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
-                                                         EvalBytecode evalContext, Result parent,
+                                                         Eval evalContext, Result parent,
                                                          List<Result> storeInstructions,
                                                          DelayFunction<DelayLoadFromStore> delayFunction) {
         if (storeInstructions.isEmpty()) {
@@ -71,12 +71,12 @@ public abstract class Result implements ContextAware {
     }
 
 
-    public static Delay delay(String description, InstructionHandle instructionHandle, EvalBytecode evalContext,
+    public static Delay delay(String description, InstructionHandle instructionHandle, Eval evalContext,
                               Result parent, DelayFunction<Delay> delayFunction) {
         return new Delay(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent, null, false, false);
     }
 
-    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, EvalBytecode evalContext,
+    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Eval evalContext,
                                           Result parent, InvokeObject invokeObject, EvalArguments arguments,
                                           DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
@@ -88,7 +88,7 @@ public abstract class Result implements ContextAware {
                 delayFunction, parent, object, arguments.getArguments());
     }
 
-    public static Variable methodArg(EvalBytecode evalContext, LocalVariable localVariable,
+    public static Variable methodArg(Eval evalContext, LocalVariable localVariable,
                                      InstructionHandle lastInstruction, Result parent) {
         int startPC = localVariable.getStartPC();
         if (startPC > 0) {
@@ -104,12 +104,12 @@ public abstract class Result implements ContextAware {
         return methodArg(evalContext, index, name, type, lastInstruction, parent);
     }
 
-    public static Variable methodArg(EvalBytecode evalContext, int index, String name,
+    public static Variable methodArg(Eval evalContext, int index, String name,
                                      Type type, InstructionHandle lastInstruction, Result parent) {
         return new Variable(lastInstruction, lastInstruction, MethodArg, evalContext, index, name, type, parent);
     }
 
-    public static Variable variable(EvalBytecode evalContext, LocalVariable localVariable,
+    public static Variable variable(Eval evalContext, LocalVariable localVariable,
                                     InstructionHandle lastInstruction, Result parent) {
         var type = getType(localVariable.getSignature());
         int index = localVariable.getIndex();
@@ -117,7 +117,7 @@ public abstract class Result implements ContextAware {
         return variable(evalContext, index, name, type, lastInstruction, parent);
     }
 
-    public static Variable variable(EvalBytecode evalContext, int index, String name, Type type,
+    public static Variable variable(Eval evalContext, int index, String name, Type type,
                                     InstructionHandle lastInstruction, Result parent) {
         return new Variable(lastInstruction, lastInstruction, LocalVar, evalContext, index, name, type, parent);
     }
@@ -144,7 +144,7 @@ public abstract class Result implements ContextAware {
         }
     }
 
-    public static Result stub(Result value, Component component, Method method, Resolver resolver, EvalBytecode eval) {
+    public static Result stub(Result value, Component component, Method method, Resolver resolver, Eval eval) {
         if (resolver != null) {
             //log
             return resolver.resolve(value, null);
@@ -171,7 +171,7 @@ public abstract class Result implements ContextAware {
     }
 
     public static Result noCallVariants(Delay current) {
-        return new NoCall(current);
+        return new NotInvoked(current);
     }
 
     @Override
@@ -198,9 +198,10 @@ public abstract class Result implements ContextAware {
         try {
             return singletonList(getValue());
         } catch (EvalBytecodeException e) {
+            //todo may be UnresolvedResultException ????
             if (resolver != null) {
                 var resolved = resolver.resolve(this, e);
-                var values = EvalBytecode.expand(resolved).stream().map(Result::getValue).collect(toList());
+                var values = Eval.expand(resolved).stream().map(Result::getValue).collect(toList());
                 return values;
             }
             throw e;

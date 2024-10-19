@@ -7,12 +7,12 @@ import lombok.Getter;
 public class UnresolvedResultException extends EvalBytecodeException {
     private final Result result;
 
-    public UnresolvedResultException(String message, Result result, Exception cause) {
-        super(cause);
+    public UnresolvedResultException(String message, Exception cause, Result result) {
+        super(message, cause);
         this.result = result;
     }
 
-    public UnresolvedResultException(Result result, Exception cause) {
+    public UnresolvedResultException(Exception cause, Result result) {
         super(cause);
         this.result = result;
     }
@@ -20,9 +20,5 @@ public class UnresolvedResultException extends EvalBytecodeException {
     public UnresolvedResultException(String message, Result result) {
         super(message + " " + result);
         this.result = result;
-    }
-
-    public UnresolvedResultException(UnresolvedResultException e) {
-        this(e.getResult(), e);
     }
 }

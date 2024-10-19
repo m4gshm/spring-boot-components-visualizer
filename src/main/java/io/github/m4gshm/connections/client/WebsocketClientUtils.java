@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
+import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -95,7 +95,7 @@ public class WebsocketClientUtils {
             try {
                 var url = paramVariant.get(paramIndex);
                 return url.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)).stream();
-            } catch (NoCallException e) {
+            } catch (NotInvokedException e) {
                 //log
                 return Stream.empty();
             }

@@ -95,7 +95,7 @@ public class ArithmeticUtils {
         try {
             return (int) result.getValue();
         } catch (ClassCastException e) {
-            throw new UnresolvedResultException(result, e);
+            throw new UnresolvedResultException(e, result);
         }
     }
 
@@ -103,7 +103,7 @@ public class ArithmeticUtils {
         try {
             return (long) result.getValue();
         } catch (ClassCastException e) {
-            throw new UnresolvedResultException(result, e);
+            throw new UnresolvedResultException(e, result);
         }
     }
 
@@ -111,7 +111,7 @@ public class ArithmeticUtils {
         try {
             return (float) result.getValue();
         } catch (ClassCastException e) {
-            throw new UnresolvedResultException(result, e);
+            throw new UnresolvedResultException(e, result);
         }
     }
 
@@ -119,7 +119,7 @@ public class ArithmeticUtils {
         try {
             return (double) result.getValue();
         } catch (ClassCastException e) {
-            throw new UnresolvedResultException(result, e);
+            throw new UnresolvedResultException(e, result);
         }
     }
 

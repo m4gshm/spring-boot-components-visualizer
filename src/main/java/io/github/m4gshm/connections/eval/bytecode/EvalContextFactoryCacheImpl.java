@@ -8,16 +8,15 @@ import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true)
 public class EvalContextFactoryCacheImpl implements EvalContextFactory {
     EvalContextFactory evalContextFactory;
-    Map<Key, EvalBytecode> cache;
+    Map<Key, Eval> cache;
 
     @Override
-    public EvalBytecode getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
+    public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
         return cache.computeIfAbsent(
                 new Key(component, method),
                 k -> evalContextFactory.getEvalContext(component, method, bootstrapMethods)

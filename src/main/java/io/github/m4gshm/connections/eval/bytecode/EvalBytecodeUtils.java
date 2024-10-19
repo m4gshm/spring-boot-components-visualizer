@@ -1,6 +1,6 @@
 package io.github.m4gshm.connections.eval.bytecode;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.ParameterValue;
+import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
 import io.github.m4gshm.connections.eval.result.Delay;
 import io.github.m4gshm.connections.eval.result.Result;
@@ -132,7 +132,7 @@ public class EvalBytecodeUtils {
     }
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
-                                      @NonNull InstructionHandle lastArgInstruction, EvalBytecode evalBytecode,
+                                      @NonNull InstructionHandle lastArgInstruction, Eval evalBytecode,
                                       BootstrapMethodHandlerAndArguments methodAndArguments,
                                       List<ParameterValue> parameters) {
         var callSite = getCallSite(methodAndArguments);
@@ -164,7 +164,7 @@ public class EvalBytecodeUtils {
 
     public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
                                        InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       EvalBytecode eval1, Result parent) {
+                                       Eval eval1, Result parent) {
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
         return delay(instructionText, instructionHandle, eval1, parent,
                 (thisDelay, needResolve, unevaluatedHandler) -> {

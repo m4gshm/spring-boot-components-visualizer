@@ -8,7 +8,7 @@ import org.apache.bcel.generic.InstructionHandle;
 public class IllegalInvokeException extends UnresolvedResultException {
 
     public IllegalInvokeException(Result source, InstructionHandle instruction, Exception e) {
-        super(getMessage(source, instruction), source, e);
+        super(getMessage(source, instruction), e, source);
     }
 
     public IllegalInvokeException(Result source, InstructionHandle instruction) {

@@ -1,7 +1,7 @@
 package io.github.m4gshm.connections.eval.result;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.eval.bytecode.NoCallException;
+import io.github.m4gshm.connections.eval.bytecode.Eval;
+import io.github.m4gshm.connections.eval.bytecode.UnresolvedResultException;
 import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
@@ -17,14 +17,14 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Variable extends Result implements ContextAware, PrevAware {
     VarType varType;
-    EvalBytecode evalContext;
+    Eval evalContext;
     int index;
     String name;
     Type type;
     Result prev;
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
-                    EvalBytecode evalContext, int index, String name, Type type, Result prev) {
+                    Eval evalContext, int index, String name, Type type, Result prev) {
         super(firstInstruction, lastInstruction);
         this.varType = varType;
         this.evalContext = evalContext;
@@ -36,7 +36,7 @@ public class Variable extends Result implements ContextAware, PrevAware {
 
     @Override
     public Object getValue() {
-        throw new NoCallException(this);
+        throw new UnresolvedResultException("unresolved variable", this);
     }
 
     @Override

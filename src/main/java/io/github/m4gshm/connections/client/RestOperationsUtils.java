@@ -17,7 +17,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecode.toParameters;
+import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static java.util.Arrays.stream;
@@ -87,23 +87,10 @@ public class RestOperationsUtils {
 
             return paths.stream().flatMap(path -> httpMethods.stream()
                     .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).build()));
-        } catch (NoCallException e) {
+        } catch (NotInvokedException e) {
             //log
             return Stream.empty();
         }
-    }
-
-    static List<List<Result>> resolveInvokeParameters(EvalBytecode eval, DelayInvoke invoke, Component component,
-                                                      String methodName, Map<CallCacheKey, Result> callCache) {
-        List<List<Result>> variants;
-        var parameters = toParameters(invoke.getObject(), invoke.getArguments());
-        try {
-            variants = eval.resolveInvokeParameters(parameters, (current, ex) -> stringifyUnresolved(current, ex, callCache), true, null);
-        } catch (NoCallException e) {
-            log.info("no call variants for {} inside {}", methodName, component.getName());
-            variants = List.of();
-        }
-        return variants;
     }
 
     private static List<String> getStrings(List<Object> values) {
@@ -112,7 +99,7 @@ public class RestOperationsUtils {
                 .collect(toList());
     }
 
-    private static List<String> resolveVariableStrings(EvalBytecode eval, Collection<Result> results, Map<CallCacheKey, Result> callCache) {
+    private static List<String> resolveVariableStrings(Eval eval, Collection<Result> results, Map<CallCacheKey, Result> callCache) {
         return results.stream()
                 .flatMap(r -> eval.resolveExpand(r, (current, ex) -> stringifyUnresolved(current, ex, callCache)).stream())
                 .flatMap(result -> result.getValue((current1, ex1) -> stringifyUnresolved(current1, ex1, callCache)).stream())
