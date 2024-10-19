@@ -1079,11 +1079,11 @@ public class Eval {
                 resolved = resolve(value, resolver);
             } catch (NotInvokedException e) {
                 //log
-                if (resolveNoCall) {
-                    resolved = resolver.resolve(value, e);
-                } else {
+//                if (resolveNoCall && resolver != null) {
+//                    resolved = resolver.resolve(value, e);
+//                } else {
                     return null;
-                }
+//                }
             } catch (EvalBytecodeException e) {
                 //log
                 return null;
