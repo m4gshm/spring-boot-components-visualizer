@@ -1,8 +1,7 @@
 package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.*;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -126,15 +125,17 @@ public class ComponentsExtractor {
 
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
         var components = componentsPerName.values();
-        var dependencyToDependentMap = getDependencyToDependentMap(components);
         var callPointsCache = new HashMap<Component, List<CallPoint>>();
         var callCache = new HashMap<CallCacheKey, Result>();
 
-//        var expectedTypes = components.stream().map(Component::getType).map(Class::getName).collect(toSet());
+        var evalContextFactory = new EvalContextFactoryCacheImpl(
+                new EvalContextFactoryImpl(getDependencyToDependentMap(components), callPointsCache, callCache),
+                new HashMap<>()
+        );
+
         Set<Component> filteredComponentsWithInterfaces = components.stream().map(c -> {
             var exists = c.getInterfaces();
-            var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(),
-                    dependencyToDependentMap, callPointsCache, callCache);
+            var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(), callCache, evalContextFactory);
             if (exists == null) {
                 exists = interfaces;
             } else if (interfaces != null && !interfaces.isEmpty()) {
@@ -147,30 +148,8 @@ public class ComponentsExtractor {
                 : component
         ).collect(toLinkedHashSet());
 
-//        var withCallPoints = withCallPoints(filteredComponentsWithInterfaces,
-//                dependencyToDependentMap, null, new HashMap<>(), new HashSet<>());
         return Components.builder().components(filteredComponentsWithInterfaces).build();
     }
-
-//    private Set<Component> withCallPoints(Collection<Component> components,
-//                                          Map<Component, List<Component>> dependencyToDependentMap,
-//                                          Function<Result, Result> unevaluatedHandler,
-//                                          Map<Component, List<CallPoint>> callsHierarchyCache,
-//                                          Set<Component> touched) {
-//        return components == null ? Set.of() : components.stream().map(component -> {
-//            if (touched.add(component)) {
-//                var callPoints = callsHierarchyCache.computeIfAbsent(
-//                        component, c -> getCallsHierarchy(component, component.getType(),
-//                                dependencyToDependentMap, unevaluatedHandler)
-//                );
-//                var dependencies = withCallPoints(component.getDependencies(),
-//                        dependencyToDependentMap, unevaluatedHandler, callsHierarchyCache, touched);
-//                return component.toBuilder().callPoints(callPoints).dependencies(dependencies).build();
-//            } else {
-//                return component;
-//            }
-//        }).collect(toLinkedHashSet());
-//    }
 
     protected Stream<Entry<String, Class<?>>> getFilteredBeanNameWithType(Stream<String> beanNames) {
         var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
@@ -249,19 +228,19 @@ public class ComponentsExtractor {
     }
 
     private Set<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
-                                         Set<Component> dependencies, Map<Component, List<Component>> dependencyToDependentMap,
-                                         Map<Component, List<CallPoint>> callPointsCache,
-                                         Map<CallCacheKey, Result> callCache) {
+                                         Set<Component> dependencies,
+                                         Map<CallCacheKey, Result> callCache,
+                                         EvalContextFactory evalContextFactory) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                 .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 
         var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
-        var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies, dependencyToDependentMap,
-                callPointsCache, callCache);
-        var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies, dependencyToDependentMap,
-                callPointsCache, callCache);
+        var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies,
+                callCache, evalContextFactory);
+        var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies,
+                callCache, evalContextFactory);
         var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(component, componentName,
-                dependencies, dependencyToDependentMap, callPointsCache, callCache);
+                dependencies, callCache, evalContextFactory);
 
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                 .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
@@ -372,12 +351,11 @@ public class ComponentsExtractor {
 
     protected Set<Interface> getOutJmsInterfaces(Component component, String componentName,
                                                  Collection<Component> dependencies,
-                                                 Map<Component, List<Component>> dependencyToDependentMap,
-                                                 Map<Component, List<CallPoint>> callPointsCache,
-                                                 Map<CallCacheKey, Result> callCache) {
+                                                 Map<CallCacheKey, Result> callCache,
+                                                 EvalContextFactory evalContextFactory) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
-            var jmsClients = extractJmsClients(component, dependencyToDependentMap, callPointsCache, callCache);
+            var jmsClients = extractJmsClients(component, callCache, evalContextFactory);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
@@ -387,12 +365,10 @@ public class ComponentsExtractor {
 
     protected Set<Interface> getOutWsInterfaces(Component component, String componentName,
                                                 Collection<Component> dependencies,
-                                                Map<Component, List<Component>> dependencyToDependentMap,
-                                                Map<Component, List<CallPoint>> callPointsCache,
-                                                Map<CallCacheKey, Result> callCache) {
+                                                Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
-            var wsClientUris = extractWebsocketClientUris(component, dependencyToDependentMap, callPointsCache, callCache);
+            var wsClientUris = extractWebsocketClientUris(component, callCache, evalContextFactory);
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
                             .direction(out).type(ws).name(uri)
@@ -407,14 +383,12 @@ public class ComponentsExtractor {
     }
 
     protected Set<Interface> getOutRestTemplateInterfaces(Component component, String componentName,
-                                                          Collection<Component> dependencies,
-                                                          Map<Component, List<Component>> dependencyToDependentMap,
-                                                          Map<Component, List<CallPoint>> callPointsCache,
-                                                          Map<CallCacheKey, Result> callCache) {
+                                                          Collection<Component> dependencies, Map<CallCacheKey, Result> callCache,
+                                                          EvalContextFactory evalContextFactory) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
-            var httpMethods = extractRestOperationsUris(component, dependencyToDependentMap,
-                    callPointsCache, callCache);
+            var httpMethods = extractRestOperationsUris(component,
+                    callCache, evalContextFactory);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)
@@ -427,8 +401,7 @@ public class ComponentsExtractor {
         return Set.of();
     }
 
-    protected Set<Component> getDependencies(String componentName, Package rootPackage,
-                                             Map<String, Set<Component>> cache) {
+    protected Set<Component> getDependencies(String componentName, Package rootPackage, Map<String, Set<Component>> cache) {
         return getFilteredBeanNameWithType(stream(context.getBeanFactory().getDependenciesForBean(componentName)))
                 .flatMap(e -> getComponents(e.getKey(), e.getValue(), rootPackage, cache)
                         .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())))

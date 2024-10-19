@@ -1,12 +1,8 @@
 package io.github.m4gshm.connections.client;
 
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
+import io.github.m4gshm.connections.eval.bytecode.*;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.DelayInvoke;
-import io.github.m4gshm.connections.eval.bytecode.NoCallException;
-import io.github.m4gshm.connections.eval.bytecode.StringifyUtils;
-import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +22,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
+import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -34,9 +31,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
-                                                          Map<Component, List<Component>> dependentOnMap,
-                                                          Map<Component, List<CallPoint>> callPointsCache,
-                                                          Map<CallCacheKey, Result> callCache) {
+                                                          Map<CallCacheKey, Result> callCache,
+                                                          EvalContextFactory evalContextFactory) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -52,8 +48,8 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        var uri = getDoHandshakeUri(component, dependentOnMap, instructionHandle, constantPoolGen,
-                                bootstrapMethods, method, callPointsCache, callCache);
+                        var uri = getDoHandshakeUri(component, instructionHandle, constantPoolGen,
+                                bootstrapMethods, method, callCache, evalContextFactory);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -69,11 +65,10 @@ public class WebsocketClientUtils {
         return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
     }
 
-    private static List<String> getDoHandshakeUri(Component component, Map<Component, List<Component>> dependentOnMap,
+    private static List<String> getDoHandshakeUri(Component component,
                                                   InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  Map<Component, List<CallPoint>> callPointsCache,
-                                                  Map<CallCacheKey, Result> callCache
+                                                  Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var methodName = method.getName();
@@ -82,25 +77,24 @@ public class WebsocketClientUtils {
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var eval = new EvalBytecode(component, dependentOnMap, constantPoolGen, bootstrapMethods, method,
-                callPointsCache, callCache);
-        var result = (DelayInvoke) eval.eval(instructionHandle);
-        var variants = resolveInvokeParameters(eval, result, component, methodName);
+        var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
+        var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
+        var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
 
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            return getUrls(variants, 3, eval);
+            return getUrls(variants, 3, callCache);
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            return getUrls(variants, 2, eval);
+            return getUrls(variants, 2, callCache);
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }
 
-    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, EvalBytecode eval) {
+    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, Map<CallCacheKey, Result> callCache) {
         var results = variants.stream().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);
-                return url.getValue((current, ex) -> StringifyUtils.stringifyUnresolved(current, ex), eval).stream();
+                return url.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)).stream();
             } catch (NoCallException e) {
                 //log
                 return Stream.empty();

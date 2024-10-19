@@ -194,7 +194,7 @@ public abstract class Result implements ContextAware {
         return Objects.hash(getComponent(), getMethod(), getInstruction(firstInstruction), getInstruction(lastInstruction));
     }
 
-    public List<Object> getValue(Resolver resolver, EvalBytecode eval) {
+    public List<Object> getValue(Resolver resolver) {
         try {
             return singletonList(getValue());
         } catch (EvalBytecodeException e) {

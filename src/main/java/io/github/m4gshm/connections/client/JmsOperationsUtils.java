@@ -1,20 +1,18 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
+import io.github.m4gshm.connections.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecode;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecode.CallCacheKey;
-import io.github.m4gshm.connections.eval.result.Result;
-import io.github.m4gshm.connections.eval.result.DelayInvoke;
+import io.github.m4gshm.connections.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.connections.eval.bytecode.NoCallException;
-import io.github.m4gshm.connections.eval.bytecode.StringifyUtils;
-import io.github.m4gshm.connections.model.CallPoint;
+import io.github.m4gshm.connections.eval.result.DelayInvoke;
+import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
@@ -22,13 +20,16 @@ import org.springframework.jms.core.JmsTemplate;
 import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.resolveInvokeParameters;
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -43,22 +44,21 @@ public class JmsOperationsUtils {
     public static final String DEFAULT_DESTINATION = "jmsTemplate-default";
 
     public static List<JmsClient> extractJmsClients(Component component,
-                                                    Map<Component, List<Component>> dependencyToDependentMap,
-                                                    Map<Component, List<CallPoint>> callPointsCache,
-                                                    Map<CallCacheKey, Result> callCache) {
+                                                    Map<CallCacheKey, Result> callCache,
+                                                    EvalContextFactory evalContextFactory) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
-            var bootstrapMethods = getBootstrapMethods(javaClass);
+
             return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
-                        ? extractJmsClients(component, dependencyToDependentMap, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, callPointsCache, callCache).stream()
+                        ? extractJmsClients(component, instructionHandle,
+                        constantPoolGen, callCache, evalContextFactory.getEvalContext(component, javaClass, method)).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -69,10 +69,9 @@ public class JmsOperationsUtils {
     }
 
     private static List<JmsClient> extractJmsClients(
-            Component component, Map<Component, List<Component>> dependencyToDependentMap,
+            Component component,
             InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            BootstrapMethods bootstrapMethods, Method method,
-            Map<Component, List<CallPoint>> callPointsCache, Map<CallCacheKey, Result> callCache) {
+            Map<CallCacheKey, Result> callCache, EvalBytecode eval) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -81,29 +80,27 @@ public class JmsOperationsUtils {
         if (direction == undefined) {
             return List.of();
         } else {
-            var eval = new EvalBytecode(component, dependencyToDependentMap, constantPoolGen,
-                    bootstrapMethods, method, callPointsCache, callCache);
 
-            var result = (DelayInvoke) eval.eval(instructionHandle);
+            var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
 
-            var variants = resolveInvokeParameters(eval, result, component, methodName);
+            var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
 
             var results = variants.stream().flatMap(paramVariant -> {
-                return getJmsClientStream(paramVariant, direction, methodName, eval);
+                return getJmsClientStream(paramVariant, direction, methodName, eval, callCache);
             }).collect(toList());
             return results;
         }
     }
 
     private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
-                                                        String methodName, EvalBytecode eval) {
+                                                        String methodName, EvalBytecode eval, Map<CallCacheKey, Result> callCache) {
         try {
             if (paramVariant.size() < 2) {
                 return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = paramVariant.get(1);
-                var resolved = eval.resolveExpand(first, (current, ex) -> StringifyUtils.stringifyUnresolved(current, ex));
-                return resolved.stream().flatMap(v -> v.getValue((current, ex) -> StringifyUtils.stringifyUnresolved(current, ex), eval).stream())
+                var resolved = eval.resolveExpand(first, (current, ex) -> stringifyUnresolved(current, ex, callCache));
+                return resolved.stream().flatMap(v -> v.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)).stream())
                         .map(v -> newJmsClient(getDestination(v), direction, methodName));
             }
         } catch (NoCallException e) {
