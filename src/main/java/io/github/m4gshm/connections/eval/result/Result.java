@@ -5,6 +5,7 @@ import io.github.m4gshm.connections.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.connections.eval.bytecode.Eval.InvokeObject;
 import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Data;
@@ -170,7 +171,7 @@ public abstract class Result implements ContextAware {
         return null;
     }
 
-    public static Result noCallVariants(Delay current) {
+    public static Result noInvoked(Delay current) {
         return new NotInvoked(current);
     }
 
@@ -198,7 +199,6 @@ public abstract class Result implements ContextAware {
         try {
             return singletonList(getValue());
         } catch (EvalBytecodeException e) {
-            //todo may be UnresolvedResultException ????
             if (resolver != null) {
                 var resolved = resolver.resolve(this, e);
                 var values = Eval.expand(resolved).stream().map(Result::getValue).collect(toList());

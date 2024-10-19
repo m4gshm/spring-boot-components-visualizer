@@ -2,6 +2,7 @@ package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.Eval;
 import io.github.m4gshm.connections.eval.bytecode.UnresolvedResultException;
+import io.github.m4gshm.connections.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
@@ -36,7 +37,7 @@ public class Variable extends Result implements ContextAware, PrevAware {
 
     @Override
     public Object getValue() {
-        throw new UnresolvedResultException("unresolved variable", this);
+        throw new UnresolvedVariableException("unresolved variable", this);
     }
 
     @Override

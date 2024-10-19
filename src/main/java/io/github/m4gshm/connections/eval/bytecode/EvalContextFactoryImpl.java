@@ -97,8 +97,21 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
                 return Eval.evalArguments(callPoint, eval, callCache);
-            } catch (UnresolvedResultException e) {
-                log("evalCallPointArgumentVariants", e);
+            } catch (EvalBytecodeException e) {
+                var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
+                if (result instanceof Variable) {
+                    var variable = (Variable) result;
+                    var evalContext = variable.getEvalContext();
+                    var variableMethod = evalContext.getMethod();
+                    log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", "evalCallPointArgumentVariants",
+                            variable.getName(), variableMethod.getName(),
+                            variableMethod.getSignature(), evalContext.getComponent().getType()
+                    );
+                } else if (result != null) {
+                    log.info("{} is aborted, cannot evaluate result '{}'", "evalCallPointArgumentVariants", result);
+                } else {
+                    log.info("{} is aborted by error", "evalCallPointArgumentVariants", e);
+                }
                 return List.<Eval.EvalArguments>of();
             }
         }).flatMap(Collection::stream).filter(Objects::nonNull).collect(toList());
@@ -138,21 +151,6 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             log.debug("getCalledMethodClass", e);
         }
         return calledMethodClass;
-    }
-
-    static void log(String op, UnresolvedResultException e) {
-        var result = e.getResult();
-        if (result instanceof Variable) {
-            var variable = (Variable) result;
-            var evalContext = variable.getEvalContext();
-            var variableMethod = evalContext.getMethod();
-            log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", op,
-                    variable.getName(), variableMethod.getName(),
-                    variableMethod.getSignature(), evalContext.getComponent().getType()
-            );
-        } else {
-            log.info("{} is aborted, cannot evaluate result {}", op, result);
-        }
     }
 
     @Override

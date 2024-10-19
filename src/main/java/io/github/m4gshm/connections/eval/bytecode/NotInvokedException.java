@@ -10,4 +10,8 @@ public class NotInvokedException extends UnresolvedResultException {
         super("not invoked", result);
     }
 
+    public NotInvokedException(UnresolvedResultException cause, Result result) {
+        super("not invoked", cause, result);
+    }
+
 }

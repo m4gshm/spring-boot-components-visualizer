@@ -179,26 +179,27 @@ public class Eval {
         }
     }
 
-    private static List<Object> normalizeClass(Collection<Object> objects, Class<?> expectedType) {
-        return objects == null ? null : objects.stream().map(object -> normalizeClass(object, expectedType)).collect(toList());
+    private static List<Object> normalizeClassOfObjects(Collection<Object> values, Class<?> expectedType) {
+        return values == null ? null : values.stream().map(object -> normalizeClassOfObjects(object, expectedType))
+                .collect(toList());
     }
 
-    private static Object normalizeClass(Object object, Class<?> expectedType) {
-        if (object != null && !expectedType.isAssignableFrom(object.getClass())) {
-            if (object instanceof Integer) {
-                int integer = (Integer) object;
+    private static Object normalizeClassOfObjects(Object value, Class<?> expectedType) {
+        if (value != null && !expectedType.isAssignableFrom(value.getClass())) {
+            if (value instanceof Integer) {
+                int integer = (Integer) value;
                 if (expectedType == boolean.class || expectedType == Boolean.class) {
-                    object = integer != 0;
+                    value = integer != 0;
                 } else if (expectedType == byte.class || expectedType == Byte.class) {
-                    object = (byte) integer;
+                    value = (byte) integer;
                 } else if (expectedType == char.class || expectedType == Character.class) {
-                    object = (char) integer;
+                    value = (char) integer;
                 } else if (expectedType == short.class || expectedType == Short.class) {
-                    object = (short) integer;
+                    value = (short) integer;
                 }
             }
         }
-        return object;
+        return value;
     }
 
     public static Object[] getValues(List<ParameterValue> parameterValues) {
@@ -263,46 +264,76 @@ public class Eval {
         }
     }
 
-    private static List<List<ParameterValue>> toParameterValues(List<ParameterVariants> parameterVariants) {
-        int dimensions = parameterVariants.stream().map(p -> p.values).filter(Objects::nonNull)
-                .map(List::size).reduce(1, (l, r) -> l * r);
-        return range(1, dimensions + 1).mapToObj(d -> parameterVariants.stream()
-                        .map(parameterVariant -> getParameterValue(parameterVariant, d)).collect(toList()))
-                .collect(toList());
-    }
-
-    private static ParameterValue getParameterValue(ParameterVariants parameterVariant, int d) {
-        var exception = parameterVariant.exception;
-        var parameter = parameterVariant.parameter;
-        var index = parameterVariant.index;
-        if (exception != null) {
-            return new ParameterValue(parameter, index, null, exception);
-        } else {
-            var values = parameterVariant.values;
-            var size = values.size();
-            int variantIndex = (d <= size ? d : size % d) - 1;
-            var value = values.get(variantIndex);
-            return new ParameterValue(parameter, index, value, null);
-        }
-    }
-
-    private static Result call(Delay current, InstructionHandle lastInstruction, Resolver resolver,
-                               List<List<ParameterValue>> callParameters, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
+    private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
+                               List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
                                ConstantPoolGen constantPoolGen, Component component, Method method) {
-        try {
-            //log
-            var values = callParameters.stream().map(cp -> {
-                return call.apply(cp, lastInstruction);
-            }).collect(toList());
-            return collapse(values, current.getFirstInstruction(), lastInstruction,
-                    constantPoolGen, component, method);
-        } catch (EvalBytecodeException e) {
-            //log
-            if (resolver == null) {
-                throw e;
+
+        var values = new ArrayList<Result>();
+        var unresolvedVars = new ArrayList<UnresolvedVariableException>();
+        var errors = new ArrayList<EvalBytecodeException>();
+
+        for (var parameterValues : parametersVariants) {
+            try {
+                var apply = call.apply(parameterValues, lastInstruction);
+                values.add(apply);
+            } catch (UnresolvedVariableException e) {
+                unresolvedVars.add(e);
+            } catch (EvalBytecodeException e) {
+                errors.add(e);
             }
-            return resolver.resolve(current, e);
         }
+
+
+////        try {
+//        //log
+//        List<Result> values = parametersVariants.stream().map(parameterValues -> {
+//            try {
+//                return call.apply(parameterValues, lastInstruction);
+//            } catch (UnresolvedVariableException e) {
+////                    var invokeComponent = invoke.getComponent();
+////                    var unresolvedComponent = e.getResult().getComponent();
+////                    var sameLevel = invokeComponent.equals(unresolvedComponent);
+////                    if (!sameLevel) {
+////                        throw e;
+////                    } else {
+//                //log
+//                return null;
+////                    }
+//            } catch (EvalBytecodeException e) {
+//                log.error("call error of {}", invoke, e);
+//                return null;
+//            }
+//        }).filter(Objects::nonNull).collect(toList());
+
+        if (!values.isEmpty()) {
+            return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, component, method);
+        } else if (!errors.isEmpty()) {
+            var e = errors.get(0);
+            log.trace("call error of {}", invoke, e);
+            return resolver.resolve(invoke, e);
+        } else {
+            //log
+            throw !unresolvedVars.isEmpty()
+                    ? new NotInvokedException(unresolvedVars.get(0), invoke)
+                    : new NotInvokedException(invoke);
+
+        }
+
+//        if (values.isEmpty()) {
+//            throw new NotInvokedException(invoke);
+//        } else {
+//            return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, component, method);
+//        }
+//        } catch (NotInvokedException e) {
+//            //log
+//            throw e;
+//        } catch (EvalBytecodeException e) {
+//            //log
+//            if (resolver == null) {
+//                throw e;
+//            }
+//            return resolver.resolve(invoke, e);
+//        }
     }
 
     private static List<List<List<Result>>> getFullDistinctCallContexts(Map<CallContext, List<Result>[]> callContexts) {
@@ -448,24 +479,16 @@ public class Eval {
     }
 
     private Map<Integer, List<Result>> resolveInvokeParameters(List<Result> parameters, Resolver resolver) {
-        var resolvedVars = new HashMap<Integer, List<Result>>();
+        var resolvedParameters = new HashMap<Integer, List<Result>>();
         for (int i = 0; i < parameters.size(); i++) {
-            List<Result> resolved;
-            var parameter = parameters.get(i);
             try {
-                resolved = this.resolveExpand(parameter, resolver);
+                resolvedParameters.put(i, resolveExpand(parameters.get(i), resolver));
             } catch (NotInvokedException e) {
                 //log
-                if (resolver != null) {
-                    resolved = expand(resolver.resolve(parameter, e));
-                } else {
-                    resolvedVars = null;
-                    break;
-                }
+                return null;
             }
-            resolvedVars.put(i, resolved);
         }
-        return resolvedVars;
+        return resolvedParameters;
     }
 
     public String getComponentName() {
@@ -850,8 +873,14 @@ public class Eval {
         var parameterVariants = resolveInvokeParameters(parameters, resolver, true);
         var lastInstruction = invoke.getLastInstruction();
         var results = parameterVariants.stream().map(parameterVariant -> {
-            return resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction, resolver, call, callCache);
-        }).collect(toList());
+            try {
+                return resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction, resolver, call, callCache);
+            } catch (UnresolvedVariableException e) {
+                //log
+                return null;
+            }
+        }).filter(Objects::nonNull).collect(toList());
+
         if (results.isEmpty()) {
             if (throwNoCall) {
                 throw new NotInvokedException(invoke);
@@ -867,8 +896,7 @@ public class Eval {
                                     BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
                                     Map<CallCacheKey, Result> callCache) {
 
-        var parameterVariants = resolveParameterVariants(parameters, parameterClasses, resolver);
-        var callParameters = toParameterValues(parameterVariants);
+        var callParameters = resolveCallParameters(parameters, parameterClasses, resolver);
 
         var key = new CallCacheKey(current, callParameters, lastInstruction.getInstruction());
         if (callCache != null) {
@@ -879,13 +907,74 @@ public class Eval {
             }
         }
 
-        var callResult = call(current, lastInstruction, resolver, callParameters, call, getConstantPoolGen(),
-                getComponent(), getMethod());
+        var callResult = call(current, lastInstruction, resolver, callParameters, call, getConstantPoolGen(), getComponent(), getMethod());
         if (callCache != null) {
             log.trace("no cached call result, call '{}', result '{}'", key, callResult);
             callCache.put(key, callResult);
         }
         return callResult;
+    }
+
+    private List<List<ParameterValue>> resolveCallParameters(List<Result> parameters, Class<?>[] parameterClasses, Resolver resolver) {
+        @Data
+        @FieldDefaults(makeFinal = true, level = PRIVATE)
+        class ParameterVariants {
+            Result parameter;
+            int index;
+            List<Object> values;
+            UnresolvedResultException exception;
+        }
+
+        var size = parameters.size();
+        var variants = new ParameterVariants[size];
+        for (var i = 0; i < size; i++) {
+            var parameter = parameters.get(i);
+            ParameterVariants parameterVariants;
+            try {
+                var value = singletonList(parameter.getValue());
+                parameterVariants = new ParameterVariants(parameter, i, value, null);
+            } catch (UnresolvedVariableException e) {
+                var unresolved = e.getResult();
+                var contextComponent = getComponent();
+                var unresolvedComponent = unresolved.getComponent();
+                var sameLevel = contextComponent.equals(unresolvedComponent);
+                if (!sameLevel && resolver != null) {
+                    //log
+                    var resolved = resolver.resolve(parameter, e);
+                    if (resolved.isResolved()) {
+                        var resolvedVariants = resolved.getValue(resolver);
+                        var normalizedClassVariants = normalizeClassOfObjects(resolvedVariants, parameterClasses[i]);
+                        parameterVariants = new ParameterVariants(parameter, i, normalizedClassVariants, null);
+                    } else {
+                        //log
+                        parameterVariants = new ParameterVariants(parameter, i, null, e);
+                    }
+                } else {
+                    throw e;
+//                    parameterVariants = new ParameterVariants(parameter, i, null, e);
+                }
+            }
+            variants[i] = parameterVariants;
+        }
+
+        var parameterVariants = asList(variants);
+        int dimensions = parameterVariants.stream().map(p -> p.values).filter(Objects::nonNull)
+                .map(List::size).reduce(1, (l, r) -> l * r);
+
+        return range(1, dimensions + 1).mapToObj(d -> parameterVariants.stream().map(parameterVariant -> {
+            var exception = parameterVariant.exception;
+            var parameter = parameterVariant.parameter;
+            var index = parameterVariant.index;
+            if (exception != null) {
+                return new ParameterValue(parameter, index, null, exception);
+            } else {
+                var variantValues = parameterVariant.values;
+                var size1 = variantValues.size();
+                int variantIndex = (d <= size1 ? d : size1 % d) - 1;
+                var value = variantValues.get(variantIndex);
+                return new ParameterValue(parameter, index, value, null);
+            }
+        }).collect(toList())).collect(toList());
     }
 
     public InvokeObject evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments, Result parent,
@@ -929,7 +1018,7 @@ public class Eval {
         }
 
         if (!(this.arguments == null || this.arguments.isEmpty())) {
-            var parameterVariants = parameters.stream().map(parameter -> this.resolveExpand(parameter, resolver)).collect(toList());
+            var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
             int dimensions = getDimensions(parameterVariants);
             return flatResolvedVariants(dimensions, parameterVariants, parameters);
         } else {
@@ -1004,33 +1093,6 @@ public class Eval {
         return evalContextArgs;
     }
 
-    public List<ParameterVariants> resolveParameterVariants(List<Result> parameters, Class<?>[] parameterClasses, Resolver resolver) {
-        var size = parameters.size();
-        var values = new ParameterVariants[size];
-        for (var i = 0; i < size; i++) {
-            var result = parameters.get(i);
-            try {
-                var value = singletonList(result.getValue());
-                values[i] = new ParameterVariants(result, i, value, null);
-            } catch (UnresolvedResultException e) {
-                //log
-                if (resolver != null) {
-                    var resolved = resolver.resolve(result, e);
-                    if (resolved.isResolved()) {
-                        var variants = resolved.getValue(resolver);
-                        values[i] = new ParameterVariants(result, i, variants, null);
-                    } else {
-                        //log
-                        values[i] = new ParameterVariants(result, i, null, e);
-                    }
-                } else {
-                    values[i] = new ParameterVariants(result, i, null, e);
-                }
-            }
-        }
-        return asList(normalizeClasses(values, parameterClasses));
-    }
-
     protected Result callMethod(Object object, Class<?> type, String methodName, Class<?>[] argTypes, Object[] args,
                                 InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
                                 ConstantPoolGen constantPoolGen, Delay source, List<ParameterValue> parameters) {
@@ -1064,15 +1126,6 @@ public class Eval {
                     result, EvalBytecodeUtils.toString(invokeInstruction, constantPoolGen));
         }
         return invoked(result, invokeInstruction, lastInstruction, this.getComponent(), this.getMethod(), parameters);
-    }
-
-    private ParameterVariants[] normalizeClasses(ParameterVariants[] objects, Class<?>[] objectTypes) {
-        for (var i = 0; i < objectTypes.length; i++) {
-            var object = objects[i];
-            objects[i] = new ParameterVariants(object.getParameter(), object.getIndex(),
-                    normalizeClass(object.values, objectTypes[i]), object.exception);
-        }
-        return objects;
     }
 
     public List<Result> resolveExpand(Result value, Resolver resolver) {
@@ -1115,7 +1168,7 @@ public class Eval {
                     }
                     try {
                         return resolve(variant, resolver);
-                    } catch (UnresolvedResultException e) {
+                    } catch (UnresolvedVariableException e) {
                         return resolveOrThrow(value, resolver, e);
                     }
                 }).collect(toList());
@@ -1134,7 +1187,7 @@ public class Eval {
                     delay = delay.withEval(this);
                 }
                 result = delay.getDelayed(true, resolver);
-            } catch (UnresolvedResultException e) {
+            } catch (UnresolvedVariableException e) {
                 result = resolveOrThrow(value, resolver, e);
             }
         } else {
@@ -1208,15 +1261,6 @@ public class Eval {
         Result parameter;
         int index;
         Object value;
-        UnresolvedResultException exception;
-    }
-
-    @Data
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class ParameterVariants {
-        Result parameter;
-        int index;
-        List<Object> values;
         UnresolvedResultException exception;
     }
 

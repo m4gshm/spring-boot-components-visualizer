@@ -78,18 +78,18 @@ public class StringifyUtils {
             if (stringConcatenation) {
                 //arg1+arg2
                 return callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, false, (current, ex1) -> {
-                            try {
-                                Result result = stringifyUnresolved(current, ex1, callCache);
-                                return result;
-                            } catch (Exception e) {
-                                throw e;
-                            }
-                        }, (parameters, parent) -> {
-                            var values = getValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1, callCache));
-                            var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
-                            var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, lastInstruction, lastInstruction, component, method, parameters);
-                        }, callCache);
+                    try {
+                        Result result = stringifyUnresolved(current, ex1, callCache);
+                        return result;
+                    } catch (Exception e) {
+                        throw e;
+                    }
+                }, (parameters, parent) -> {
+                    var values = getParameterValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1, callCache));
+                    var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
+                    var lastInstruction = delay.getLastInstruction();
+                    return invoked(string, lastInstruction, lastInstruction, component, method, parameters);
+                }, callCache);
             } else {
                 var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses,
                         eval, true, (current, ex1) -> {
@@ -100,7 +100,7 @@ public class StringifyUtils {
                                 throw e;
                             }
                         }, (parameters, parent) -> {
-                            var values = getValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1, callCache));
+                            var values = getParameterValues(parameters, (current, ex1) -> stringifyUnresolved(current, ex1, callCache));
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
                             return invoked(string, lastInstruction, lastInstruction, component, method, parameters);
@@ -138,18 +138,10 @@ public class StringifyUtils {
                 var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
                 var argumentClasses = toClasses(argumentTypes);
 
-                var argumentsAmount = argumentTypes.length;
                 var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
                 return callInvokeStatic((DelayInvoke) delay, argumentClasses,
-                        eval, false, (current, ex1) -> {
-                            try {
-                                Result result = stringifyUnresolved(current, ex1, callCache);
-                                return result;
-                            } catch (Exception e) {
-                                throw e;
-                            }
-                        }, (parameters, lastInstruction) -> {
+                        eval, false, (current, ex1) -> stringifyUnresolved(current, ex1, callCache), (parameters, lastInstruction) -> {
                             return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval, callCache);
                         }, callCache);
             } else if (instruction instanceof INVOKESPECIAL) {
@@ -210,7 +202,7 @@ public class StringifyUtils {
                     var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay, callCache);
 
                     var strings = storeResults.stream()
-        //                    .flatMap(storeResult -> expand(eval.resolve(storeResult, StringifyUtils::stringifyUnresolved)).stream())
+                            //                    .flatMap(storeResult -> expand(eval.resolve(storeResult, StringifyUtils::stringifyUnresolved)).stream())
                             .flatMap(storeResult -> {
                                 try {
                                     return storeResult
@@ -242,7 +234,7 @@ public class StringifyUtils {
                                                   Eval eval, Map<CallCacheKey, Result> callCache
     ) {
         var argValues = getArgValues(resolvedArguments, callCache);
-        var objectValue = object != null ? getValue(object, (current, ex) -> stringifyUnresolved(current, ex, callCache)) : null;
+        var objectValue = object != null ? getParameterValue(object, (current, ex) -> stringifyUnresolved(current, ex, callCache)) : null;
         var string = stringifyMethodCall(objectClass, (String) objectValue, methodName, stringifyArguments(argValues));
         var lastInstruction = delay.getLastInstruction();
         var parameterValues = concatCallParameters(object, resolvedArguments);
@@ -268,23 +260,28 @@ public class StringifyUtils {
     }
 
     private static Object[] getArgValues(List<ParameterValue> resolvedArguments, Map<CallCacheKey, Result> callCache) {
-        var variables = resolvedArguments.stream()
-                .filter(a -> a.getParameter() instanceof Variable)
+        var notStringVariables = resolvedArguments.stream().filter(a -> {
+                    var variable = a.getParameter() instanceof Variable;
+                    var string = a.getValue() instanceof String;
+                    return variable && !string;
+                })
                 .collect(toList());
-        var args = !variables.isEmpty() ? variables : resolvedArguments;
-        return getValues(args, (current, ex) -> stringifyUnresolved(current, ex, callCache));
+        var args = !notStringVariables.isEmpty() ? notStringVariables : resolvedArguments;
+        return getParameterValues(args, (current, ex) -> stringifyUnresolved(current, ex, callCache));
     }
 
 
-    private static Object[] getValues(List<ParameterValue> parameterValues, Resolver unevaluatedHandler) {
-        return parameterValues.stream().map(pv -> getValue(pv, unevaluatedHandler)).toArray(Object[]::new);
+    private static Object[] getParameterValues(List<ParameterValue> parameterValues, Resolver resolver) {
+        return parameterValues.stream().map(parameterValue -> getParameterValue(parameterValue, resolver)).toArray(Object[]::new);
     }
 
-    private static Object getValue(ParameterValue pv, Resolver unevaluatedHandler) {
+    private static Object getParameterValue(ParameterValue pv, Resolver resolver) {
         var exception = pv.getException();
         var parameter = pv.getParameter();
-        if (exception != null) {
-            var resolved = unevaluatedHandler.resolve(parameter, exception);
+        if (exception instanceof NotInvokedException) {
+            throw exception;
+        } else if (exception != null) {
+            var resolved = resolver.resolve(parameter, exception);
             return resolved.getValue();
         }
         Object value = pv.getValue();

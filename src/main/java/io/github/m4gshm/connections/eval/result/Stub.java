@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.UnresolvedResultException;
+import io.github.m4gshm.connections.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
@@ -25,7 +26,7 @@ public class Stub extends Result implements ContextAware {
 
     @Override
     public Object getValue() {
-        throw new UnresolvedResultException("stubbed", stubbed);
+        throw new UnresolvedVariableException("stubbed", stubbed);
     }
 
     @Override
