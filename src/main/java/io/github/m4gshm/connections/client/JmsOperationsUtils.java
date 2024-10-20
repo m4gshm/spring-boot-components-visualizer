@@ -11,21 +11,18 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.classfile.BootstrapMethods;
-import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.generic.*;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
 
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.Topic;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
+import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
@@ -33,7 +30,6 @@ import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringif
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
-import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 
 @Slf4j
 @UtilityClass
@@ -42,6 +38,9 @@ public class JmsOperationsUtils {
     public static final String UNRECOGNIZED_DESTINATION = "unrecognized";
     public static final String UNDEFINED_DESTINATION = "undefined";
     public static final String DEFAULT_DESTINATION = "jmsTemplate-default";
+    //todo move to options
+    private static final Set<String> jmsQueueClassNames = Set.of("javax.jms.Queue", "jakarta.jms.Queue");
+    private static final Set<String> jmsTopicClassNames = Set.of("javax.jms.Topic", "jakarta.jms.Topic");
 
     public static List<JmsClient> extractJmsClients(Component component,
                                                     Map<CallCacheKey, Result> callCache,
@@ -62,10 +61,6 @@ public class JmsOperationsUtils {
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
-    }
-
-    public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {
-        return javaClass.getAttribute(ATTR_BOOTSTRAP_METHODS);
     }
 
     private static List<JmsClient> extractJmsClients(
@@ -120,11 +115,27 @@ public class JmsOperationsUtils {
     private static String getDestination(Object firstArg) {
         String destination;
         try {
-            destination = firstArg instanceof CharSequence ? firstArg.toString()
-                    : firstArg instanceof Queue ? ((Queue) firstArg).getQueueName()
-                    : firstArg instanceof Topic ? ((Topic) firstArg).getTopicName()
-                    : UNDEFINED_DESTINATION;
-        } catch (JMSException e) {
+            if (firstArg instanceof CharSequence) destination = firstArg.toString();
+            else {
+                var firstArgClass = firstArg.getClass();
+                var name = firstArgClass.getName();
+                String methodName;
+                if (jmsQueueClassNames.contains(name)) {
+                    methodName = "getQueueName";
+                } else if (jmsTopicClassNames.contains(name)) {
+                    methodName = "getTopicName";
+                } else {
+                    methodName = null;
+                }
+                if (methodName != null) {
+                    var method = getDeclaredMethod(firstArgClass, methodName, new Class[0]);
+                    destination = (String) method.invoke(firstArg);
+                } else {
+                    //log
+                    destination = UNDEFINED_DESTINATION;
+                }
+            }
+        } catch (Exception e) {
             log.error("destination name error", e);
             destination = UNRECOGNIZED_DESTINATION;
         }

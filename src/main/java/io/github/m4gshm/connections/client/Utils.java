@@ -7,12 +7,16 @@ import io.github.m4gshm.connections.eval.result.DelayInvoke;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.JavaClass;
 
 import java.util.List;
 import java.util.Map;
 
 import static io.github.m4gshm.connections.eval.bytecode.Eval.toParameters;
 import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
+import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
+
 @Slf4j
 public class Utils {
     static List<List<Result>> resolveInvokeParameters(Eval eval, DelayInvoke invoke, Component component,
@@ -24,5 +28,9 @@ public class Utils {
             log.info("no call variants for {} inside {}", methodName, component.getName());
             return List.of();
         }
+    }
+
+    public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {
+        return javaClass.getAttribute(ATTR_BOOTSTRAP_METHODS);
     }
 }

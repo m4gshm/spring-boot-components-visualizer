@@ -3,11 +3,11 @@ package io.github.m4gshm.connections;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
-import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
 import lombok.experimental.UtilityClass;
@@ -34,9 +34,9 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.Utils.loadedClass;
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.model.HttpMethod.ALL;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Type.jms;
@@ -93,11 +93,11 @@ public class ComponentsExtractorUtils {
             }
         }
         return annotation;
-
     }
 
     public static <A extends Annotation, E extends AnnotatedElement> Collection<A> getAllMergedAnnotations(
-            Collection<E> elements, Supplier<Class<A>> supplier) {
+            Collection<E> elements, Supplier<Class<A>> supplier
+    ) {
         return getAnnotations(elements, supplier, AnnotatedElementUtils::getAllMergedAnnotations);
     }
 
@@ -105,28 +105,23 @@ public class ComponentsExtractorUtils {
             Collection<E> elements, Supplier<Class<A>> supplier, BiFunction<E, Class<A>, Collection<A>> extractor
     ) {
         var annotationClass = loadedClass(supplier);
-        if (annotationClass == null) {
-            return Set.of();
-        } else {
-            return elements.stream().map(element -> extractor.apply(element, annotationClass))
-                    .flatMap(Collection::stream).collect(toCollection(LinkedHashSet::new));
-        }
+        return annotationClass != null ? elements.stream().map(element -> extractor.apply(element, annotationClass))
+                .flatMap(Collection::stream).collect(toCollection(LinkedHashSet::new)) : Set.of();
     }
 
     public static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
         var annotationClass = loadedClass(supplier);
-        return annotationClass == null ? Map.of() : elements.stream()
-                .collect(toMap(element -> element, element -> getMergedRepeatableAnnotations(element, annotationClass)));
-
+        return annotationClass != null ? elements.stream().collect(toMap(element -> element, element -> {
+            return getMergedRepeatableAnnotations(element, annotationClass);
+        })) : Map.of();
     }
 
     public static Collection<Method> getMethods(Class<?> type) {
         var methods = new LinkedHashSet<>(Arrays.asList(type.getMethods()));
         var superclass = type.getSuperclass();
         var superMethods = (superclass != null && !Object.class.equals(superclass)) ? getMethods(superclass) : List.<Method>of();
-
         methods.addAll(superMethods);
         return methods;
     }
@@ -287,7 +282,7 @@ public class ComponentsExtractorUtils {
         } catch (NoSuchMethodException e) {
             current = type.getSuperclass();
         }
-        return Optional.ofNullable(type).map(Class::getInterfaces).stream().flatMap(Arrays::stream).map(iface-> {
+        return Optional.ofNullable(type).map(Class::getInterfaces).stream().flatMap(Arrays::stream).map(iface -> {
             return getDeclaredMethod(iface, name, argumentTypes);
         }).filter(Objects::nonNull).findFirst().orElse(null);
     }

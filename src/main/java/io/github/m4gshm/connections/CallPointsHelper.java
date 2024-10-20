@@ -7,13 +7,15 @@ import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
-import static io.github.m4gshm.connections.eval.bytecode.MethodInfo.newMethodInfo;
-import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
-import static java.util.Arrays.stream;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
 
@@ -31,14 +33,28 @@ public class CallPointsHelper {
         var componentType = component.getType();
         var javaClasses = ComponentsExtractor.getClassHierarchy(componentType);
 
-        var points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
-        ).flatMap(javaClass -> {
-            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-            var methods = javaClass.getMethods();
-            return stream(methods).map(method -> newCallPoint(componentType, method, javaClass, constantPoolGen));
-        }).collect(toList());
+        List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
+        ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
         callPointsCache.put(component, points);
         return points;
+    }
+
+    private static Stream<? extends CallPoint> getMethods(JavaClass javaClass, Class<?> componentType) {
+        var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+        var methods = getMethods(javaClass);
+        return methods != null
+                ? Stream.of(methods).map(method -> newCallPoint(componentType, method, javaClass, constantPoolGen))
+                : Stream.of();
+    }
+
+    private static Method[] getMethods(JavaClass javaClass) {
+        Method[] methods;
+        try {
+            methods = javaClass.getMethods();
+        } catch (NoClassDefFoundError e) {
+            methods = null;
+        }
+        return methods;
     }
 
     private static boolean isObject(JavaClass javaClass) {
@@ -47,8 +63,14 @@ public class CallPointsHelper {
 
     public static CallPoint newCallPoint(Class<?> componentType, Method method, JavaClass javaClass,
                                          ConstantPoolGen constantPoolGen) {
+        BootstrapMethods bootstrapMethods;
+        try {
+            bootstrapMethods = getBootstrapMethods(javaClass);
+        } catch (NoClassDefFoundError e) {
+            //log
+            return null;
+        }
         var code = method.getCode();
-        var bootstrapMethods = getBootstrapMethods(javaClass);
         var instructionHandles = instructionHandleStream(code).collect(toList());
 
         var callPoints = new ArrayList<CallPoint>();

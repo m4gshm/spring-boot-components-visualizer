@@ -19,7 +19,7 @@ import java.util.stream.IntStream;
 
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getClassByName;
 import static io.github.m4gshm.connections.eval.bytecode.MethodInfo.newMethodInfo;
-import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
+import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Objects.requireNonNull;

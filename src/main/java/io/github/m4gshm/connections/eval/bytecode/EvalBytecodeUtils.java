@@ -45,6 +45,8 @@ import static org.springframework.aop.support.AopUtils.getTargetClass;
 @UtilityClass
 public class EvalBytecodeUtils {
 
+    private static final Class<SpringProxy> springProxyClass = loadedClass(() -> SpringProxy.class);
+
     public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
         ArrayList<JavaClass> classes = new ArrayList<>();
         componentType = unproxy(componentType);
@@ -79,7 +81,6 @@ public class EvalBytecodeUtils {
             }
             return firstInterface;
         }
-        var springProxyClass = loadedClass(() -> SpringProxy.class);
         if (componentType.getName().contains("$$")) {
             if (springProxyClass == null || !springProxyClass.isAssignableFrom(componentType)) {
                 log.debug("detected CGLIB proxy class that doesn't implements SpringProxy interface, {}", componentType);

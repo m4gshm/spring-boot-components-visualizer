@@ -5,7 +5,7 @@ import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 
-import static io.github.m4gshm.connections.client.JmsOperationsUtils.getBootstrapMethods;
+import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 
 @FunctionalInterface
 public interface EvalContextFactory {

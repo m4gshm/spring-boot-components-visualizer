@@ -31,7 +31,7 @@ public class Utils {
         if (log.isDebugEnabled()) {
             log.info("Class is not supported", e);
         } else {
-            log.info("Class is not supported, {}", e.getLocalizedMessage());
+            log.info("Class is not supported '{}'", e.getLocalizedMessage());
         }
     }
 

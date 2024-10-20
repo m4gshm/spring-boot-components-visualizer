@@ -1118,11 +1118,7 @@ public class Eval {
             result = declaredMethod.invoke(object, args);
         } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
             //log
-
             throw new IllegalInvokeException(e, new MethodCallInfo(declaredMethod, object, args), invokeInstruction, invoke);
-        } catch (Exception e) {
-            //log
-            throw e;
         }
         if (log.isDebugEnabled()) {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName,

@@ -59,8 +59,23 @@ import static org.springframework.beans.factory.BeanFactory.FACTORY_BEAN_PREFIX;
 
 @Slf4j
 public class ComponentsExtractor {
+    private static final Class<WebSocketConfigurationSupport> webSocketConfigClass;
+    private static final Class<Repository> repositoryClass;
+
+    static {
+        repositoryClass = loadedClass(() -> Repository.class);
+        if (repositoryClass == null) {
+            log.info("Sprint Data Repository is not supported");
+        }
+        webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
+        if (webSocketConfigClass == null) {
+            log.info("Sprint Websocket WebSocketConfigurationSupport is not supported");
+        }
+    }
+
     private final ConfigurableApplicationContext context;
     private final Options options;
+
 
     public ComponentsExtractor(ConfigurableApplicationContext context, Options options) {
         this.context = context;
@@ -152,7 +167,7 @@ public class ComponentsExtractor {
 
                     var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
                             dependent, callPointsCache);
-                    boolean uncalled = methodCallPoints.isEmpty();
+                    var uncalled = methodCallPoints.isEmpty();
                     if (uncalled) {
                         log.info("exclude unused http method {} of component {}", httpMethod, component.getName());
                     }
@@ -320,10 +335,7 @@ public class ComponentsExtractor {
 
     protected List<Interface> getRepositoryEntityInterfaces(String componentName, Class<?> componentType) {
         var repositoryEntities = new ArrayList<Interface>();
-        var repositoryClass = loadedClass(() -> Repository.class);
-        if (repositoryClass == null) {
-            log.info("Sprint Data Repository is not supported");
-        } else if (repositoryClass.isAssignableFrom(componentType)) {
+        if (repositoryClass != null && repositoryClass.isAssignableFrom(componentType)) {
             var factoryComponentName = FACTORY_BEAN_PREFIX + componentName;
             Object factory;
             try {
@@ -460,10 +472,7 @@ public class ComponentsExtractor {
 
     protected Collection<Component> extractInWebsocketHandlers(String componentName, Class<?> componentType,
                                                                Package rootPackage, Map<String, Set<Component>> cache) {
-        var webSocketConfigClass = loadedClass(() -> WebSocketConfigurationSupport.class);
-        if (webSocketConfigClass == null) {
-            log.info("Sprint Websocket WebSocketConfigurationSupport is not supported");
-        } else if (webSocketConfigClass.isAssignableFrom(componentType)) {
+        if (webSocketConfigClass != null && webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {
                 return cachedComponents;
