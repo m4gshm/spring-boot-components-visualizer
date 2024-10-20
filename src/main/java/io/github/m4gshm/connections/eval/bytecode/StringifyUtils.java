@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.eval.bytecode;
 import io.github.m4gshm.connections.eval.result.*;
 import io.github.m4gshm.connections.model.Component;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
@@ -22,6 +23,7 @@ import static io.github.m4gshm.connections.eval.result.Result.*;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.*;
 
+@Slf4j
 @UtilityClass
 public class StringifyUtils {
 
@@ -322,7 +324,16 @@ public class StringifyUtils {
 
 
     private static String stringifyArguments(Object... arguments) {
-        return Stream.of(arguments).map(a -> (String) a).reduce("", (l, r) -> (l.isEmpty() ? "" : l + ", ") + r);
+        return Stream.of(arguments).map(a -> {
+            if (a instanceof CharSequence) {
+                return a.toString();
+            } else {
+                if (a != null) {
+                    log.warn("unexpected non string value of type {}, value '{}'", a.getClass().getName(), a);
+                }
+                return a + "";
+            }
+        }).reduce("", (l, r) -> (l.isEmpty() ? "" : l + ", ") + r);
     }
 
     public static List<String> stringifyArithmetic(ArithmeticInstruction instruction,
