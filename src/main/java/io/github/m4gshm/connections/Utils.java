@@ -22,7 +22,6 @@ public class Utils {
         try {
             return classSupplier.get();
         } catch (NoClassDefFoundError e) {
-            logUnsupportedClass(log, e);
             return null;
         }
     }
