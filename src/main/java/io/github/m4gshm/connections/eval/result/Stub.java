@@ -15,9 +15,9 @@ import static lombok.AccessLevel.PRIVATE;
 public class Stub extends Result implements ContextAware {
     Method method;
     Component component;
-    Result stubbed;
+    Variable stubbed;
 
-    public Stub(Method method, Component component, Result stubbed) {
+    public Stub(Method method, Component component, Variable stubbed) {
         super(stubbed.getFirstInstruction(), stubbed.getLastInstruction());
         this.method = method;
         this.component = component;

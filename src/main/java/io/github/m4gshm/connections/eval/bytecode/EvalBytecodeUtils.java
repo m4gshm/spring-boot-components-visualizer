@@ -124,7 +124,7 @@ public class EvalBytecodeUtils {
             return constant(value, instructionHandle, instructionHandle, parent.getRelations(), component, method);
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
-            throw new IllegalInvokeException(parent, instructionHandle, e);
+            throw new IllegalInvokeException(e, constructor, instructionHandle, parent);
         }
         else {
             return notAccessible(constructor, instructionHandle, parent);

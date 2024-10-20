@@ -7,12 +7,16 @@ import org.apache.bcel.generic.InstructionHandle;
 @Getter
 public class IllegalInvokeException extends UnresolvedResultException {
 
-    public IllegalInvokeException(Result source, InstructionHandle instruction, Exception e) {
-        super(getMessage(source, instruction), e, source);
+    private final Object target;
+
+    public IllegalInvokeException(Exception cause, Object target, InstructionHandle instruction, Result invoke) {
+        super(getMessage(invoke, instruction), cause, invoke);
+        this.target = target;
     }
 
-    public IllegalInvokeException(Result source, InstructionHandle instruction) {
+    public IllegalInvokeException(Result source, InstructionHandle instruction, Object target) {
         super(getMessage(source, instruction), source);
+        this.target = target;
     }
 
     private static String getMessage(Result source, InstructionHandle instruction) {

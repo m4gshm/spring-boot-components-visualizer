@@ -19,7 +19,7 @@ public class Utils {
                                                       String methodName, Map<CallCacheKey, Result> callCache) {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
         try {
-            return eval.resolveInvokeParameters(parameters, (current, ex) -> stringifyUnresolved(current, ex, callCache), true);
+            return eval.resolveInvokeParameters(invoke, parameters, (current, ex) -> stringifyUnresolved(current, ex, callCache), true);
         } catch (NotInvokedException e) {
             log.info("no call variants for {} inside {}", methodName, component.getName());
             return List.of();

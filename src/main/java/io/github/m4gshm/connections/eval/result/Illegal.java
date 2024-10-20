@@ -15,20 +15,20 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Illegal extends Result implements Result.PrevAware {
     Set<Status> status;
-    Object element;
+    Object target;
     Result prev;
 
-    public Illegal(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Set<Status> status,
-                   Object element, Result prev) {
+    public Illegal(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+                   Set<Status> status, Object target, Result prev) {
         super(firstInstruction, lastInstruction);
         this.status = status;
-        this.element = element;
+        this.target = target;
         this.prev = prev;
     }
 
     @Override
     public Object getValue() {
-        throw new IllegalInvokeException(prev, firstInstruction);
+        throw new IllegalInvokeException(prev, firstInstruction, target);
     }
 
     @Override

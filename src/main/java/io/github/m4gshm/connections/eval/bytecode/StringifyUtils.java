@@ -26,12 +26,6 @@ import static org.apache.bcel.Const.*;
 public class StringifyUtils {
 
     public static Result stringifyUnresolved(Result current, EvalBytecodeException ex, Map<CallCacheKey, Result> callCache) {
-        if (current instanceof NotInvoked) {
-            current = ((NotInvoked) current).getDelay();
-        }
-//        if (ex instanceof NoCallException) {
-//            throw ex;
-//        }
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;

@@ -5,7 +5,6 @@ import io.github.m4gshm.connections.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.connections.eval.bytecode.Eval.InvokeObject;
 import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
-import io.github.m4gshm.connections.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Data;
@@ -145,7 +144,7 @@ public abstract class Result implements ContextAware {
         }
     }
 
-    public static Result stub(Result value, Component component, Method method, Resolver resolver, Eval eval) {
+    public static Result stub(Variable value, Component component, Method method, Resolver resolver) {
         if (resolver != null) {
             //log
             return resolver.resolve(value, null);
@@ -169,10 +168,6 @@ public abstract class Result implements ContextAware {
             return wrapped;
         }
         return null;
-    }
-
-    public static Result noInvoked(Delay current) {
-        return new NotInvoked(current);
     }
 
     @Override
