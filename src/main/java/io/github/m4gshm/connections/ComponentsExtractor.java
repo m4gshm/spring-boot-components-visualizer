@@ -152,7 +152,11 @@ public class ComponentsExtractor {
 
                     var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
                             dependent, callPointsCache);
-                    return !methodCallPoints.isEmpty();
+                    boolean uncalled = methodCallPoints.isEmpty();
+                    if (uncalled) {
+                        log.info("exclude unused http method {} of component {}", httpMethod, component.getName());
+                    }
+                    return !uncalled;
                 }
                 return true;
             }).collect(toLinkedHashSet());
