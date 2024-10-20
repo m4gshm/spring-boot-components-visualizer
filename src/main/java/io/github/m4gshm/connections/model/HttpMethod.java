@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -16,11 +17,13 @@ public class HttpMethod implements CharSequence, Comparable<HttpMethod> {
     String method;
     String path;
     String string;
+    Method handler;
 
     @Builder(toBuilder = true)
-    public HttpMethod(String method, String path) {
+    public HttpMethod(String method, String path, Method handler) {
         this.path = path;
         this.method = method;
+        this.handler = handler;
         this.string = method + ':' + path;
     }
 

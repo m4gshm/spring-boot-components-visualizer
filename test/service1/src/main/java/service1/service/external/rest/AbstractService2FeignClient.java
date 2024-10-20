@@ -6,4 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface AbstractService2FeignClient {
     @GetMapping("/{id}")
     String get(@PathVariable Integer id);
+
+    @GetMapping("{id}/unused")
+    String getUnused(@PathVariable Integer id);
 }

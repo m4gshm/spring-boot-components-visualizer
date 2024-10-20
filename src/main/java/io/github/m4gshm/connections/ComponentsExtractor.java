@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.generic.ObjectType;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -41,6 +42,7 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.extractRes
 import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
+import static io.github.m4gshm.connections.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
@@ -128,12 +130,56 @@ public class ComponentsExtractor {
         var callPointsCache = new HashMap<Component, List<CallPoint>>();
         var callCache = new HashMap<CallCacheKey, Result>();
 
+        //filter use methods of Feign clients
+        var dependencyToDependentMap = getDependencyToDependentMap(components);
+        var changedComponents = this.options.isIncludeUnusedFeignClientMethodsInInterfaces()
+                ? Map.<Component, Component>of()
+                : dependencyToDependentMap.entrySet().stream().map(e -> {
+            var component = e.getKey();
+            var dependent = e.getValue();
+
+            var interfaces = component.getInterfaces();
+            if (interfaces == null) {
+                return null;
+            }
+            var usedInterfaces = interfaces.stream().filter(i -> i.getType() == http).filter(i -> {
+                var core = i.getCore();
+                var httpMethod = core instanceof HttpMethod ? (HttpMethod) core : null;
+                var httpMethodHandler = httpMethod != null ? httpMethod.getHandler() : null;
+                if (httpMethodHandler != null) {
+                    var methodName = httpMethodHandler.getName();
+                    var argumentTypes = ObjectType.getTypes(httpMethodHandler.getParameterTypes());
+
+                    var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
+                            dependent, callPointsCache);
+                    return !methodCallPoints.isEmpty();
+                }
+                return true;
+            }).collect(toLinkedHashSet());
+
+            if (!interfaces.equals(usedInterfaces)) {
+                var changedComponent = component.toBuilder().interfaces(usedInterfaces).build();
+                return entry(component, changedComponent);
+            } else {
+                return null;
+            }
+        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
+
+        var dependencyToDependentMap1 = dependencyToDependentMap.entrySet().stream().map(e -> {
+            var component = e.getKey();
+            var dependent = e.getValue();
+            var changed = changedComponents.get(component);
+            return entry(changed != null ? changed : component, dependent);
+        }).collect(toMap(Entry::getKey, Entry::getValue));
         var evalContextFactory = new EvalContextFactoryCacheImpl(
-                new EvalContextFactoryImpl(getDependencyToDependentMap(components), callPointsCache, callCache),
+                new EvalContextFactoryImpl(dependencyToDependentMap1, callPointsCache, callCache),
                 new HashMap<>()
         );
 
-        Set<Component> filteredComponentsWithInterfaces = components.stream().map(c -> {
+        Set<Component> filteredComponentsWithInterfaces = components.stream().map(component -> {
+            var changed = changedComponents.get(component);
+            return changed != null ? changed : component;
+        }).map(c -> {
             var exists = c.getInterfaces();
             var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(), callCache, evalContextFactory);
             if (exists == null) {
@@ -579,6 +625,7 @@ public class ComponentsExtractor {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
+        public boolean includeUnusedFeignClientMethodsInInterfaces;
         BeanFilter exclude;
         boolean failFast;
         @Builder.Default

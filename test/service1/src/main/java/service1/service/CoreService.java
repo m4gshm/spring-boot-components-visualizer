@@ -38,13 +38,18 @@ public class CoreService {
     }
 
     public String get(String strId) {
-//        return service2LegacyImpl.get("load", requireNonNull(Integer.valueOf(strId)));
-        var intId = requireNonNull(Integer.valueOf(strId));
-        var firstLoad = service2LegacyImpl.get("load", intId);
-        if (firstLoad != null) {
-            return firstLoad;
+        var integerId = Integer.valueOf(strId);
+        var result = service2FeignClient.get(integerId);
+        if (result == null) {
+            var intId = requireNonNull(integerId);
+            var firstLoad = service2LegacyImpl.get("load", intId);
+            if (firstLoad != null) {
+                return firstLoad;
+            } else {
+                return service2LegacyImpl.get("load", -(intId + 1));
+            }
         } else {
-            return service2LegacyImpl.get("load", -(intId + 1));
+            return standaloneService2Api.get(integerId);
         }
     }
 

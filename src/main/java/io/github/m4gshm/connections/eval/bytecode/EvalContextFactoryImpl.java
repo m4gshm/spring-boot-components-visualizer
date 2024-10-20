@@ -50,20 +50,20 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 .distinct().collect(toList());
     }
 
-    static List<Component> getDependentOnThisComponent(
+    public static List<Component> getDependentOnThisComponent(
             Map<Component, List<Component>> dependencyToDependentMap, Component component) {
         var dependencies = dependencyToDependentMap.getOrDefault(component, List.of());
         return concat(Stream.of(component),
                 dependencies.stream()).collect(toList());
     }
 
-    static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
-            Class<?> objectType, String methodName, Type[] argumentTypes, List<Component> dependentOnThisComponent,
+   public static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
+            Class<?> objectClass, String methodName, Type[] argumentTypes, List<Component> dependentOnThisComponent,
             Map<Component, List<CallPoint>> callPointsCache) {
         return dependentOnThisComponent.stream().map(dependentComponent -> {
             var callPoints = getCallsHierarchy(dependentComponent, callPointsCache);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
-                var matchedCallPoints = getMatchedCallPoints(dependentMethod, methodName, argumentTypes, objectType);
+                var matchedCallPoints = getMatchedCallPoints(dependentMethod, methodName, argumentTypes, objectClass);
                 return entry(dependentMethod, matchedCallPoints);
             }).filter(e -> !e.getValue().isEmpty()).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
             return !callersWithVariants.isEmpty() ? entry(dependentComponent, callersWithVariants) : null;
@@ -119,9 +119,9 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     static List<CallPoint> getMatchedCallPoints(CallPoint dependentMethod, String methodName,
-                                                Type[] argumentTypes, Class<?> objectType) {
+                                                Type[] argumentTypes, Class<?> objectClass) {
         return dependentMethod.getCallPoints().stream().filter(calledMethodInsideDependent -> {
-            var match = isMatch(methodName, argumentTypes, objectType, calledMethodInsideDependent);
+            var match = isMatch(methodName, argumentTypes, objectClass, calledMethodInsideDependent);
             var cycled = isMatch(dependentMethod.getMethodName(), dependentMethod.getArgumentTypes(),
                     dependentMethod.getOwnerClass(), calledMethodInsideDependent);
             //exclude cycling
@@ -129,7 +129,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         }).collect(toList());
     }
 
-    static boolean isMatch(String expectedMethodName, Type[] expectedArguments, Class<?> objectType,
+    static boolean isMatch(String expectedMethodName, Type[] expectedArguments, Class<?> objectClass,
                            CallPoint calledMethodInsideDependent) {
         var calledMethod = calledMethodInsideDependent.getMethodName();
         var calledMethodArgumentTypes = calledMethodInsideDependent.getArgumentTypes();
@@ -137,7 +137,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
         var methodEquals = expectedMethodName.equals(calledMethod);
         var argumentsEqual = Arrays.equals(expectedArguments, calledMethodArgumentTypes);
-        var classEquals = calledMethodClass != null && calledMethodClass.isAssignableFrom(objectType);
+        var classEquals = calledMethodClass != null && calledMethodClass.isAssignableFrom(objectClass);
         return methodEquals && argumentsEqual && classEquals;
     }
 

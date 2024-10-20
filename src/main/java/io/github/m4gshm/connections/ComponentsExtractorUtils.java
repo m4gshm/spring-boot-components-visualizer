@@ -224,9 +224,10 @@ public class ComponentsExtractorUtils {
                 var buildTemplateFromArgs = getFieldValue(value, "buildTemplateFromArgs");
                 var metadata = (MethodMetadata) getFieldValue(buildTemplateFromArgs, "metadata");
                 var template = metadata.template();
-                var method = template.method();
+                var httpMethod = template.method();
+                var method = metadata.method();
                 var url = template.url();
-                return HttpMethod.builder().method(method).path(url).build();
+                return HttpMethod.builder().method(httpMethod).path(url).handler(method).build();
             }).collect(toList());
 
             var type = target.type();

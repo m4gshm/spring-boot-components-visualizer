@@ -66,11 +66,10 @@ public class RestOperationsUtils {
         var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
         var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
 
-        var results = variants.stream().flatMap(variant -> {
+        return variants.stream().flatMap(variant -> {
             var pathArg = variant.get(1);
             return getHttpMethodStream(variant, methodName, pathArg, callCache);
         }).collect(toList());
-        return results;
     }
 
     private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg,
