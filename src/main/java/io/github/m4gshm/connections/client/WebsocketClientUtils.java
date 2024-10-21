@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.eval.bytecode.*;
+import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.DelayInvoke;
 import io.github.m4gshm.connections.model.Component;
@@ -22,7 +23,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -32,7 +32,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
                                                           Map<CallCacheKey, Result> callCache,
-                                                          EvalContextFactory evalContextFactory) {
+                                                          EvalContextFactory evalContextFactory, Resolver resolver) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -49,7 +49,7 @@ public class WebsocketClientUtils {
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
                         var uri = getDoHandshakeUri(component, instructionHandle, constantPoolGen,
-                                bootstrapMethods, method, callCache, evalContextFactory);
+                                bootstrapMethods, method, callCache, evalContextFactory, resolver);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -65,10 +65,10 @@ public class WebsocketClientUtils {
         return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
     }
 
-    private static List<String> getDoHandshakeUri(Component component,
-                                                  InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-                                                  BootstrapMethods bootstrapMethods, Method method,
-                                                  Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory
+    private static List<String> getDoHandshakeUri(Component component, InstructionHandle instructionHandle,
+                                                  ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+                                                  Method method, Map<CallCacheKey, Result> callCache,
+                                                  EvalContextFactory evalContextFactory, Resolver resolver
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var methodName = method.getName();
@@ -79,22 +79,22 @@ public class WebsocketClientUtils {
         }
         var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
         var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
-        var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
+        var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
-            return getUrls(variants, 3, callCache);
+            return getUrls(variants, 3, resolver);
         } else if (String.class.getName().equals(argumentTypes[1].getClassName())) {
-            return getUrls(variants, 2, callCache);
+            return getUrls(variants, 2, resolver);
         } else {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes without URI, " + Arrays.toString(argumentTypes));
         }
     }
 
-    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, Map<CallCacheKey, Result> callCache) {
+    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, Resolver resolver) {
         var results = variants.stream().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);
-                return url.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)).stream();
+                return url.getValue(resolver).stream();
             } catch (NotInvokedException e) {
                 //log
                 return Stream.empty();

@@ -1,6 +1,7 @@
 package io.github.m4gshm.connections.client;
 
 import io.github.m4gshm.connections.eval.bytecode.*;
+import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.DelayInvoke;
 import io.github.m4gshm.connections.model.Component;
@@ -19,7 +20,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -28,7 +28,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class RestOperationsUtils {
     public static List<HttpMethod> extractRestOperationsUris(Component component, Map<CallCacheKey, Result> callCache,
-                                                             EvalContextFactory evalContextFactory) {
+                                                             EvalContextFactory evalContextFactory, Resolver resolver) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -41,7 +41,7 @@ public class RestOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractHttpMethods(component, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, callCache, evalContextFactory)
+                        constantPoolGen, bootstrapMethods, method, callCache, evalContextFactory, resolver)
                         : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
@@ -55,7 +55,7 @@ public class RestOperationsUtils {
     private static List<HttpMethod> extractHttpMethods(Component component,
                                                        InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
                                                        BootstrapMethods bootstrapMethods, Method method,
-                                                       Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory) {
+                                                       Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory, Resolver resolver) {
         var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
         log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
                 instructionText);
@@ -64,25 +64,24 @@ public class RestOperationsUtils {
         var methodName = instruction.getMethodName(constantPoolGen);
         var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
         var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
-        var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
+        var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
         return variants.stream().flatMap(variant -> {
             var pathArg = variant.get(1);
-            return getHttpMethodStream(variant, methodName, pathArg, callCache);
+            return getHttpMethodStream(variant, methodName, pathArg, resolver);
         }).collect(toList());
     }
 
-    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg,
-                                                          Map<CallCacheKey, Result> callCache) {
+    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg, Resolver resolver) {
         try {
             final List<String> httpMethods;
             if ("exchange".equals(methodName)) {
                 var resolvedHttpMethodArg = variant.get(2);
-                httpMethods = getStrings(resolvedHttpMethodArg.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)));
+                httpMethods = getStrings(resolvedHttpMethodArg.getValue(resolver));
             } else {
                 httpMethods = List.of(getHttpMethod(methodName));
             }
-            var paths = getStrings(pathArg.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)));
+            var paths = getStrings(pathArg.getValue(resolver));
 
             return paths.stream().flatMap(path -> httpMethods.stream()
                     .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).build()));
@@ -95,15 +94,6 @@ public class RestOperationsUtils {
     private static List<String> getStrings(List<Object> values) {
         return values.stream()
                 .map(value -> value != null ? value.toString() : null)
-                .collect(toList());
-    }
-
-    private static List<String> resolveVariableStrings(Eval eval, Collection<Result> results, Map<CallCacheKey, Result> callCache) {
-        return results.stream()
-                .flatMap(r -> eval.resolveExpand(r, (current, ex) -> stringifyUnresolved(current, ex, callCache)).stream())
-                .flatMap(result -> result.getValue((current1, ex1) -> stringifyUnresolved(current1, ex1, callCache)).stream())
-                .map(String::valueOf)
-                .distinct()
                 .collect(toList());
     }
 

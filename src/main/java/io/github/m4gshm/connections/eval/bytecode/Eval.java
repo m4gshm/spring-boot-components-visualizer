@@ -304,30 +304,30 @@ public class Eval {
     }
 
     public static Result callInvokeSpecial(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                           boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static Result callInvokeStatic(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                          boolean throwNoCall, Resolver resolver,
-                                          BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                          boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                          BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
-    public static Result callInvokeVirtual(InstructionHandle instructionHandle, DelayInvoke invoke,
-                                           Class<?>[] argumentClasses, Eval eval, boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        var instruction = (InvokeInstruction) instructionHandle.getInstruction();
+    public static Result callInvokeVirtual(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        var instruction = (InvokeInstruction) invoke.getFirstInstruction().getInstruction();
         var objectClass = toClass(instruction.getClassName(eval.getConstantPoolGen()));
         var parameterClasses = concat(ofNullable(objectClass), of(argumentClasses)).toArray(Class[]::new);
-        return eval.callWithParameterVariants(invoke, parameterClasses, throwNoCall, resolver, call, callCache);
+        return eval.callWithParameterVariants(invoke, parameterClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static Result callInvokeDynamic(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                           boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static List<Result> toParameters(Result object, List<Result> arguments) {
@@ -339,8 +339,7 @@ public class Eval {
         return parameters;
     }
 
-    private static List<Map<Integer, Result>> getEvalContextArgsVariants(int dimensions,
-                                                                         Map<Integer, Result> evalContextArgs) {
+    private static List<Map<Integer, Result>> getEvalContextArgsVariants(int dimensions, Map<Integer, Result> evalContextArgs) {
         var evalContextArgsVariants = new ArrayList<Map<Integer, Result>>();
         for (var d = 1; d <= dimensions; d++) {
             var variant = new HashMap<Integer, Result>();
@@ -754,8 +753,8 @@ public class Eval {
             var invokeObject = evalInvokeObject(instruction, arguments, null, callCache);
             return delayInvoke(instructionHandle, this, parent, invokeObject, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeVirtual(instructionHandle, thisDelay, argumentClasses, eval, true, resolver,
-                        (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeVirtual(thisDelay, argumentClasses, eval, true, resolver,
+                        callCache, (parameters, lastInstruction) -> {
                             var paramValues = getValues(parameters);
                             var object = paramValues[0];
                             var argValues = copyOfRange(paramValues, 1, paramValues.length);
@@ -764,37 +763,37 @@ public class Eval {
                                     argValues, instructionHandle, lastInstruction,
                                     constantPoolGen, thisDelay, parameters);
                             return result;
-                        }, callCache) : thisDelay;
+                        }) : thisDelay;
             });
         } else if (instruction instanceof INVOKEDYNAMIC) {
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             return delayInvoke(instructionHandle, this, parent, null, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeDynamic(thisDelay, argumentClasses, eval, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeDynamic(thisDelay, argumentClasses, eval, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments(
                             (INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
                     return callBootstrapMethod(getValues(parameters), instructionHandle, lastInstruction,
                             eval, bootstrapMethodAndArguments, parameters);
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             return delayInvoke(instructionHandle, this, parent, null, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeStatic(thisDelay, argumentClasses, eval, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeStatic(thisDelay, argumentClasses, eval, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var objectClass = toClass(invokeObjectClassName);
                     var result = callMethod(null, objectClass, methodName, argumentClasses, getValues(parameters),
                             instructionHandle, lastInstruction, constantPoolGen, thisDelay, parameters);
                     return result;
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             var invokeObject = evalInvokeObject(instruction, arguments, null, callCache);
             return delayInvoke(instructionHandle, this, parent, invokeObject, arguments, (thisDelay, needResolve, resolver) -> {
-                return needResolve ? callInvokeSpecial(thisDelay, argumentClasses, this, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeSpecial(thisDelay, argumentClasses, this, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var invokeSpec = (INVOKESPECIAL) instruction;
                     var lookup = MethodHandles.lookup();
                     var objectClass = getClassByName(invokeObjectClassName);
@@ -813,15 +812,16 @@ public class Eval {
                         return invoke(methodHandle, paramValues, instructionHandle, lastInstruction,
                                 parameters, component, method);
                     }
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
     }
 
     private Result callWithParameterVariants(DelayInvoke invoke, Class<?>[] parameterClasses, boolean throwNoCall,
-                                             Resolver resolver, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                                             Map<CallCacheKey, Result> callCache) throws NotInvokedException {
+                                             Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                             BiFunction<List<ParameterValue>, InstructionHandle, Result> call
+    ) throws NotInvokedException {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
         var parameterVariants = resolveInvokeParameters(invoke, parameters, resolver, true);
         if (parameterVariants.isEmpty()) {
@@ -844,13 +844,15 @@ public class Eval {
         return collapse(resolved, invoke.getFirstInstruction(), lastInstruction, getConstantPoolGen(), getComponent(), getMethod());
     }
 
-    private Map<Boolean, List<InvokedResult>> callWithParameterVariants(DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
-                                                                        BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                                                                        Map<CallCacheKey, Result> callCache, List<List<Result>> parameterVariants,
-                                                                        InstructionHandle lastInstruction) {
+    private Map<Boolean, List<InvokedResult>> callWithParameterVariants(
+            DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
+            BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
+            Map<CallCacheKey, Result> callCache, List<List<Result>> parameterVariants,
+            InstructionHandle lastInstruction) {
         return parameterVariants.stream().map(parameterVariant -> {
             try {
-                return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction, resolver, call, callCache), null);
+                return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
+                        resolver, call, callCache), null);
             } catch (UnresolvedVariableException e) {
                 //log
                 return new InvokedResult(null, e);
@@ -862,9 +864,7 @@ public class Eval {
                                     InstructionHandle lastInstruction, Resolver resolver,
                                     BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
                                     Map<CallCacheKey, Result> callCache) {
-
         var callParameters = resolveCallParameters(parameters, parameterClasses, resolver);
-
         var key = new CallCacheKey(current, callParameters, lastInstruction.getInstruction());
         if (callCache != null) {
             var cached = callCache.get(key);
