@@ -1,0 +1,134 @@
+@startuml
+remove @unlinked
+package "service1" as service1 #line.dotted;text:gray {
+  package "api" as service1.api #line.dotted;text:gray {
+    package "http" as service1.api.http #line.dotted;text:gray {
+      component mainController as mainController
+    }
+    package "ws" as service1.api.ws #line.dotted;text:gray {
+      component eventsHandler as eventsHandler
+    }
+  }
+  package "db" as service1.db #line.dotted;text:gray {
+    package "jpa" as service1.db.jpa #line.dotted;text:gray {
+      component simpleEntityRepository as simpleEntityRepository
+      component userRepository as userRepository
+    }
+    package "mongo" as service1.db.mongo #line.dotted;text:gray {
+      component documentRepository as documentRepository
+    }
+  }
+  package "service" as service1.service #line.dotted;text:gray {
+    component coreService as coreService
+    package "external" as service1.service.external #line.dotted;text:gray {
+      package "jms" as service1.service.external.jms #line.dotted;text:gray {
+        component jmsQueueListener as jmsQueueListener
+        component jmsQueueService as jmsQueueService
+      }
+      package "rest" as service1.service.external.rest #line.dotted;text:gray {
+        component service2FeignClient as service2FeignClient
+        component service2LegacyImpl as service2LegacyImpl
+        component standaloneService2Api as standaloneService2Api
+      }
+      package "ws" as service1.service.external.ws #line.dotted;text:gray {
+        component service2StreamClientImpl as service2StreamClientImpl
+      }
+    }
+  }
+}
+coreService ..> documentRepository
+coreService ..> jmsQueueService
+coreService ..> service2FeignClient
+coreService ..> service2LegacyImpl
+coreService ..> simpleEntityRepository
+coreService ..> standaloneService2Api
+jmsQueueListener ..> coreService
+mainController ..> coreService
+cloud "input" as input #line.dotted;line:gray; {
+  rectangle "http" as input.http {
+    frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
+      interface "*:" as in....api.v1.
+      in....api.v1. )....> mainController
+      interface "GET:/load/{id}" as in.GET..api.v1.load..id.
+      in.GET..api.v1.load..id. )....> mainController
+      interface "POST:/put/{id}" as in.POST..api.v1.put..id.
+      in.POST..api.v1.put..id. )....> mainController
+    }
+  }
+  rectangle "web socket" as input.websocket {
+    frame "eventsHandler" as input.websocket.eventsHandler.eventsHandler.interfaces #line.dotted;text:gray {
+      interface "/events" as in.eventsHandler.in.ws..events
+      in.eventsHandler.in.ws..events )....> eventsHandler
+    }
+  }
+  queue "jms" as input.jms {
+    frame "jmsQueueListener" as input.jms.jmsQueueListener.jmsQueueListener.interfaces #line.dotted;text:gray {
+      interface "queue1" as in.jmsQueueListener.queue1.in
+      in.jmsQueueListener.queue1.in )....> jmsQueueListener
+      interface "queue2" as in.jmsQueueListener.queue2.in
+      in.jmsQueueListener.queue2.in )....> jmsQueueListener
+    }
+  }
+}
+cloud "output" as output #line.dotted;line:gray; {
+  rectangle "http" as output.http {
+    interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
+    standaloneService2Api ....( out.GET.standalone.service2..id.
+    frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
+      interface "GET:/{id}" as out.GET.http...service2..id.
+      service2FeignClient ....( out.GET.http...service2..id.
+      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.get({id})})}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.save({id})})}|" as output.http.http...service2..load.interfaces
+        service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
+      }
+    }
+  }
+  rectangle "web socket" as output.websocket {
+    frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|ws://currentURI-method|\n\
+<#transparent,transparent>|ws://currentURI-supplier|\n\
+<#transparent,transparent>|ws://defaultURI-static|\n\
+<#transparent,transparent>|ws://service-property-injected|\n\
+<#transparent,transparent>|ws://service-template|\n\
+<#transparent,transparent>|ws://service-template/{id}/|\n\
+<#transparent,transparent>|ws://service2|\n\
+<#transparent,transparent>|ws://service2-value-inject|\n\
+<#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces
+      service2StreamClientImpl ....(0 output.websocket.service2StreamClientImpl.interfaces
+    }
+  }
+  queue "jms" as output.jms {
+    frame "jmsQueueService" as output.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
+      collections "<#transparent,transparent>|jms-private-queue|\n\
+<#transparent,transparent>|jmsQueue2|\n\
+<#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents3|\n\
+<#transparent,transparent>|jmsQueue{CoreService.lambda$makeAll$0({i})}|" as output.jms.jmsQueueService.interfaces
+      jmsQueueService ....> output.jms.jmsQueueService.interfaces
+    }
+  }
+}
+cloud "internal" as internal #line.dotted;line:gray; {
+  database "storage" as internal.storage {
+    folder "jpa.model" as internal.storage.jpa.model #line.dotted;line:gray; {
+      entity "SimpleEntity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      note "table: simple_entity" as internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name
+      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity..table_name .. internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity.
+      internal.jpa.classservice1.db.jpa.model.SimpleEntity..simple_entity. .. simpleEntityRepository
+      entity "UserEntity" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      note "table: auth.user" as internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name
+      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user..table_name .. internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user.
+      internal.jpa.classservice1.db.jpa.model.UserEntity..auth.user. .. userRepository
+    }
+    folder "mongo.model" as internal.storage.mongo.model #line.dotted;line:gray; {
+      entity "DocumentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      note "collection: documentEntity" as internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
+      internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
+    }
+  }
+}
+@enduml
