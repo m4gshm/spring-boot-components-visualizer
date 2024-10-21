@@ -295,22 +295,6 @@ public class Eval {
                     : new NotInvokedException(unresolvedVariables, unresolvedVars, invoke);
 
         }
-
-//        if (values.isEmpty()) {
-//            throw new NotInvokedException(invoke);
-//        } else {
-//            return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, component, method);
-//        }
-//        } catch (NotInvokedException e) {
-//            //log
-//            throw e;
-//        } catch (EvalBytecodeException e) {
-//            //log
-//            if (resolver == null) {
-//                throw e;
-//            }
-//            return resolver.resolve(invoke, e);
-//        }
     }
 
     private static List<List<List<Result>>> getFullDistinctCallContexts(Map<CallContext, List<Result>[]> callContexts) {
@@ -406,22 +390,11 @@ public class Eval {
                                                             List<List<Result>> parameterVariants) {
         var childToParentHierarchy = new HashMap<CallContext, Set<CallContext>>();
         var callContexts = new LinkedHashMap<CallContext, List<Result>[]>();
-        for (int i1 = 0; i1 < parameters.size(); i1++) {
-//            var argumentsResult = parameters.get(i1);
-//            var wrapped = getWrapped(argumentsResult);
-//            if (wrapped != null) {
-//                argumentsResult = wrapped;
-//            }
-//            if (argumentsResult instanceof Constant) {
-//                var constant = (Constant) argumentsResult;
-//                var callContext1 = newCallContext(constant.getComponent(), constant.getMethod(), constant);
-//                populateArgumentsResults(parameters, callContexts, constant, i1, callContext1);
-//            } else {
-            var variants = parameterVariants.get(i1);
+        for (int i = 0; i < parameters.size(); i++) {
+            var variants = parameterVariants.get(i);
             for (var variant : variants) {
-                populateArgumentsResults(parameters, variant, i1, callContexts, childToParentHierarchy);
+                populateArgumentsResults(parameters, variant, i, callContexts, childToParentHierarchy);
             }
-//            }
         }
         var ignore = new HashSet<CallContext>();
         for (var callContext : callContexts.keySet()) {
@@ -441,8 +414,6 @@ public class Eval {
                             results[i] = parentResult;
                         } else {
                             //log
-//                            throw new IllegalStateException("no parent callContext for multiple variants of parameter "
-//                                    + i + ", " + parameters.get(i));
                             ignore.add(callContext);
                         }
                     }

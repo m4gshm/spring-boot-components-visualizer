@@ -64,8 +64,6 @@ public abstract class Result implements ContextAware {
         if (storeInstructions.isEmpty()) {
             throw new IllegalArgumentException("No store instructions found");
         }
-//        var lastInstruction = storeInstructions.stream().map(Result::getLastInstruction)
-//                .reduce((l, r) -> l.getPosition() <= r.getPosition() ? l : r).orElse(null);
         return new DelayLoadFromStore(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent,
                 storeInstructions);
     }

@@ -284,7 +284,6 @@ public class ComponentsExtractor {
                         .type(componentType)
                         .configuration(isSpringConfiguration(componentType))
                         .dependencies(dependencies)
-//                        .callPoints(getCallsHierarchy(componentType))
                         .build();
                 cache.put(componentName, Set.of(component));
                 return Stream.of(component);
@@ -537,7 +536,6 @@ public class ComponentsExtractor {
                 )
                         .type(webSocketHandlerClass)
                         .configuration(isSpringConfiguration(webSocketHandlerClass))
-//                        .callPoints(getCallsHierarchy(webSocketHandlerClass, dependencyToDependentMap))
                         .path(getComponentPath(webSocketHandlerClass, rootPackage));
 
                 var unmanagedDependencies = getUnmanagedDependencies(webSocketHandlerClass, webSocketHandler, new HashMap<>());

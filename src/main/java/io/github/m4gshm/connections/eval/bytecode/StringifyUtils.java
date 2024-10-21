@@ -46,13 +46,6 @@ public class StringifyUtils {
     }
 
     private static Result stringifyDelay(Delay delay, EvalBytecodeException ex, Map<CallCacheKey, Result> callCache) {
-//        if (ex instanceof IllegalInvokeException) {
-//            var illegalInvokeException = (IllegalInvokeException) ex;
-//            var unresolved = illegalInvokeException.getResult();
-//            if (unresolved == delay) {
-//                System.out.println(unresolved);
-//            }
-//        }
         var instructionHandle = delay.getFirstInstruction();
         var instruction = instructionHandle.getInstruction();
         var eval = delay.getEval();

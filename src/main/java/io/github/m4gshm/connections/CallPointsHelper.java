@@ -91,7 +91,6 @@ public class CallPointsHelper {
                 .argumentTypes((method.getArgumentTypes()))
                 .method(method)
                 .javaClass(javaClass)
-//                .callPoints(callPoints1)
                 .callPoints(callPoints)
                 .build();
     }
