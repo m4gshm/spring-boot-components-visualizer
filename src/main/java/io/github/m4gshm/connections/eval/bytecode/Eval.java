@@ -257,7 +257,15 @@ public class Eval {
 
     private static Result resolveOrThrow(Result result, Resolver resolver, UnresolvedResultException e) {
         if (resolver != null) {
-            return resolver.resolve(result, e);
+            try {
+                return resolver.resolve(result, e);
+            } catch (NotInvokedException ee) {
+                //todo bad case
+                //log.error
+                throw e;
+            } catch (Exception e) {
+                throw e;
+            }
         } else {
             throw e;
         }
@@ -864,7 +872,7 @@ public class Eval {
                                     InstructionHandle lastInstruction, Resolver resolver,
                                     BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
                                     Map<CallCacheKey, Result> callCache) {
-        var callParameters = resolveCallParameters(parameters, parameterClasses, resolver);
+        var callParameters = resolveCallParameters(current, parameters, parameterClasses, resolver);
         var key = new CallCacheKey(current, callParameters, lastInstruction.getInstruction());
         if (callCache != null) {
             var cached = callCache.get(key);
@@ -882,7 +890,8 @@ public class Eval {
         return callResult;
     }
 
-    private List<List<ParameterValue>> resolveCallParameters(List<Result> parameters, Class<?>[] parameterClasses, Resolver resolver) {
+    private List<List<ParameterValue>> resolveCallParameters(Delay current, List<Result> parameters,
+                                                             Class<?>[] parameterClasses, Resolver resolver) {
         @Data
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         class ParameterVariants {

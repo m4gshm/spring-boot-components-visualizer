@@ -33,9 +33,10 @@ public class StringifyResolver implements Resolver {
 
     Level level;
     Map<CallCacheKey, Result> callCache;
+    boolean failFast;
 
     public static StringifyResolver newStringify(Map<CallCacheKey, Result> callCache) {
-        return new StringifyResolver(full, callCache);
+        return new StringifyResolver(full, callCache, true);
     }
 
     private static List<ParameterValue> concatCallParameters(ParameterValue object, List<ParameterValue> arguments) {
@@ -111,7 +112,6 @@ public class StringifyResolver implements Resolver {
                 var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
                 var argumentClasses = toClasses(argumentTypes);
 
-                var argumentsAmount = argumentTypes.length;
                 var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
                 return callInvokeVirtual((DelayInvoke) delay, argumentClasses, eval, false,
@@ -164,7 +164,7 @@ public class StringifyResolver implements Resolver {
                     var element = eval.eval(eval.getPrev(instructionHandle), delay, callCache);
                     var index = eval.eval(eval.getPrev(element.getLastInstruction()), delay, callCache);
                     var array = eval.eval(eval.getPrev(index.getLastInstruction()), delay, callCache);
-                    var result = array.getValue(this::stringifyUnresolved);
+                    var result = stringifyValue(array);
                     var lastInstruction = array.getLastInstruction();
                     return constant(result, lastInstruction, lastInstruction, component, method, delay, element, index, array);
                 } else if (instruction instanceof LoadInstruction) {
@@ -181,7 +181,7 @@ public class StringifyResolver implements Resolver {
 
                     var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay, callCache);
 
-                    var strings = storeResults.stream().flatMap(storeResult -> storeResult.getValue(this::stringifyUnresolved).stream()
+                    var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult).stream()
                                     .map(String::valueOf)
                                     .map(s -> constant(s, instructionHandle, instructionHandle, component, method, delay, storeResult)))
                             .collect(toList());
@@ -351,7 +351,7 @@ public class StringifyResolver implements Resolver {
     }
 
     private List<String> neg(Result result) {
-        return expand(result).stream().flatMap(f -> f.getValue(this::stringifyUnresolved).stream())
+        return expand(result).stream().flatMap(f -> stringifyValue(f).stream())
                 .map(v -> "-" + v).collect(toList());
     }
 
@@ -398,16 +398,29 @@ public class StringifyResolver implements Resolver {
     private List<String> invokeVariants(List<Result> firstVariants, List<Result> secondVariants,
                                         BiFunction<String, String, String> op) {
         return secondVariants.stream().flatMap(s -> firstVariants.stream().flatMap(f -> {
-            var values1 = s.getValue(this::stringifyUnresolved);
-            var values2 = f.getValue(this::stringifyUnresolved);
+            var values1 = stringifyValue(s);
+            var values2 = stringifyValue(f);
             return values1.stream().flatMap(value1 -> values2.stream().map(value2 -> op.apply(value1 + "", value2 + "")));
         })).collect(toList());
+    }
+
+    private List<Object> stringifyValue(Result result) {
+        try {
+            return result.getValue(this::stringifyUnresolved);
+        } catch (EvalBytecodeException e) {
+            if (failFast) {
+                stringifyUnresolved(result, e);
+                throw new IllegalStateException("unexpected eval bytecode error", e);
+            } else {
+                throw e;
+            }
+        }
     }
 
     private List<Result> s(Result result, Component component, Method method) {
         var value2Variants = expand(result);
         return value2Variants.stream()
-                .flatMap(resultVariant -> resultVariant.getValue(this::stringifyUnresolved).stream()
+                .flatMap(resultVariant -> stringifyValue(resultVariant).stream()
                         .map(value -> value instanceof Number
                                 ? (((Number) value).longValue() & 0X1f) + ""
                                 : value + "")
