@@ -262,9 +262,9 @@ public class Eval {
             } catch (NotInvokedException ee) {
                 //todo bad case
                 //log.error
-                throw e;
-            } catch (Exception e) {
-                throw e;
+                throw ee;
+            } catch (Exception ee) {
+                throw ee;
             }
         } else {
             throw e;
