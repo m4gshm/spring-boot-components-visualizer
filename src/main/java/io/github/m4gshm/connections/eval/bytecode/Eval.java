@@ -257,7 +257,15 @@ public class Eval {
 
     private static Result resolveOrThrow(Result result, Resolver resolver, UnresolvedResultException e) {
         if (resolver != null) {
-            return resolver.resolve(result, e);
+            try {
+                return resolver.resolve(result, e);
+            } catch (NotInvokedException ee) {
+                //todo bad case
+                //log.error
+                throw ee;
+            } catch (Exception ee) {
+                throw ee;
+            }
         } else {
             throw e;
         }
@@ -265,7 +273,7 @@ public class Eval {
 
     private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
                                List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                               ConstantPoolGen constantPoolGen, Component component, Method method) {
+                               ConstantPoolGen constantPoolGen, Component component, Method method) throws NotInvokedException {
 
         var values = new ArrayList<Result>();
         var unresolvedVars = new ArrayList<UnresolvedVariableException>();
@@ -288,12 +296,14 @@ public class Eval {
             var e = errors.get(0);
             log.trace("call error of {}", invoke, e);
             return resolver.resolve(invoke, e);
+
         } else {
             //log
-            throw unresolvedVars.isEmpty()
-                    ? new NotInvokedException(noCalls, invoke)
-                    : new NotInvokedException(unresolvedVariables, unresolvedVars, invoke);
-
+            if (unresolvedVars.isEmpty()) {
+                throw new NotInvokedException(noCalls, invoke);
+            } else {
+                throw new NotInvokedException(unresolvedVariables, unresolvedVars, invoke);
+            }
         }
     }
 
@@ -304,30 +314,30 @@ public class Eval {
     }
 
     public static Result callInvokeSpecial(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                           boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static Result callInvokeStatic(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                          boolean throwNoCall, Resolver resolver,
-                                          BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                          boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                          BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
-    public static Result callInvokeVirtual(InstructionHandle instructionHandle, DelayInvoke invoke,
-                                           Class<?>[] argumentClasses, Eval eval, boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        var instruction = (InvokeInstruction) instructionHandle.getInstruction();
+    public static Result callInvokeVirtual(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        var instruction = (InvokeInstruction) invoke.getFirstInstruction().getInstruction();
         var objectClass = toClass(instruction.getClassName(eval.getConstantPoolGen()));
         var parameterClasses = concat(ofNullable(objectClass), of(argumentClasses)).toArray(Class[]::new);
-        return eval.callWithParameterVariants(invoke, parameterClasses, throwNoCall, resolver, call, callCache);
+        return eval.callWithParameterVariants(invoke, parameterClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static Result callInvokeDynamic(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
-                                           boolean throwNoCall, Resolver resolver,
-                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call, Map<CallCacheKey, Result> callCache) {
-        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call, callCache);
+                                           boolean throwNoCall, Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                           BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
+        return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, callCache, call);
     }
 
     public static List<Result> toParameters(Result object, List<Result> arguments) {
@@ -339,8 +349,7 @@ public class Eval {
         return parameters;
     }
 
-    private static List<Map<Integer, Result>> getEvalContextArgsVariants(int dimensions,
-                                                                         Map<Integer, Result> evalContextArgs) {
+    private static List<Map<Integer, Result>> getEvalContextArgsVariants(int dimensions, Map<Integer, Result> evalContextArgs) {
         var evalContextArgsVariants = new ArrayList<Map<Integer, Result>>();
         for (var d = 1; d <= dimensions; d++) {
             var variant = new HashMap<Integer, Result>();
@@ -441,7 +450,8 @@ public class Eval {
         var resolvedParameters = new HashMap<Integer, List<Result>>();
         for (int i = 0; i < parameters.size(); i++) {
             try {
-                resolvedParameters.put(i, resolveExpand(parameters.get(i), resolver));
+                var parameterResult = parameters.get(i);
+                resolvedParameters.put(i, resolveExpand(parameterResult, resolver));
             } catch (NotInvokedException e) {
                 //log
                 return null;
@@ -754,8 +764,8 @@ public class Eval {
             var invokeObject = evalInvokeObject(instruction, arguments, null, callCache);
             return delayInvoke(instructionHandle, this, parent, invokeObject, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeVirtual(instructionHandle, thisDelay, argumentClasses, eval, true, resolver,
-                        (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeVirtual(thisDelay, argumentClasses, eval, true, resolver,
+                        callCache, (parameters, lastInstruction) -> {
                             var paramValues = getValues(parameters);
                             var object = paramValues[0];
                             var argValues = copyOfRange(paramValues, 1, paramValues.length);
@@ -764,37 +774,37 @@ public class Eval {
                                     argValues, instructionHandle, lastInstruction,
                                     constantPoolGen, thisDelay, parameters);
                             return result;
-                        }, callCache) : thisDelay;
+                        }) : thisDelay;
             });
         } else if (instruction instanceof INVOKEDYNAMIC) {
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             return delayInvoke(instructionHandle, this, parent, null, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeDynamic(thisDelay, argumentClasses, eval, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeDynamic(thisDelay, argumentClasses, eval, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments(
                             (INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
                     return callBootstrapMethod(getValues(parameters), instructionHandle, lastInstruction,
                             eval, bootstrapMethodAndArguments, parameters);
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         } else if (instruction instanceof INVOKESTATIC) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             return delayInvoke(instructionHandle, this, parent, null, arguments, (thisDelay, needResolve, resolver) -> {
                 var eval = thisDelay.getEval();
-                return needResolve ? callInvokeStatic(thisDelay, argumentClasses, eval, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeStatic(thisDelay, argumentClasses, eval, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var objectClass = toClass(invokeObjectClassName);
                     var result = callMethod(null, objectClass, methodName, argumentClasses, getValues(parameters),
                             instructionHandle, lastInstruction, constantPoolGen, thisDelay, parameters);
                     return result;
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         } else if (instruction instanceof INVOKESPECIAL) {
             var invokeObjectClassName = instruction.getClassName(constantPoolGen);
             var arguments = evalArguments(instructionHandle, argumentsAmount, null, callCache);
             var invokeObject = evalInvokeObject(instruction, arguments, null, callCache);
             return delayInvoke(instructionHandle, this, parent, invokeObject, arguments, (thisDelay, needResolve, resolver) -> {
-                return needResolve ? callInvokeSpecial(thisDelay, argumentClasses, this, true, resolver, (parameters, lastInstruction) -> {
+                return needResolve ? callInvokeSpecial(thisDelay, argumentClasses, this, true, resolver, callCache, (parameters, lastInstruction) -> {
                     var invokeSpec = (INVOKESPECIAL) instruction;
                     var lookup = MethodHandles.lookup();
                     var objectClass = getClassByName(invokeObjectClassName);
@@ -813,15 +823,16 @@ public class Eval {
                         return invoke(methodHandle, paramValues, instructionHandle, lastInstruction,
                                 parameters, component, method);
                     }
-                }, callCache) : thisDelay;
+                }) : thisDelay;
             });
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
     }
 
     private Result callWithParameterVariants(DelayInvoke invoke, Class<?>[] parameterClasses, boolean throwNoCall,
-                                             Resolver resolver, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                                             Map<CallCacheKey, Result> callCache) throws NotInvokedException {
+                                             Resolver resolver, Map<CallCacheKey, Result> callCache,
+                                             BiFunction<List<ParameterValue>, InstructionHandle, Result> call
+    ) throws NotInvokedException {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
         var parameterVariants = resolveInvokeParameters(invoke, parameters, resolver, true);
         if (parameterVariants.isEmpty()) {
@@ -834,9 +845,11 @@ public class Eval {
         var resolved = results.get(true).stream().map(p -> p.result).collect(toList());
         if (resolved.isEmpty()) {
             if (throwNoCall) {
-                throw unresolved.isEmpty()
-                        ? new NotInvokedException(noCalls, invoke)
-                        : new NotInvokedException(unresolvedVariables, unresolved, invoke);
+                if (unresolved.isEmpty()) {
+                    throw new NotInvokedException(noCalls, invoke);
+                } else {
+                    throw new NotInvokedException(unresolvedVariables, unresolved, invoke);
+                }
             } else {
                 return resolveAndInvoke(invoke, parameters, parameterClasses, lastInstruction, resolver, call, callCache);
             }
@@ -844,14 +857,16 @@ public class Eval {
         return collapse(resolved, invoke.getFirstInstruction(), lastInstruction, getConstantPoolGen(), getComponent(), getMethod());
     }
 
-    private Map<Boolean, List<InvokedResult>> callWithParameterVariants(DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
-                                                                        BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                                                                        Map<CallCacheKey, Result> callCache, List<List<Result>> parameterVariants,
-                                                                        InstructionHandle lastInstruction) {
+    private Map<Boolean, List<InvokedResult>> callWithParameterVariants(
+            DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
+            BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
+            Map<CallCacheKey, Result> callCache, List<List<Result>> parameterVariants,
+            InstructionHandle lastInstruction) {
         return parameterVariants.stream().map(parameterVariant -> {
             try {
-                return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction, resolver, call, callCache), null);
-            } catch (UnresolvedVariableException e) {
+                return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
+                        resolver, call, callCache), null);
+            } catch (EvalBytecodeException /*UnresolvedVariableException*/ e) {
                 //log
                 return new InvokedResult(null, e);
             }
@@ -862,9 +877,7 @@ public class Eval {
                                     InstructionHandle lastInstruction, Resolver resolver,
                                     BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
                                     Map<CallCacheKey, Result> callCache) {
-
-        var callParameters = resolveCallParameters(parameters, parameterClasses, resolver);
-
+        var callParameters = resolveCallParameters(current, parameters, parameterClasses, resolver);
         var key = new CallCacheKey(current, callParameters, lastInstruction.getInstruction());
         if (callCache != null) {
             var cached = callCache.get(key);
@@ -882,7 +895,8 @@ public class Eval {
         return callResult;
     }
 
-    private List<List<ParameterValue>> resolveCallParameters(List<Result> parameters, Class<?>[] parameterClasses, Resolver resolver) {
+    private List<List<ParameterValue>> resolveCallParameters(Delay current, List<Result> parameters,
+                                                             Class<?>[] parameterClasses, Resolver resolver) {
         @Data
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         class ParameterVariants {
@@ -1238,7 +1252,7 @@ public class Eval {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class InvokedResult {
         Result result;
-        UnresolvedResultException exception;
+        EvalBytecodeException exception;
     }
 
     @Data

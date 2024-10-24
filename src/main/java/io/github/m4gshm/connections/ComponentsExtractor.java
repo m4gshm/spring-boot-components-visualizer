@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.eval.bytecode.*;
+import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -195,12 +196,14 @@ public class ComponentsExtractor {
                 new HashMap<>()
         );
 
+        Resolver resolver = StringifyResolver.newStringify(callCache);
+
         Set<Component> filteredComponentsWithInterfaces = components.stream().map(component -> {
             var changed = changedComponents.get(component);
             return changed != null ? changed : component;
         }).map(c -> {
             var exists = c.getInterfaces();
-            var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(), callCache, evalContextFactory);
+            var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(), callCache, evalContextFactory, resolver);
             if (exists == null) {
                 exists = interfaces;
             } else if (interfaces != null && !interfaces.isEmpty()) {
@@ -292,19 +295,18 @@ public class ComponentsExtractor {
     }
 
     private Set<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
-                                         Set<Component> dependencies,
-                                         Map<CallCacheKey, Result> callCache,
-                                         EvalContextFactory evalContextFactory) {
+                                         Set<Component> dependencies, Map<CallCacheKey, Result> callCache,
+                                         EvalContextFactory evalContextFactory, Resolver resolver) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                 .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
 
         var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
         var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies,
-                callCache, evalContextFactory);
+                callCache, evalContextFactory, resolver);
         var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies,
-                callCache, evalContextFactory);
+                callCache, evalContextFactory, resolver);
         var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(component, componentName,
-                dependencies, callCache, evalContextFactory);
+                dependencies, callCache, evalContextFactory, resolver);
 
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                 .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
@@ -413,10 +415,10 @@ public class ComponentsExtractor {
     protected Set<Interface> getOutJmsInterfaces(Component component, String componentName,
                                                  Collection<Component> dependencies,
                                                  Map<CallCacheKey, Result> callCache,
-                                                 EvalContextFactory evalContextFactory) {
+                                                 EvalContextFactory evalContextFactory, Resolver resolver) {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
-            var jmsClients = extractJmsClients(component, callCache, evalContextFactory);
+            var jmsClients = extractJmsClients(component, callCache, evalContextFactory, resolver);
             return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
@@ -425,11 +427,11 @@ public class ComponentsExtractor {
     }
 
     protected Set<Interface> getOutWsInterfaces(Component component, String componentName,
-                                                Collection<Component> dependencies,
-                                                Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory) {
+                                                Collection<Component> dependencies, Map<CallCacheKey, Result> callCache,
+                                                EvalContextFactory evalContextFactory, Resolver resolver) {
         var wsClient = findDependencyByType(dependencies, () -> WebSocketClient.class);
         if (wsClient != null) try {
-            var wsClientUris = extractWebsocketClientUris(component, callCache, evalContextFactory);
+            var wsClientUris = extractWebsocketClientUris(component, callCache, evalContextFactory, resolver);
             return wsClientUris.stream()
                     .map(uri -> Interface.builder()
                             .direction(out).type(ws).name(uri)
@@ -445,11 +447,11 @@ public class ComponentsExtractor {
 
     protected Set<Interface> getOutRestTemplateInterfaces(Component component, String componentName,
                                                           Collection<Component> dependencies, Map<CallCacheKey, Result> callCache,
-                                                          EvalContextFactory evalContextFactory) {
+                                                          EvalContextFactory evalContextFactory, Resolver resolver) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(component,
-                    callCache, evalContextFactory);
+                    callCache, evalContextFactory, resolver);
             return httpMethods.stream()
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)

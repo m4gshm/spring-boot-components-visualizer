@@ -6,6 +6,7 @@ import io.github.m4gshm.connections.eval.bytecode.Eval;
 import io.github.m4gshm.connections.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.connections.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.connections.eval.result.DelayInvoke;
+import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
@@ -26,7 +27,6 @@ import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredM
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.eval.bytecode.StringifyUtils.stringifyUnresolved;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -44,7 +44,8 @@ public class JmsOperationsUtils {
 
     public static List<JmsClient> extractJmsClients(Component component,
                                                     Map<CallCacheKey, Result> callCache,
-                                                    EvalContextFactory evalContextFactory) {
+                                                    EvalContextFactory evalContextFactory,
+                                                    Resolver resolver) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -57,7 +58,7 @@ public class JmsOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(component, instructionHandle,
-                        constantPoolGen, callCache, evalContextFactory.getEvalContext(component, javaClass, method)).stream()
+                        constantPoolGen, callCache, evalContextFactory.getEvalContext(component, javaClass, method), resolver).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -66,7 +67,7 @@ public class JmsOperationsUtils {
     private static List<JmsClient> extractJmsClients(
             Component component,
             InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            Map<CallCacheKey, Result> callCache, Eval eval) {
+            Map<CallCacheKey, Result> callCache, Eval eval, Resolver resolver) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -78,24 +79,24 @@ public class JmsOperationsUtils {
 
             var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
 
-            var variants = resolveInvokeParameters(eval, result, component, methodName, callCache);
+            var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
             var results = variants.stream().flatMap(paramVariant -> {
-                return getJmsClientStream(paramVariant, direction, methodName, eval, callCache);
+                return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);
             }).collect(toList());
             return results;
         }
     }
 
     private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
-                                                        String methodName, Eval eval, Map<CallCacheKey, Result> callCache) {
+                                                        String methodName, Eval eval, Resolver resolver) {
         try {
             if (paramVariant.size() < 2) {
                 return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
             } else {
                 var first = paramVariant.get(1);
-                var resolved = eval.resolveExpand(first, (current, ex) -> stringifyUnresolved(current, ex, callCache));
-                return resolved.stream().flatMap(v -> v.getValue((current, ex) -> stringifyUnresolved(current, ex, callCache)).stream())
+                var resolved = eval.resolveExpand(first, resolver);
+                return resolved.stream().flatMap(v -> v.getValue(resolver).stream())
                         .map(v -> newJmsClient(getDestination(v), direction, methodName));
             }
         } catch (NotInvokedException e) {

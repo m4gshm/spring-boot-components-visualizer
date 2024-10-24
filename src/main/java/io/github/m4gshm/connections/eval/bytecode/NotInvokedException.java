@@ -11,7 +11,7 @@ import java.util.List;
 public class NotInvokedException extends UnresolvedResultException {
 
     private final Reason reason;
-    private final List<? extends UnresolvedResultException> causes;
+    private final List<? extends EvalBytecodeException> causes;
     private final List<Result> parameters;
 
     public NotInvokedException(Reason reason, Delay result) {
@@ -25,7 +25,7 @@ public class NotInvokedException extends UnresolvedResultException {
         this.reason = reason;
     }
 
-    public NotInvokedException(Reason reason, List<? extends UnresolvedResultException> causes, Delay result) {
+    public NotInvokedException(Reason reason, List<? extends EvalBytecodeException> causes, Delay result) {
         super(reason.message, causes.get(0), result);
         this.causes = causes;
         this.parameters = null;
