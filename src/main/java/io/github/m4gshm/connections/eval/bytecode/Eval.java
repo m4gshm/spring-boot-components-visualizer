@@ -273,7 +273,7 @@ public class Eval {
 
     private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
                                List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                               ConstantPoolGen constantPoolGen, Component component, Method method) {
+                               ConstantPoolGen constantPoolGen, Component component, Method method) throws NotInvokedException {
 
         var values = new ArrayList<Result>();
         var unresolvedVars = new ArrayList<UnresolvedVariableException>();
@@ -296,12 +296,14 @@ public class Eval {
             var e = errors.get(0);
             log.trace("call error of {}", invoke, e);
             return resolver.resolve(invoke, e);
+
         } else {
             //log
-            throw unresolvedVars.isEmpty()
-                    ? new NotInvokedException(noCalls, invoke)
-                    : new NotInvokedException(unresolvedVariables, unresolvedVars, invoke);
-
+            if (unresolvedVars.isEmpty()) {
+                throw new NotInvokedException(noCalls, invoke);
+            } else {
+                throw new NotInvokedException(unresolvedVariables, unresolvedVars, invoke);
+            }
         }
     }
 
@@ -448,7 +450,8 @@ public class Eval {
         var resolvedParameters = new HashMap<Integer, List<Result>>();
         for (int i = 0; i < parameters.size(); i++) {
             try {
-                resolvedParameters.put(i, resolveExpand(parameters.get(i), resolver));
+                var parameterResult = parameters.get(i);
+                resolvedParameters.put(i, resolveExpand(parameterResult, resolver));
             } catch (NotInvokedException e) {
                 //log
                 return null;
@@ -842,9 +845,11 @@ public class Eval {
         var resolved = results.get(true).stream().map(p -> p.result).collect(toList());
         if (resolved.isEmpty()) {
             if (throwNoCall) {
-                throw unresolved.isEmpty()
-                        ? new NotInvokedException(noCalls, invoke)
-                        : new NotInvokedException(unresolvedVariables, unresolved, invoke);
+                if (unresolved.isEmpty()) {
+                    throw new NotInvokedException(noCalls, invoke);
+                } else {
+                    throw new NotInvokedException(unresolvedVariables, unresolved, invoke);
+                }
             } else {
                 return resolveAndInvoke(invoke, parameters, parameterClasses, lastInstruction, resolver, call, callCache);
             }
@@ -861,7 +866,7 @@ public class Eval {
             try {
                 return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
                         resolver, call, callCache), null);
-            } catch (UnresolvedVariableException e) {
+            } catch (EvalBytecodeException /*UnresolvedVariableException*/ e) {
                 //log
                 return new InvokedResult(null, e);
             }
@@ -1247,7 +1252,7 @@ public class Eval {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class InvokedResult {
         Result result;
-        UnresolvedResultException exception;
+        EvalBytecodeException exception;
     }
 
     @Data

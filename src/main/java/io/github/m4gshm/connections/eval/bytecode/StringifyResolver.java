@@ -128,10 +128,18 @@ public class StringifyResolver implements Resolver {
 
                 var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
-                return callInvokeStatic((DelayInvoke) delay, argumentClasses, eval, false,
-                        this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
-                            return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
-                        });
+                try {
+                    return callInvokeStatic((DelayInvoke) delay, argumentClasses, eval, false,
+                            this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
+                                try {
+                                    return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
+                                } catch (EvalBytecodeException e) {
+                                    throw e;
+                                }
+                            });
+                } catch (EvalBytecodeException e) {
+                    throw e;
+                }
             } else if (instruction instanceof INVOKESPECIAL) {
                 var invokeInstruction = (InvokeInstruction) instruction;
                 var methodName = invokeInstruction.getMethodName(constantPoolGen);
@@ -154,9 +162,14 @@ public class StringifyResolver implements Resolver {
                     var first = eval.eval(eval.getPrev(instructionHandle), delay, callCache);
                     var second = instruction.consumeStack(constantPoolGen) == 2
                             ? eval.eval(eval.getPrev(first.getLastInstruction()), callCache) : null;
-                    var strings = stringifyArithmetic((ArithmeticInstruction) instruction, first, second, component, method, callCache);
+                    List<String> arithmeticString;
+                    try {
+                        arithmeticString = stringifyArithmetic((ArithmeticInstruction) instruction, first, second, component, method, callCache);
+                    } catch (NotInvokedException ee) {
+                        throw ee;
+                    }
                     var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
-                    var values = strings.stream()
+                    var values = arithmeticString.stream()
                             .map(v -> constant(v, instructionHandle, lastInstruction, component, method, delay, first, second))
                             .collect(toList());
                     return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), component, method);

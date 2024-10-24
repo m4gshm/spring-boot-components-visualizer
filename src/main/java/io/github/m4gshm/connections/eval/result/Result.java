@@ -5,6 +5,7 @@ import io.github.m4gshm.connections.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.connections.eval.bytecode.Eval.InvokeObject;
 import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Data;
@@ -193,7 +194,12 @@ public abstract class Result implements ContextAware {
             return singletonList(getValue());
         } catch (EvalBytecodeException e) {
             if (resolver != null) {
-                var resolved = resolver.resolve(this, e);
+                Result resolved;
+                try {
+                    resolved = resolver.resolve(this, e);
+                } catch (NotInvokedException ee) {
+                    throw e;
+                }
                 var values = Eval.expand(resolved).stream().map(Result::getValue).collect(toList());
                 return values;
             }

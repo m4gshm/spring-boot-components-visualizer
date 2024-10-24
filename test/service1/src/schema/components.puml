@@ -72,10 +72,18 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:http://service2/{id}" as out.GET.http...service2..id.
-    service2FeignClient ....( out.GET.http...service2..id.
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
+    frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
+      interface "GET:/{id}" as out.GET.http...service2..id.
+      service2FeignClient ....( out.GET.http...service2..id.
+      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
+        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.get..id......intValue....1..
+        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.get..id......intValue....1..
+        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.save..id......intValue....1..
+        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.save..id......intValue....1..
+      }
+    }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
