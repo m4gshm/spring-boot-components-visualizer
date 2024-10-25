@@ -21,7 +21,7 @@ public class Utils {
                                                       String methodName, Resolver resolver) {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
         try {
-            return eval.resolveInvokeParameters(parameters, resolver);
+            return eval.resolveInvokeParameters(invoke, parameters, resolver);
         } catch (NotInvokedException e) {
             log.info("no call variants for {} inside {}", methodName, component.getName());
             return List.of();

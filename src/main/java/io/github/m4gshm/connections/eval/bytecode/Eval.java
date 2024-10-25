@@ -842,7 +842,7 @@ public class Eval {
                                              BiFunction<List<ParameterValue>, InstructionHandle, Result> call
     ) throws NotInvokedException {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
-        var parameterVariants = resolveInvokeParameters(parameters, resolver);
+        var parameterVariants = resolveInvokeParameters(invoke, parameters, resolver);
         if (parameterVariants.isEmpty()) {
             throw new NotInvokedException(noParameterVariants, invoke, parameters);
         }
@@ -998,7 +998,7 @@ public class Eval {
         return new InvokeObject(firstInstruction, lastInstruction, objectCallResult);
     }
 
-    public List<List<Result>> resolveInvokeParameters(List<Result> parameters, Resolver resolver) {
+    public List<List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
         if (parameters.isEmpty()) {
             return List.of(parameters);
         }
