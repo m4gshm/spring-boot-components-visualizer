@@ -78,21 +78,22 @@ cloud "output" as output #line.dotted;line:gray; {
       interface "GET:/{id}" as out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
-        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.get..id......intValue....1..
-        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.get..id......intValue....1..
-        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.save..id......intValue....1..
-        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf....Integer.valueOf..MainController.save..id......intValue....1..
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+2)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+2)}|\n\
+<#transparent,transparent>|<r>GET: |/{{Integer.valueOf({MainController.get({id})})}.intValue()}+1|\n\
+<#transparent,transparent>|<r>GET: |/{{Integer.valueOf({MainController.save({id})})}.intValue()}+1|" as output.http.http...service2..load.interfaces
+        service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
       }
     }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|ws://currentURI-method|\n\
+      collections "<#transparent,transparent>|id|\n\
+<#transparent,transparent>|ws://currentURI-method|\n\
 <#transparent,transparent>|ws://currentURI-supplier|\n\
 <#transparent,transparent>|ws://defaultURI-static|\n\
 <#transparent,transparent>|ws://service-property-injected|\n\
 <#transparent,transparent>|ws://service-template|\n\
-<#transparent,transparent>|ws://service-template/{id}/|\n\
 <#transparent,transparent>|ws://service2|\n\
 <#transparent,transparent>|ws://service2-value-inject|\n\
 <#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces

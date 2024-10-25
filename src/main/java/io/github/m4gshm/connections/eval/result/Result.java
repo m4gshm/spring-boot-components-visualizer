@@ -69,6 +69,10 @@ public abstract class Result implements ContextAware {
                 storeInstructions);
     }
 
+    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction,
+                                      Result onDuplicate, Result prev) {
+        return new Duplicate(instructionHandle, lastInstruction, onDuplicate, prev);
+    }
 
     public static Delay delay(String description, InstructionHandle instructionHandle, Eval evalContext,
                               Result parent, DelayFunction<Delay> delayFunction) {

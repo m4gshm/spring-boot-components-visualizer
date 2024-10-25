@@ -536,13 +536,12 @@ public class Eval {
                 return methodArg(this, localVariable, instructionHandle, parent);
             }
         } else if (instruction instanceof StoreInstruction) {
-            int position = instructionHandle.getPosition();
+            var position = instructionHandle.getPosition();
             var codeException = Arrays.stream(this.method.getCode().getExceptionTable())
                     .filter(et -> et.getHandlerPC() == position)
                     .findFirst().orElse(null);
             if (codeException != null) {
-                var catchType = constantPoolGen.getConstantPool().getConstantString(
-                        codeException.getCatchType(), CONSTANT_Class);
+                var catchType = constantPoolGen.getConstantPool().getConstantString(codeException.getCatchType(), CONSTANT_Class);
                 var errType = ObjectType.getInstance(catchType);
                 var localVarIndex = ((StoreInstruction) instruction).getIndex();
                 var localVariable = getLocalVariable(this.method, localVarIndex, instructionHandle);
@@ -550,7 +549,12 @@ public class Eval {
                         ? variable(this, localVariable, instructionHandle, parent)
                         : variable(this, localVarIndex, null, errType, instructionHandle, parent);
             } else {
-                return eval(getPrev(instructionHandle), parent, callCache);
+                //log
+                var onSave = getPrev(instructionHandle);
+                //skip
+                var onSaveResult = eval(onSave, callCache);
+                var lastInstruction = getPrev(onSaveResult.getLastInstruction());
+                return eval(lastInstruction, parent, callCache);
             }
         } else if (instruction instanceof GETSTATIC) {
             var getStatic = (GETSTATIC) instruction;
@@ -646,10 +650,9 @@ public class Eval {
                 return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay, getComponent(), getMethod());
             });
         } else if (instruction instanceof DUP) {
-            return delay(instructionText, instructionHandle, this, parent, (thisDelay, needResolve, resolver) -> {
-                var prev = instructionHandle.getPrev();
-                return eval(prev, thisDelay, callCache);
-            });
+            var prev = getPrev(instructionHandle);
+            var dup = eval(prev, callCache);
+            return duplicate(instructionHandle, prev, dup, parent);
         } else if (instruction instanceof DUP2) {
 //            return eval(getPrev(instructionHandle), resolver);
         } else if (instruction instanceof POP) {
@@ -728,7 +731,7 @@ public class Eval {
         var aStoreResults = new ArrayList<Result>(localVariables.size());
         var cycleCheck = new IdentityHashMap<InstructionHandle, InstructionHandle>();
         while (prev != null) {
-            InstructionHandle existed = cycleCheck.put(prev, prev);
+            var existed = cycleCheck.put(prev, prev);
             if (existed != null) {
                 var instText = getInstructionString(instructionHandle, constantPoolGen);
                 throw new IllegalStateException("cycle detected, " + instText);
@@ -737,12 +740,17 @@ public class Eval {
             if (instruction instanceof StoreInstruction) {
                 var store = (StoreInstruction) instruction;
                 if (store.getIndex() == index) {
-                    var storedInLocal = eval(prev, parent, callCache);
+                    var onStore = getPrev(prev);
+                    var storedInLocal = eval(onStore, parent, callCache);
                     aStoreResults.add(storedInLocal);
+                    prev = getPrev(storedInLocal.getLastInstruction());
+                } else {
                     prev = getPrev(prev);
                 }
+            } else {
+                prev = getPrev(prev);
             }
-            prev = getPrev(prev);
+
         }
         return aStoreResults;
     }

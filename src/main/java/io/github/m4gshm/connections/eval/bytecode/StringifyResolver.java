@@ -422,7 +422,6 @@ public class StringifyResolver implements Resolver {
             return result.getValue(this::stringifyUnresolved);
         } catch (EvalBytecodeException e) {
             if (failFast) {
-                stringifyUnresolved(result, e);
                 throw new IllegalStateException("unexpected eval bytecode error", e);
             } else {
                 throw e;
