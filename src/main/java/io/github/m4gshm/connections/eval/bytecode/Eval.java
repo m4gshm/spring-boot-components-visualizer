@@ -1014,8 +1014,7 @@ public class Eval {
         } else {
             //one arguments variant per a call point
             if (allResolved) {
-                var argumentVariants = getArgumentVariants();
-                if (!argumentVariants.isEmpty()) {
+                if (!this.argumentVariants.isEmpty()) {
                     return List.of(parameters);
                 }
 //                //todo optionally return all resolved for uncalled context method
