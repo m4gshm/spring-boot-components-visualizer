@@ -446,7 +446,7 @@ public class Eval {
         return contextComponent.equals(unresolved.getComponent());
     }
 
-    private Map<Integer, List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
+    private Map<Integer, List<Result>> resolveParameters(List<Result> parameters, Resolver resolver) {
         var resolvedParameters = new HashMap<Integer, List<Result>>();
         for (int i = 0; i < parameters.size(); i++) {
             try {
@@ -842,7 +842,7 @@ public class Eval {
                                              BiFunction<List<ParameterValue>, InstructionHandle, Result> call
     ) throws NotInvokedException {
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
-        var parameterVariants = resolveInvokeParameters(invoke, parameters, resolver, true);
+        var parameterVariants = resolveInvokeParameters(parameters, resolver);
         if (parameterVariants.isEmpty()) {
             throw new NotInvokedException(noParameterVariants, invoke, parameters);
         }
@@ -998,19 +998,30 @@ public class Eval {
         return new InvokeObject(firstInstruction, lastInstruction, objectCallResult);
     }
 
-    public List<List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver,
-                                                      boolean resolveUncalledVariants) {
+    public List<List<Result>> resolveInvokeParameters(List<Result> parameters, Resolver resolver) {
         if (parameters.isEmpty()) {
             return List.of(parameters);
         }
-
+        var allResolved = parameters.stream().allMatch(Result::isResolved);
         if (!(this.arguments == null || this.arguments.isEmpty())) {
+            if (allResolved) {
+                return List.of(parameters);
+            }
+            //inside a call point
             var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
             int dimensions = getDimensions(parameterVariants);
             return flatResolvedVariants(dimensions, parameterVariants, parameters);
         } else {
-            var resolvedAll = resolveParameters(invoke, parameters, resolver, resolveUncalledVariants);
-
+            //one arguments variant per a call point
+            if (allResolved) {
+                var argumentVariants = getArgumentVariants();
+                if (!argumentVariants.isEmpty()) {
+                    return List.of(parameters);
+                }
+//                //todo optionally return all resolved for uncalled context method
+//                    return List.of(parameters);
+            }
+            var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
             var resolvedParamVariants = new ArrayList<List<Result>>();
             for (var resolvedVariantMap : resolvedAll) {
                 var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
@@ -1040,12 +1051,10 @@ public class Eval {
         }
     }
 
-    private List<Map<Integer, List<Result>>> resolveParameters(DelayInvoke invoke, List<Result> parameters,
-                                                               Resolver resolver, boolean resolveUncalledVariants) {
+    private List<Map<Integer, List<Result>>> resolveParametersWithContextArgumentVariants(List<Result> parameters, Resolver resolver) {
         var resolvedAll = new ArrayList<Map<Integer, List<Result>>>();
-        var argumentVariants = getArgumentVariants();
-        for (var arguments : argumentVariants) {
-            var evalContextArgs = getEvalContextArgs(arguments, resolveUncalledVariants, resolver);
+        for (var arguments : this.argumentVariants) {
+            var evalContextArgs = getEvalContextArgs(arguments, resolver);
             if (evalContextArgs != null) {
                 var dimensions = evalContextArgs.values().stream()
                         .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
@@ -1053,7 +1062,7 @@ public class Eval {
                 var evalContextArgsVariants = getEvalContextArgsVariants(dimensions, evalContextArgs);
                 for (var variant : evalContextArgsVariants) {
                     var evalWithArguments = this.withArguments(variant);
-                    var resolvedVars = evalWithArguments.resolveInvokeParameters(invoke, parameters, resolver);
+                    var resolvedVars = evalWithArguments.resolveParameters(parameters, resolver);
                     if (resolvedVars != null) {
                         resolvedAll.add(resolvedVars);
                     }
@@ -1063,7 +1072,7 @@ public class Eval {
         return resolvedAll;
     }
 
-    private Map<Integer, Result> getEvalContextArgs(List<Result> arguments, boolean resolveNoCall, Resolver resolver) {
+    private Map<Integer, Result> getEvalContextArgs(List<Result> arguments, Resolver resolver) {
         var evalContextArgs = new HashMap<Integer, Result>();
         for (int i = 0; i < arguments.size(); i++) {
             var value = arguments.get(i);
@@ -1074,7 +1083,7 @@ public class Eval {
                 var unresolved = e.getResult();
                 var sameLevel = isSameLevel(unresolved, this.getComponent());
                 //log
-                if (resolveNoCall && !sameLevel && resolver != null) {
+                if (!sameLevel && resolver != null) {
                     resolved = resolver.resolve(value, e);
                 } else {
                     return null;

@@ -26,11 +26,10 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
     final Class<?> componentType;
     Result result;
     boolean evaluated;
-    boolean resolved;
 
-    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval eval,
-                 String description, DelayFunction<? extends Delay> evaluator, Result prev, Result result,
-                 boolean evaluated, boolean resolved) {
+    public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+                 Eval eval, String description, DelayFunction<? extends Delay> evaluator,
+                 Result prev, Result result, boolean evaluated) {
         super(firstInstruction, lastInstruction);
         this.eval = eval;
         this.description = description;
@@ -38,7 +37,6 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
         this.prev = prev;
         this.result = result;
         this.evaluated = evaluated;
-        this.resolved = resolved;
         component = eval.getComponent();
         method = eval.getMethod();
         componentType = eval.getComponent().getType();
@@ -64,13 +62,12 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
     public Result getDelayed(boolean resolve, Resolver resolver) {
         var result = this.result;
         var evaluate = !resolve;
-        if (resolve && !resolved) {
+        if (resolve && !isResolved()) {
             result = evaluator.call(this, true, resolver);
             if (result == this) {
                 throw new EvalBytecodeException("looped delay 1");
             }
             this.result = result;
-            this.resolved = true;
             this.evaluated = true;
         } else if (evaluate && !evaluated) {
             result = evaluator.call(this, false, resolver);
@@ -81,17 +78,22 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
     }
 
     public Delay evaluated(InstructionHandle lastInstruction) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true);
     }
 
     public Delay withEval(Eval eval) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true, false);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true);
     }
 
     @Override
     public String toString() {
         var txt = description == null || description.isBlank() ? "" : description + ",";
-        return "delay(" + txt + "evaluated:" + evaluated + ", resolved:" + resolved + ")";
+        return "delay(" + txt + "evaluated:" + isEvaluated() + ", resolved:" + isResolved() + ")";
+    }
+
+    @Override
+    public boolean isResolved() {
+        return result != null && result.isResolved();
     }
 
     @Override

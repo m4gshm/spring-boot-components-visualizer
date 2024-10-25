@@ -17,7 +17,7 @@ public class DelayLoadFromStore extends Delay {
     public DelayLoadFromStore(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                               Eval evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
                               Result prev, List<Result> storeInstructions) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true, false);
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true);
         this.storeInstructions = storeInstructions;
     }
 

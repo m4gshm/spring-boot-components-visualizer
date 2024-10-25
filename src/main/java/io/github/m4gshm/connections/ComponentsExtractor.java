@@ -299,18 +299,18 @@ public class ComponentsExtractor {
                                          EvalContextFactory evalContextFactory, Resolver resolver) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
                 .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
+        var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
+                .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
+                .collect(toList());
 
         var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
         var outJmsInterfaces = getOutJmsInterfaces(component, componentName, dependencies,
                 callCache, evalContextFactory, resolver);
         var outWsInterfaces = getOutWsInterfaces(component, componentName, dependencies,
                 callCache, evalContextFactory, resolver);
+
         var outRestOperationsHttpInterface = getOutRestTemplateInterfaces(component, componentName,
                 dependencies, callCache, evalContextFactory, resolver);
-
-        var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
-                .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
-                .collect(toList());
 
         return of(
                 inHttpInterfaces.stream(), inJmsInterface.stream(),

@@ -76,7 +76,7 @@ public abstract class Result implements ContextAware {
 
     public static Delay delay(String description, InstructionHandle instructionHandle, Eval evalContext,
                               Result parent, DelayFunction<Delay> delayFunction) {
-        return new Delay(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent, null, false, false);
+        return new Delay(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent, null, false);
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Eval evalContext,

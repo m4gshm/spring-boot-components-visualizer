@@ -21,7 +21,7 @@ public class DelayInvoke extends Delay {
     public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
                        String description, DelayFunction<DelayInvoke> evaluator, Result prev,
                        Result object, List<Result> arguments) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true, false);
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true);
         this.object = object;
         this.arguments = arguments;
     }

@@ -420,6 +420,9 @@ public class StringifyResolver implements Resolver {
     private List<Object> stringifyValue(Result result) {
         try {
             return result.getValue(this::stringifyUnresolved);
+        } catch (NotInvokedException e) {
+            //log
+            throw e;
         } catch (EvalBytecodeException e) {
             if (failFast) {
                 throw new IllegalStateException("unexpected eval bytecode error", e);
