@@ -75,7 +75,12 @@ public class RestOperationsUtils {
 
         return variants.stream().flatMap(variant -> {
             var pathArg = variant.get(1);
-            var methodId = newMethodId(pathArg.getMethod());
+            var pathArgMethod = pathArg.getMethod();
+            if (variant instanceof Result.RelationsAware) {
+                var relationsAware = (Result.RelationsAware) variant;
+                var relations = relationsAware.getRelations();
+            }
+            var methodId = newMethodId(pathArgMethod);
             return getHttpMethodStream(variant, methodName, pathArg, resolver, methodId);
         }).collect(toList());
     }

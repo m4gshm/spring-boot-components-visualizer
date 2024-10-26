@@ -1186,8 +1186,11 @@ public class Eval {
                 result = collapse(resolvedVariants, variable.getFirstInstruction(), variable.getLastInstruction(),
                         constantPoolGen, component, method);
             } else {
-                //todo may be need to resolve here by resolver
-                result = variable;
+                if (resolver != null) {
+                    result = resolver.resolve(value, null);
+                } else {
+                    result = variable;
+                }
             }
         } else if (value instanceof Delay) {
             try {

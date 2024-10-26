@@ -77,6 +77,8 @@ cloud "output" as output #line.dotted;line:gray; {
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       interface "GET:/{id}" as out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
+      interface "GET:/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}" as out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
+      service2LegacyImpl ....( out.GET.http...service2.load.deprecated..Service2LegacyImpl.getDeprecated..id...
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
         collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+2)}|\n\
 <#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+2)}|\n\

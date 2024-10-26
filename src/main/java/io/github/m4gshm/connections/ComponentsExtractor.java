@@ -143,9 +143,9 @@ public class ComponentsExtractor {
         if (!iface.isExternalCallable() && methodRef != null) {
             var methodName = methodRef.getName();
             var argumentTypes = methodRef.getArgumentTypes();
-            var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
-                    dependent, callPointsCache);
-            var uncalled = methodCallPoints.isEmpty();
+            var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes, dependent, callPointsCache);
+            var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
+            var uncalled = anotherDependent.isEmpty();
             if (uncalled) {
                 log.info("exclude unused interface {} of component {}", iface.getId(), component.getName());
             }

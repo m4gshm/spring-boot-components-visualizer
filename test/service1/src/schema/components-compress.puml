@@ -72,8 +72,10 @@ cloud "output" as output #line.dotted;line:gray; {
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
-      interface "GET:/{id}" as out.GET.http...service2..id.
-      service2FeignClient ....( out.GET.http...service2..id.
+      collections "<#transparent,transparent>|<r>GET: |/{id}|\n\
+<#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|" as output.http.http...service2.interfaces
+      service2FeignClient ....(0 output.http.http...service2.interfaces
+      service2LegacyImpl ....(0 output.http.http...service2.interfaces
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
         collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+2)}|\n\
 <#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+2)}|\n\
