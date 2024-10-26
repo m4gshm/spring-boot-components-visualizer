@@ -1,6 +1,5 @@
 package io.github.m4gshm.connections.eval.bytecode;
 
-import lombok.AccessLevel;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 
@@ -10,7 +9,7 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Data
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class MethodCallInfo {
+public class MethodInvokeContext {
     Method method;
     Object object;
     Object[] arguments;

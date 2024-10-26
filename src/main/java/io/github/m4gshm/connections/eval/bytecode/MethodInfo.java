@@ -7,6 +7,7 @@ import org.apache.bcel.generic.Type;
 
 import java.util.Arrays;
 
+import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getClassByName;
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
@@ -23,7 +24,7 @@ public class MethodInfo {
             var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
             var methodName = constantNameAndType.getName(cp);
             var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = EvalBytecodeUtils.getClassByName(constantCP.getClass(cp));
+            var targetClass = getClassByName(constantCP.getClass(cp));
             var referenceKind = constant.getReferenceKind();
             return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
         } else {

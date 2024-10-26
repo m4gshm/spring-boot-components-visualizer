@@ -2,6 +2,7 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.MethodId;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
@@ -16,6 +17,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
+import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
 
@@ -95,19 +97,6 @@ public class CallPointsHelper {
                 .build();
     }
 
-    public static List<CallPoint> findInvokeDynamicCalls(InstructionHandle parent,
-                                                         InstructionHandle toLast, InstructionHandle fromFirst,
-                                                         BootstrapMethods bootstrapMethods, ConstantPoolGen constantPoolGen) {
-        var dest = new ArrayList<CallPoint>();
-        ofNullable(newInvokeDynamicCallPoint(parent, bootstrapMethods, constantPoolGen)).ifPresent(dest::add);
-        //reverse loop
-        while (fromFirst != null && fromFirst.getPosition() >= toLast.getPosition()) {
-            ofNullable(newInvokeDynamicCallPoint(fromFirst, bootstrapMethods, constantPoolGen)).ifPresent(dest::add);
-            fromFirst = fromFirst.getPrev();
-        }
-        return dest;
-    }
-
     private static CallPoint newInvokeDynamicCallPoint(InstructionHandle instructionHandle,
                                                        BootstrapMethods bootstrapMethods,
                                                        ConstantPoolGen constantPoolGen) {
@@ -130,20 +119,6 @@ public class CallPointsHelper {
             }
         }
         return null;
-    }
-
-    public static List<CallPoint> findInvokeCalls(InstructionHandle fromLast, InstructionHandle toFirst,
-                                                  ConstantPoolGen constantPoolGen) {
-        var dest = new ArrayList<CallPoint>();
-        while (fromLast != null && fromLast.getPosition() >= toFirst.getPosition()) {
-            var instruction = fromLast.getInstruction();
-            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE) {
-                var callPoint = newInvokeCallPoint(fromLast, (InvokeInstruction) instruction, constantPoolGen);
-                dest.add(callPoint);
-            }
-            fromLast = fromLast.getPrev();
-        }
-        return dest;
     }
 
     private static CallPoint newInvokeCallPoint(InstructionHandle instructionHandle, InvokeInstruction instruction,

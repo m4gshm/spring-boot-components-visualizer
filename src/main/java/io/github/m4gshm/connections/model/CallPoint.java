@@ -5,13 +5,10 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
-import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static lombok.AccessLevel.PRIVATE;
 

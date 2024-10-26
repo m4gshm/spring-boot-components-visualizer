@@ -1002,7 +1002,12 @@ public class Eval {
         if (parameters.isEmpty()) {
             return List.of(parameters);
         }
+
         var allResolved = parameters.stream().allMatch(Result::isResolved);
+        if (allResolved) {
+            return List.of(parameters);
+        }
+
         if (!(this.arguments == null || this.arguments.isEmpty())) {
             if (allResolved) {
                 return List.of(parameters);
@@ -1012,13 +1017,19 @@ public class Eval {
             int dimensions = getDimensions(parameterVariants);
             return flatResolvedVariants(dimensions, parameterVariants, parameters);
         } else {
+            var noArgumentVariants = this.argumentVariants.isEmpty();
             //one arguments variant per a call point
             if (allResolved) {
-                if (!this.argumentVariants.isEmpty()) {
+                if (!noArgumentVariants) {
                     return List.of(parameters);
                 }
-//                //todo optionally return all resolved for uncalled context method
-//                    return List.of(parameters);
+            }
+            if (noArgumentVariants && resolver != null) {
+                //not callpoints, try to resolve by the resolver
+                //todo experiment
+                var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
+                int dimensions = getDimensions(parameterVariants);
+                return flatResolvedVariants(dimensions, parameterVariants, parameters);
             }
             var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
             var resolvedParamVariants = new ArrayList<List<Result>>();
@@ -1119,7 +1130,7 @@ public class Eval {
             result = declaredMethod.invoke(object, args);
         } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
             //log
-            throw new IllegalInvokeException(e, new MethodCallInfo(declaredMethod, object, args), invokeInstruction, invoke);
+            throw new IllegalInvokeException(e, new MethodInvokeContext(declaredMethod, object, args), invokeInstruction, invoke);
         }
         if (log.isDebugEnabled()) {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName,

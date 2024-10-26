@@ -17,6 +17,8 @@ public class Interface {
     String id;
     Direction direction;
     Type type;
+    MethodId ref;
+    boolean externalCallable;
 
     public CharSequence getName() {
         var name = this.name != null ? this.name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;

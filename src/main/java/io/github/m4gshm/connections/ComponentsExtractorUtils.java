@@ -41,6 +41,7 @@ import static io.github.m4gshm.connections.model.HttpMethod.ALL;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
 import static io.github.m4gshm.connections.model.Interface.Type.jms;
 import static io.github.m4gshm.connections.model.Interface.Type.ws;
+import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
@@ -222,7 +223,7 @@ public class ComponentsExtractorUtils {
                 var httpMethod = template.method();
                 var method = metadata.method();
                 var url = template.url();
-                return HttpMethod.builder().method(httpMethod).path(url).handler(method).build();
+                return HttpMethod.builder().method(httpMethod).path(url).ref(newMethodId(method)).build();
             }).collect(toList());
 
             var type = target.type();
@@ -287,14 +288,18 @@ public class ComponentsExtractorUtils {
         }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    public static Interface newInterface(JmsClient jmsClient) {
+    public static Interface newInterface(JmsClient jmsClient, boolean contextManaged) {
         var destination = jmsClient.getDestination();
-        return Interface.builder().direction(jmsClient.getDirection()).type(jms)
+        return Interface.builder()
+                .direction(jmsClient.getDirection())
+                .type(jms)
                 .name(destination)
                 .core(JmsClient.Destination.builder()
                         .destination(destination)
                         .direction(jmsClient.getDirection())
                         .build())
+                .ref(jmsClient.getRef())
+                .externalCallable(contextManaged)
                 .build();
     }
 

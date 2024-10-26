@@ -10,6 +10,7 @@ import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Interface.Direction;
+import io.github.m4gshm.connections.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.generic.*;
@@ -28,6 +29,7 @@ import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
+import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 
@@ -76,9 +78,7 @@ public class JmsOperationsUtils {
         if (direction == undefined) {
             return List.of();
         } else {
-
             var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
-
             var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
             var results = variants.stream().flatMap(paramVariant -> {
@@ -91,13 +91,14 @@ public class JmsOperationsUtils {
     private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
                                                         String methodName, Eval eval, Resolver resolver) {
         try {
+            var ref = newMethodId(eval.getMethod());
             if (paramVariant.size() < 2) {
-                return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName));
+                return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName, ref));
             } else {
                 var first = paramVariant.get(1);
                 var resolved = eval.resolveExpand(first, resolver);
                 return resolved.stream().flatMap(v -> v.getValue(resolver).stream())
-                        .map(v -> newJmsClient(getDestination(v), direction, methodName));
+                        .map(v -> newJmsClient(getDestination(v), direction, methodName, ref));
             }
         } catch (NotInvokedException e) {
             //log
@@ -105,11 +106,12 @@ public class JmsOperationsUtils {
         }
     }
 
-    private static JmsClient newJmsClient(String destination, Direction direction, String methodName) {
+    private static JmsClient newJmsClient(String destination, Direction direction, String methodName, MethodId ref) {
         return JmsClient.builder()
                 .destination(destination)
                 .direction(direction)
                 .name(methodName)
+                .ref(ref)
                 .build();
     }
 

@@ -11,7 +11,6 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.generic.ObjectType;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -92,7 +91,7 @@ public class ComponentsExtractor {
                         var joinURI = joinURI(clientUrl, methodUrl);
                         httpMethod = httpMethod.toBuilder().path(joinURI).build();
                     }
-                    return Interface.builder().direction(out).type(http).core(httpMethod).build();
+                    return Interface.builder().direction(out).type(http).core(httpMethod).ref(httpMethod.getRef()).build();
                 })).collect(toLinkedHashSet());
     }
 
@@ -111,6 +110,48 @@ public class ComponentsExtractor {
         return components.stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
                         .map(dependency -> entry(dependency, c))))
                 .collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+    }
+
+    private static Map<Component, Component> filterUnusedInterfaces(
+            Map<Component, List<Component>> dependencyToDependentMap,
+            Map<Component, List<CallPoint>> callPointsCache
+    ) {
+        return dependencyToDependentMap.entrySet().stream().map(e -> {
+            var component = e.getKey();
+            var dependent = e.getValue();
+            var changedComponent = filterUnusedInterfaces(component, dependent, callPointsCache);
+            return changedComponent != null ? Map.entry(component, changedComponent) : null;
+        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
+    }
+
+    private static Component filterUnusedInterfaces(Component component, List<Component> dependent,
+                                                    Map<Component, List<CallPoint>> callPointsCache) {
+        var interfaces = component.getInterfaces();
+        if (interfaces == null || interfaces.isEmpty()) {
+            return component;
+        }
+        var usedInterfaces = interfaces.stream().filter(iface -> {
+            return isCalled(iface, component, dependent, callPointsCache);
+        }).collect(toLinkedHashSet());
+
+        return !interfaces.equals(usedInterfaces) ? component.toBuilder().interfaces(usedInterfaces).build() : component;
+    }
+
+    private static boolean isCalled(Interface iface, Component component, List<Component> dependent,
+                                    Map<Component, List<CallPoint>> callPointsCache) {
+        var methodRef = iface.getRef();
+        if (!iface.isExternalCallable() && methodRef != null) {
+            var methodName = methodRef.getName();
+            var argumentTypes = methodRef.getArgumentTypes();
+            var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
+                    dependent, callPointsCache);
+            var uncalled = methodCallPoints.isEmpty();
+            if (uncalled) {
+                log.info("exclude unused interface {} of component {}", iface.getId(), component.getName());
+            }
+            return !uncalled;
+        }
+        return true;
     }
 
     public Components getComponents() {
@@ -148,42 +189,8 @@ public class ComponentsExtractor {
 
         //filter use methods of Feign clients
         var dependencyToDependentMap = getDependencyToDependentMap(components);
-        var changedComponents = this.options.isIncludeUnusedFeignClientMethodsInInterfaces()
-                ? Map.<Component, Component>of()
-                : dependencyToDependentMap.entrySet().stream().map(e -> {
-            var component = e.getKey();
-            var dependent = e.getValue();
-
-            var interfaces = component.getInterfaces();
-            if (interfaces == null) {
-                return null;
-            }
-            var usedInterfaces = interfaces.stream().filter(i -> i.getType() == http).filter(i -> {
-                var core = i.getCore();
-                var httpMethod = core instanceof HttpMethod ? (HttpMethod) core : null;
-                var httpMethodHandler = httpMethod != null ? httpMethod.getHandler() : null;
-                if (httpMethodHandler != null) {
-                    var methodName = httpMethodHandler.getName();
-                    var argumentTypes = ObjectType.getTypes(httpMethodHandler.getParameterTypes());
-
-                    var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes,
-                            dependent, callPointsCache);
-                    var uncalled = methodCallPoints.isEmpty();
-                    if (uncalled) {
-                        log.info("exclude unused http method {} of component {}", httpMethod, component.getName());
-                    }
-                    return !uncalled;
-                }
-                return true;
-            }).collect(toLinkedHashSet());
-
-            if (!interfaces.equals(usedInterfaces)) {
-                var changedComponent = component.toBuilder().interfaces(usedInterfaces).build();
-                return entry(component, changedComponent);
-            } else {
-                return null;
-            }
-        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
+        var changedComponents = !this.options.isIncludeUnusedFeignClientMethodsInInterfaces()
+                ? filterUnusedInterfaces(dependencyToDependentMap, callPointsCache) : Map.<Component, Component>of();
 
         var dependencyToDependentMap1 = dependencyToDependentMap.entrySet().stream().map(e -> {
             var component = e.getKey();
@@ -191,32 +198,38 @@ public class ComponentsExtractor {
             var changed = changedComponents.get(component);
             return entry(changed != null ? changed : component, dependent);
         }).collect(toMap(Entry::getKey, Entry::getValue));
+
         var evalContextFactory = new EvalContextFactoryCacheImpl(
                 new EvalContextFactoryImpl(dependencyToDependentMap1, callPointsCache, callCache),
                 new HashMap<>()
         );
 
-        Resolver resolver = StringifyResolver.newStringify(callCache);
+        var resolver = StringifyResolver.newStringify(callCache);
 
         Set<Component> filteredComponentsWithInterfaces = components.stream().map(component -> {
             var changed = changedComponents.get(component);
             return changed != null ? changed : component;
-        }).map(c -> {
-            var exists = c.getInterfaces();
-            var interfaces = getInterfaces(c, c.getName(), c.getType(), c.getDependencies(), callCache, evalContextFactory, resolver);
+        }).map(component -> {
+            var exists = component.getInterfaces();
+            var interfaces = getInterfaces(component, component.getName(), component.getType(), component.getDependencies(), callCache, evalContextFactory, resolver);
             if (exists == null) {
                 exists = interfaces;
             } else if (interfaces != null && !interfaces.isEmpty()) {
                 exists = new LinkedHashSet<>(exists);
                 exists.addAll(interfaces);
             }
-            return c.toBuilder().interfaces(exists).build();
+            return component.toBuilder().interfaces(exists).build();
         }).map(component -> options.isIgnoreNotFoundDependencies()
                 ? getComponentWithFilteredDependencies(component, componentsPerName)
                 : component
         ).collect(toLinkedHashSet());
 
-        return Components.builder().components(filteredComponentsWithInterfaces).build();
+        var componentsWithUserInterfaces = filteredComponentsWithInterfaces.stream().map(component -> {
+            var changed = filterUnusedInterfaces(component, dependencyToDependentMap1.get(component), callPointsCache);
+            return changed;
+        }).collect(toList());
+
+        return Components.builder().components(componentsWithUserInterfaces).build();
     }
 
     protected Stream<Entry<String, Class<?>>> getFilteredBeanNameWithType(Stream<String> beanNames) {
@@ -298,9 +311,10 @@ public class ComponentsExtractor {
                                          Set<Component> dependencies, Map<CallCacheKey, Result> callCache,
                                          EvalContextFactory evalContextFactory, Resolver resolver) {
         var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory())
-                .stream().map(ComponentsExtractorUtils::newInterface).collect(toList());
+                .stream().map(jmsClient -> newInterface(jmsClient, true)).collect(toList());
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
-                .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).build())
+                .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod)
+                        .externalCallable(true).build())
                 .collect(toList());
 
         var repositoryEntityInterfaces = getRepositoryEntityInterfaces(componentName, componentType);
@@ -419,7 +433,7 @@ public class ComponentsExtractor {
         var jmsTemplate = findDependencyByType(dependencies, () -> JmsOperations.class);
         if (jmsTemplate != null) try {
             var jmsClients = extractJmsClients(component, callCache, evalContextFactory, resolver);
-            return jmsClients.stream().map(ComponentsExtractorUtils::newInterface).collect(toLinkedHashSet());
+            return jmsClients.stream().map(jmsClient -> newInterface(jmsClient, false)).collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
         }
@@ -436,6 +450,7 @@ public class ComponentsExtractor {
                     .map(uri -> Interface.builder()
                             .direction(out).type(ws).name(uri)
                             .id(getWebsocketInterfaceId(out, uri))
+                            .externalCallable(false)
                             .build())
                     .collect(toLinkedHashSet());
 
@@ -456,6 +471,7 @@ public class ComponentsExtractor {
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)
                             .core(httpMethod)
+                            .ref(httpMethod.getRef())
                             .build())
                     .collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
@@ -672,6 +688,7 @@ public class ComponentsExtractor {
         String name;
         String destination;
         Direction direction;
+        MethodId ref;
 
         @Data
         @Builder

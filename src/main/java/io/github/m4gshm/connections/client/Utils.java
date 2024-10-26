@@ -23,7 +23,7 @@ public class Utils {
         try {
             return eval.resolveInvokeParameters(invoke, parameters, resolver);
         } catch (NotInvokedException e) {
-            log.info("no call variants for {} inside {}", methodName, component.getName());
+            log.info("no call variants for {} inside {}", eval.getMethod().getName(), component.getName());
             return List.of();
         }
     }
