@@ -4,6 +4,7 @@ import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.eval.bytecode.*;
 import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
+import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
@@ -11,6 +12,7 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.generic.Type;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -76,13 +78,12 @@ public class ComponentsExtractor {
     private final ConfigurableApplicationContext context;
     private final Options options;
 
-
     public ComponentsExtractor(ConfigurableApplicationContext context, Options options) {
         this.context = context;
         this.options = options != null ? options : Options.DEFAULT;
     }
 
-    private static LinkedHashSet<Interface> getOutFeignHttpInterfaces(FeignClient feignClient) {
+    private static Set<Interface> getOutFeignHttpInterfaces(FeignClient feignClient) {
         return ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
                 .filter(Objects::nonNull).flatMap(Collection::stream).map(httpMethod -> {
                     var clientUrl = client.getUrl();
@@ -91,7 +92,9 @@ public class ComponentsExtractor {
                         var joinURI = joinURI(clientUrl, methodUrl);
                         httpMethod = httpMethod.toBuilder().path(joinURI).build();
                     }
-                    return Interface.builder().direction(out).type(http).core(httpMethod).ref(httpMethod.getRef()).build();
+                    return Interface.builder().direction(out).type(http).core(httpMethod)
+                            .methodSource(httpMethod.getMethodSource())
+                            .build();
                 })).collect(toLinkedHashSet());
     }
 
@@ -116,42 +119,69 @@ public class ComponentsExtractor {
             Map<Component, List<Component>> dependencyToDependentMap,
             Map<Component, List<CallPoint>> callPointsCache
     ) {
-        return dependencyToDependentMap.entrySet().stream().map(e -> {
-            var component = e.getKey();
-            var dependent = e.getValue();
-            var changedComponent = filterUnusedInterfaces(component, dependent, callPointsCache);
+        return dependencyToDependentMap.keySet().stream().map(component -> {
+            var changedComponent = filterUnusedInterfaces(component, dependencyToDependentMap, callPointsCache);
             return changedComponent != null ? Map.entry(component, changedComponent) : null;
         }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
     }
 
-    private static Component filterUnusedInterfaces(Component component, List<Component> dependent,
+    private static Component filterUnusedInterfaces(Component component,
+                                                    Map<Component, List<Component>> dependencyToDependentMap,
                                                     Map<Component, List<CallPoint>> callPointsCache) {
         var interfaces = component.getInterfaces();
         if (interfaces == null || interfaces.isEmpty()) {
             return component;
         }
         var usedInterfaces = interfaces.stream().filter(iface -> {
-            return isCalled(iface, component, dependent, callPointsCache);
+            return isCalled(iface, component, dependencyToDependentMap, callPointsCache);
         }).collect(toLinkedHashSet());
-
         return !interfaces.equals(usedInterfaces) ? component.toBuilder().interfaces(usedInterfaces).build() : component;
     }
 
-    private static boolean isCalled(Interface iface, Component component, List<Component> dependent,
+    private static boolean isCalled(Interface iface, Component component,
+                                    Map<Component, List<Component>> dependencyToDependentMap,
                                     Map<Component, List<CallPoint>> callPointsCache) {
-        var methodRef = iface.getRef();
-        if (!iface.isExternalCallable() && methodRef != null) {
-            var methodName = methodRef.getName();
-            var argumentTypes = methodRef.getArgumentTypes();
-            var methodCallPoints = getCallPoints(component.getType(), methodName, argumentTypes, dependent, callPointsCache);
-            var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
-            var uncalled = anotherDependent.isEmpty();
-            if (uncalled) {
-                log.info("exclude unused interface {} of component {}", iface.getId(), component.getName());
+        if (!iface.isExternalCallable()) {
+            var result = iface.getEvalSource();
+            var methodSource = iface.getMethodSource();
+            if (result != null) {
+                var relations = getTopRelations(result);
+                var allUncalled = relations.stream().allMatch(relation -> {
+                    var method = relation.getMethod();
+                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
+                            dependencyToDependentMap, callPointsCache);
+                });
+                return !allUncalled;
+            } else if (methodSource != null) {
+                return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
+                        dependencyToDependentMap, callPointsCache);
             }
-            return !uncalled;
         }
         return true;
+    }
+
+    private static boolean isUncalled(Interface iface, Component component,
+                                      Component relatedComponent, String methodName, Type[] methodArgumentTypes,
+                                      Map<Component, List<Component>> dependencyToDependentMap,
+                                      Map<Component, List<CallPoint>> callPointsCache) {
+        var methodCallPoints = getCallPoints(relatedComponent, methodName, methodArgumentTypes,
+                dependencyToDependentMap, callPointsCache);
+        var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
+        var uncalled = anotherDependent.isEmpty();
+        if (uncalled) {
+            log.info("exclude unused interface {} of component {}", iface.getId(), component.getName());
+        }
+        return uncalled;
+    }
+
+    private static Set<Result> getTopRelations(Result result) {
+        if (result instanceof RelationsAware) {
+            var relations = ((RelationsAware) result).getRelations();
+            if (!relations.isEmpty()) {
+                return relations.stream().flatMap(r -> getTopRelations(r).stream()).collect(toSet());
+            }
+        }
+        return Set.of(result);
     }
 
     public Components getComponents() {
@@ -211,7 +241,8 @@ public class ComponentsExtractor {
             return changed != null ? changed : component;
         }).map(component -> {
             var exists = component.getInterfaces();
-            var interfaces = getInterfaces(component, component.getName(), component.getType(), component.getDependencies(), callCache, evalContextFactory, resolver);
+            var interfaces = getInterfaces(component, component.getName(), component.getType(),
+                    component.getDependencies(), callCache, evalContextFactory, resolver);
             if (exists == null) {
                 exists = interfaces;
             } else if (interfaces != null && !interfaces.isEmpty()) {
@@ -225,7 +256,7 @@ public class ComponentsExtractor {
         ).collect(toLinkedHashSet());
 
         var componentsWithUserInterfaces = filteredComponentsWithInterfaces.stream().map(component -> {
-            var changed = filterUnusedInterfaces(component, dependencyToDependentMap1.get(component), callPointsCache);
+            var changed = filterUnusedInterfaces(component, dependencyToDependentMap, callPointsCache);
             return changed;
         }).collect(toList());
 
@@ -460,9 +491,10 @@ public class ComponentsExtractor {
         return Set.of();
     }
 
-    protected Set<Interface> getOutRestTemplateInterfaces(Component component, String componentName,
-                                                          Collection<Component> dependencies, Map<CallCacheKey, Result> callCache,
-                                                          EvalContextFactory evalContextFactory, Resolver resolver) {
+    protected Set<Interface> getOutRestTemplateInterfaces(
+            Component component, String componentName, Collection<Component> dependencies,
+            Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory, Resolver resolver
+    ) {
         var restTemplate = findDependencyByType(dependencies, () -> RestOperations.class);
         if (restTemplate != null) try {
             var httpMethods = extractRestOperationsUris(component,
@@ -471,7 +503,8 @@ public class ComponentsExtractor {
                     .map(httpMethod -> Interface.builder()
                             .direction(out).type(http)
                             .core(httpMethod)
-                            .ref(httpMethod.getRef())
+                            .evalSource(httpMethod.getEvalSource())
+                            .methodSource(httpMethod.getMethodSource())
                             .build())
                     .collect(toLinkedHashSet());
         } catch (EvalBytecodeException e) {
@@ -688,7 +721,8 @@ public class ComponentsExtractor {
         String name;
         String destination;
         Direction direction;
-        MethodId ref;
+        MethodId methodSource;
+        Result evalSource;
 
         @Data
         @Builder

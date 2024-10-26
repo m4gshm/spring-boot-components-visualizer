@@ -8,7 +8,6 @@ import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
-import io.github.m4gshm.connections.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -26,7 +25,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
-import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -46,10 +44,8 @@ public class RestOperationsUtils {
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
-                return match
-                        ? extractHttpMethods(component, instructionHandle,
-                        constantPoolGen, bootstrapMethods, method, callCache, evalContextFactory, resolver)
-                        : null;
+                return match ? extractHttpMethods(component, instructionHandle, constantPoolGen, bootstrapMethods,
+                        method, callCache, evalContextFactory, resolver) : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
     }
@@ -59,14 +55,13 @@ public class RestOperationsUtils {
         return expectedClass.getName().equals(className);
     }
 
-    private static List<HttpMethod> extractHttpMethods(Component component,
-                                                       InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-                                                       BootstrapMethods bootstrapMethods, Method method,
-                                                       Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory, Resolver resolver) {
+    private static List<HttpMethod> extractHttpMethods(Component component, InstructionHandle instructionHandle,
+                                                       ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+                                                       Method method, Map<CallCacheKey, Result> callCache,
+                                                       EvalContextFactory evalContextFactory, Resolver resolver) {
         var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
         log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
                 instructionText);
-
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var methodName = instruction.getMethodName(constantPoolGen);
         var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
@@ -75,18 +70,12 @@ public class RestOperationsUtils {
 
         return variants.stream().flatMap(variant -> {
             var pathArg = variant.get(1);
-            var pathArgMethod = pathArg.getMethod();
-            if (variant instanceof Result.RelationsAware) {
-                var relationsAware = (Result.RelationsAware) variant;
-                var relations = relationsAware.getRelations();
-            }
-            var methodId = newMethodId(pathArgMethod);
-            return getHttpMethodStream(variant, methodName, pathArg, resolver, methodId);
+            return getHttpMethodStream(variant, methodName, pathArg, resolver);
         }).collect(toList());
     }
 
-    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName, Result pathArg,
-                                                          Resolver resolver, MethodId ref) {
+    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName,
+                                                          Result pathArg, Resolver resolver) {
         try {
             final List<String> httpMethods;
             if ("exchange".equals(methodName)) {
@@ -98,7 +87,7 @@ public class RestOperationsUtils {
             var paths = getStrings(pathArg.getValue(resolver));
 
             return paths.stream().flatMap(path -> httpMethods.stream()
-                    .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).ref(ref).build()));
+                    .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).evalSource(pathArg).build()));
         } catch (NotInvokedException e) {
             //log
             return Stream.empty();

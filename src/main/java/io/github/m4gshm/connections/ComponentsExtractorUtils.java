@@ -10,6 +10,7 @@ import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
+import io.github.m4gshm.connections.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
@@ -223,7 +224,8 @@ public class ComponentsExtractorUtils {
                 var httpMethod = template.method();
                 var method = metadata.method();
                 var url = template.url();
-                return HttpMethod.builder().method(httpMethod).path(url).ref(newMethodId(method)).build();
+                var methodId = newMethodId(method);
+                return HttpMethod.builder().method(httpMethod).path(url).methodSource(methodId).build();
             }).collect(toList());
 
             var type = target.type();
@@ -298,7 +300,8 @@ public class ComponentsExtractorUtils {
                         .destination(destination)
                         .direction(jmsClient.getDirection())
                         .build())
-                .ref(jmsClient.getRef())
+                .evalSource(jmsClient.getEvalSource())
+                .methodSource(jmsClient.getMethodSource())
                 .externalCallable(contextManaged)
                 .build();
     }

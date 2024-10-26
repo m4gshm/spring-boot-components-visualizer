@@ -67,8 +67,7 @@ public class JmsOperationsUtils {
     }
 
     private static List<JmsClient> extractJmsClients(
-            Component component,
-            InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
+            Component component, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
             Map<CallCacheKey, Result> callCache, Eval eval, Resolver resolver) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
@@ -80,7 +79,6 @@ public class JmsOperationsUtils {
         } else {
             var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
             var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
-
             var results = variants.stream().flatMap(paramVariant -> {
                 return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);
             }).collect(toList());
@@ -91,14 +89,14 @@ public class JmsOperationsUtils {
     private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
                                                         String methodName, Eval eval, Resolver resolver) {
         try {
-            var ref = newMethodId(eval.getMethod());
+            var ref = newMethodId(eval.getComponent().getType(), eval.getMethod());
             if (paramVariant.size() < 2) {
-                return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName, ref));
+                return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName, ref, null));
             } else {
                 var first = paramVariant.get(1);
-                var resolved = eval.resolveExpand(first, resolver);
-                return resolved.stream().flatMap(v -> v.getValue(resolver).stream())
-                        .map(v -> newJmsClient(getDestination(v), direction, methodName, ref));
+                var destinations = eval.resolveExpand(first, resolver);
+                return destinations.stream().flatMap(result -> result.getValue(resolver).stream()
+                        .map(rawDestination -> newJmsClient(getDestination(rawDestination), direction, methodName, ref, result)));
             }
         } catch (NotInvokedException e) {
             //log
@@ -106,12 +104,13 @@ public class JmsOperationsUtils {
         }
     }
 
-    private static JmsClient newJmsClient(String destination, Direction direction, String methodName, MethodId ref) {
+    private static JmsClient newJmsClient(String destination, Direction direction, String methodName, MethodId methodSource, Result result) {
         return JmsClient.builder()
                 .destination(destination)
                 .direction(direction)
                 .name(methodName)
-                .ref(ref)
+                .evalSource(result)
+                .methodSource(methodSource)
                 .build();
     }
 

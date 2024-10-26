@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections.model;
 
+import io.github.m4gshm.connections.eval.result.Result;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -17,7 +18,8 @@ public class Interface {
     String id;
     Direction direction;
     Type type;
-    MethodId ref;
+    MethodId methodSource;
+    Result evalSource;
     boolean externalCallable;
 
     public CharSequence getName() {

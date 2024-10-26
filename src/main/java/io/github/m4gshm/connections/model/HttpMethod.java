@@ -1,5 +1,6 @@
 package io.github.m4gshm.connections.model;
 
+import io.github.m4gshm.connections.eval.result.Result;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
@@ -16,13 +17,15 @@ public class HttpMethod implements CharSequence, Comparable<HttpMethod> {
     String method;
     String path;
     String string;
-    MethodId ref;
+    Result evalSource;
+    MethodId methodSource;
 
     @Builder(toBuilder = true)
-    public HttpMethod(String method, String path, MethodId ref) {
+    public HttpMethod(String method, String path, Result evalSource, MethodId methodSource) {
         this.path = path;
         this.method = method;
-        this.ref = ref;
+        this.evalSource = evalSource;
+        this.methodSource = methodSource;
         this.string = method + ':' + path;
     }
 

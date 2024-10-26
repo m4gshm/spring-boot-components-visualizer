@@ -2,7 +2,6 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
-import io.github.m4gshm.connections.model.MethodId;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
@@ -17,7 +16,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
-import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
 
