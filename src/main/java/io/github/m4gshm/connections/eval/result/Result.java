@@ -17,12 +17,10 @@ import org.apache.bcel.generic.Instruction;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getInstructionString;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notAccessible;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notFound;
@@ -74,9 +72,12 @@ public abstract class Result implements ContextAware {
         return new Duplicate(instructionHandle, lastInstruction, onDuplicate, prev);
     }
 
-    public static Delay delay(String description, InstructionHandle instructionHandle, Eval evalContext,
-                              Result parent, DelayFunction<Delay> delayFunction) {
-        return new Delay(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent, null, false);
+    public static Delay delay(String description, InstructionHandle instructionHandle,
+                              InstructionHandle lastInstruction, Eval evalContext,
+                              Result parent, List<Result> relations,
+                              DelayFunction<Delay> delayFunction) {
+        return new Delay(instructionHandle, lastInstruction, evalContext, description, delayFunction, parent,
+                relations, null);
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Eval evalContext,
@@ -143,7 +144,9 @@ public abstract class Result implements ContextAware {
         } else if (flatValues.size() == 1) {
             return flatValues.get(0);
         } else {
-            return new Multiple(firstInstruction, lastInstruction, flatValues, component, method);
+            var relations = values.stream().map(v -> v instanceof RelationsAware ? ((RelationsAware) v).getRelations() : null)
+                    .filter(Objects::nonNull).flatMap(Collection::stream).collect(toLinkedHashSet());
+            return new Multiple(firstInstruction, lastInstruction, flatValues, component, method, new ArrayList<>(relations));
         }
     }
 

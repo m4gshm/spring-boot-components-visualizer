@@ -63,6 +63,8 @@ public class StringifyResolver implements Resolver {
             return stringifyVariable(variable);
         } else if (current instanceof Delay) {
             return stringifyDelay((Delay) current, ex);
+        } else if (current instanceof Constant) {
+            return current;
         }
         throw new UnresolvedResultException("bad stringify", current);
     }
@@ -159,18 +161,20 @@ public class StringifyResolver implements Resolver {
                         });
             } else {
                 if (instruction instanceof ArithmeticInstruction) {
-                    var first = eval.eval(eval.getPrev(instructionHandle), delay, callCache);
+                    var first = resolve(eval.eval(eval.getPrev(instructionHandle), delay, callCache), ex);
                     var second = instruction.consumeStack(constantPoolGen) == 2
-                            ? eval.eval(eval.getPrev(first.getLastInstruction()), callCache) : null;
+                            ? resolve(eval.eval(eval.getPrev(first.getLastInstruction()), callCache), ex): null;
+
                     List<String> arithmeticString;
                     try {
-                        arithmeticString = stringifyArithmetic((ArithmeticInstruction) instruction, first, second, component, method, callCache);
+                        arithmeticString = stringifyArithmetic((ArithmeticInstruction) instruction, first, second,
+                                component, method, callCache);
                     } catch (NotInvokedException ee) {
                         throw ee;
                     }
                     var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
                     var values = arithmeticString.stream()
-                            .map(v -> constant(v, instructionHandle, lastInstruction, component, method, delay, first, second))
+                            .map(v -> constant(v, instructionHandle, lastInstruction, component, method, first, second))
                             .collect(toList());
                     return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), component, method);
                 } else if (instruction instanceof ArrayInstruction) {
@@ -280,7 +284,8 @@ public class StringifyResolver implements Resolver {
         var componentType = variable.getComponentType().getSimpleName();
         var value = "{" + componentType + "." + methodName + "(" + "{" + variable.getName() + "}" + ")" + "}";
         var lastInstruction = variable.getLastInstruction();
-        return constant(value, lastInstruction, lastInstruction, variable.getEvalContext().getComponent(), variable.getEvalContext().getMethod(), variable);
+        var eval = variable.getEvalContext();
+        return constant(value, lastInstruction, lastInstruction, eval.getComponent(), eval.getMethod(), variable);
     }
 
     private String stringifyMethodCall(Class<?> objectClass, String object, String methodName, String arguments) {

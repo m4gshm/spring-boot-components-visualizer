@@ -21,15 +21,10 @@ public class DelayInvoke extends Delay {
     public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
                        String description, DelayFunction<DelayInvoke> evaluator, Result prev,
                        Result object, List<Result> arguments) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, null, true);
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev,
+                Stream.of(ofNullable(object), arguments.stream()).flatMap(s -> s).collect(toList()), null);
         this.object = object;
         this.arguments = arguments;
-    }
-
-    @Override
-    public List<Result> getRelations() {
-        var relations = Stream.of(ofNullable(object), arguments.stream(), super.getRelations().stream()).flatMap(s -> s).collect(toList());
-        return relations;
     }
 
     @Override

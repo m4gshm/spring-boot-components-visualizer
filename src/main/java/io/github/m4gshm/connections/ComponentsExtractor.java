@@ -2,10 +2,12 @@ package io.github.m4gshm.connections;
 
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.eval.bytecode.*;
+import io.github.m4gshm.connections.eval.result.ContextAware;
 import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.*;
+import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.model.Interface.Direction;
 import lombok.Builder;
 import lombok.Data;
@@ -45,6 +47,7 @@ import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWe
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
 import static io.github.m4gshm.connections.model.StorageEntity.Engine.jpa;
@@ -54,6 +57,7 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
 import static lombok.AccessLevel.PRIVATE;
@@ -109,23 +113,18 @@ public class ComponentsExtractor {
         return javaClasses;
     }
 
-    public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
-        return components.stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
+    public static Map<Component, List<Component>> getDependencyToDependentMap(Map<ComponentKey, Component> componentMap) {
+        return componentMap.values().stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
+                        .map(dependency -> {
+                            var component = componentMap.getOrDefault(newComponentKey(dependency), dependency);
+                            return requireNonNull(component, "dependency");
+                        })
                         .map(dependency -> entry(dependency, c))))
                 .collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
     }
 
-    private static Map<Component, Component> filterUnusedInterfaces(
-            Map<Component, List<Component>> dependencyToDependentMap,
-            Map<Component, List<CallPoint>> callPointsCache
-    ) {
-        return dependencyToDependentMap.keySet().stream().map(component -> {
-            var changedComponent = filterUnusedInterfaces(component, dependencyToDependentMap, callPointsCache);
-            return changedComponent != null ? Map.entry(component, changedComponent) : null;
-        }).filter(Objects::nonNull).collect(toMap(Entry::getKey, Entry::getValue));
-    }
-
     private static Component filterUnusedInterfaces(Component component,
+                                                    Map<ComponentKey, Component> componentMap,
                                                     Map<Component, List<Component>> dependencyToDependentMap,
                                                     Map<Component, List<CallPoint>> callPointsCache) {
         var interfaces = component.getInterfaces();
@@ -133,12 +132,15 @@ public class ComponentsExtractor {
             return component;
         }
         var usedInterfaces = interfaces.stream().filter(iface -> {
-            return isCalled(iface, component, dependencyToDependentMap, callPointsCache);
+            return isCalled(iface, component, componentMap, dependencyToDependentMap, callPointsCache);
         }).collect(toLinkedHashSet());
-        return !interfaces.equals(usedInterfaces) ? component.toBuilder().interfaces(usedInterfaces).build() : component;
+        return !interfaces.equals(usedInterfaces)
+                ? component.toBuilder().interfaces(usedInterfaces).build()
+                : component;
     }
 
     private static boolean isCalled(Interface iface, Component component,
+                                    Map<ComponentKey, Component> componentMap,
                                     Map<Component, List<Component>> dependencyToDependentMap,
                                     Map<Component, List<CallPoint>> callPointsCache) {
         if (!iface.isExternalCallable()) {
@@ -146,12 +148,29 @@ public class ComponentsExtractor {
             var methodSource = iface.getMethodSource();
             if (result != null) {
                 var relations = getTopRelations(result);
-                var allUncalled = relations.stream().allMatch(relation -> {
-                    var method = relation.getMethod();
-                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
-                            dependencyToDependentMap, callPointsCache);
-                });
-                return !allUncalled;
+                var components = relations.stream().map(ContextAware::getComponent).collect(toSet());
+                var resolveGroups = relations.stream().collect(partitioningBy(r -> r.isResolved()));
+                var unresolved = resolveGroups.get(false);
+                var anyUnresolved = !unresolved.isEmpty();
+                if (anyUnresolved) {
+                    var externalCallableGroup = unresolved.stream().collect(partitioningBy(r -> {
+                        var rComponent = r.getComponent();
+                        var changedComponent = componentMap.getOrDefault(newComponentKey(rComponent), rComponent);
+                        var interfaces = changedComponent.getInterfaces();
+                        return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
+                    }));
+                    var externalCallable = !externalCallableGroup.get(true).isEmpty();
+                    return externalCallable;
+                } else {
+                    return true;
+                }
+//                var uncalledParts = relations.stream().collect(partitioningBy(relation -> {
+//                    var method = relation.getMethod();
+//                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
+//                            dependencyToDependentMap, callPointsCache);
+//                }));
+//                var allUncalled = uncalledParts.get(true).size() == relations.size();
+//                return !allUncalled;
             } else if (methodSource != null) {
                 return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
                         dependencyToDependentMap, callPointsCache);
@@ -214,53 +233,49 @@ public class ComponentsExtractor {
 
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
         var components = componentsPerName.values();
+
+        var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
         var callPointsCache = new HashMap<Component, List<CallPoint>>();
         var callCache = new HashMap<CallCacheKey, Result>();
 
-        //filter use methods of Feign clients
-        var dependencyToDependentMap = getDependencyToDependentMap(components);
-        var changedComponents = !this.options.isIncludeUnusedFeignClientMethodsInInterfaces()
-                ? filterUnusedInterfaces(dependencyToDependentMap, callPointsCache) : Map.<Component, Component>of();
-
-        var dependencyToDependentMap1 = dependencyToDependentMap.entrySet().stream().map(e -> {
-            var component = e.getKey();
-            var dependent = e.getValue();
-            var changed = changedComponents.get(component);
-            return entry(changed != null ? changed : component, dependent);
-        }).collect(toMap(Entry::getKey, Entry::getValue));
-
-        var evalContextFactory = new EvalContextFactoryCacheImpl(
-                new EvalContextFactoryImpl(dependencyToDependentMap1, callPointsCache, callCache),
-                new HashMap<>()
-        );
-
         var resolver = StringifyResolver.newStringify(callCache);
 
-        Set<Component> filteredComponentsWithInterfaces = components.stream().map(component -> {
-            var changed = changedComponents.get(component);
-            return changed != null ? changed : component;
-        }).map(component -> {
-            var exists = component.getInterfaces();
-            var interfaces = getInterfaces(component, component.getName(), component.getType(),
-                    component.getDependencies(), callCache, evalContextFactory, resolver);
-            if (exists == null) {
-                exists = interfaces;
-            } else if (interfaces != null && !interfaces.isEmpty()) {
-                exists = new LinkedHashSet<>(exists);
-                exists.addAll(interfaces);
-            }
-            return component.toBuilder().interfaces(exists).build();
-        }).map(component -> options.isIgnoreNotFoundDependencies()
-                ? getComponentWithFilteredDependencies(component, componentsPerName)
-                : component
-        ).collect(toLinkedHashSet());
+        var dependencyToDependentMap = getDependencyToDependentMap(components.stream().collect(toMap(ComponentKey::newComponentKey, c1 -> c1)));
 
-        var componentsWithUserInterfaces = filteredComponentsWithInterfaces.stream().map(component -> {
-            var changed = filterUnusedInterfaces(component, dependencyToDependentMap, callPointsCache);
-            return changed;
+        var evalContextFactory = //new EvalContextFactoryCacheImpl(
+                new EvalContextFactoryImpl(dependencyToDependentMap, callPointsCache, callCache);//, evalCache
+        //);
+
+        var componentsWithInterfaces = components.stream().map(component -> {
+            return populateInterfaces(component, evalContextFactory, resolver, callCache);
         }).collect(toList());
 
-        return Components.builder().components(componentsWithUserInterfaces).build();
+        var componentMap = componentsWithInterfaces.stream().collect(toMap(ComponentKey::newComponentKey, c1 -> c1));
+        var dependencyToDependentWitInterfacesMap = getDependencyToDependentMap(componentMap);
+        var filteredComponentsWithInterfaces = componentsWithInterfaces.stream()
+                .map(component -> !options.isIncludeUnusedFeignClientMethodsInInterfaces() ?
+                        filterUnusedInterfaces(component, componentMap, dependencyToDependentWitInterfacesMap, callPointsCache)
+                        : component)
+                .map(component -> options.isIgnoreNotFoundDependencies()
+                        ? getComponentWithFilteredDependencies(component, componentsPerName)
+                        : component
+                ).collect(toLinkedHashSet());
+
+        return Components.builder().components(filteredComponentsWithInterfaces).build();
+    }
+
+    private Component populateInterfaces(Component component, EvalContextFactory evalContextFactory,
+                                         StringifyResolver resolver, HashMap<CallCacheKey, Result> callCache) {
+        var exists = component.getInterfaces();
+        var interfaces = getInterfaces(component, component.getName(), component.getType(),
+                component.getDependencies(), callCache, evalContextFactory, resolver);
+        if (exists == null) {
+            exists = interfaces;
+        } else if (interfaces != null && !interfaces.isEmpty()) {
+            exists = new LinkedHashSet<>(exists);
+            exists.addAll(interfaces);
+        }
+        return component.toBuilder().interfaces(exists).build();
     }
 
     protected Stream<Entry<String, Class<?>>> getFilteredBeanNameWithType(Stream<String> beanNames) {

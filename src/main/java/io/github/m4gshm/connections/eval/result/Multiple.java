@@ -1,29 +1,33 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.IllegalMultipleResultsInvocationException;
+import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
+import java.util.Collection;
 import java.util.List;
 
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Multiple extends Result {
+public class Multiple extends Result implements RelationsAware {
     List<Result> results;
-    private Method method;
-    private Component component;
+    Method method;
+    Component component;
+    List<Result> relations;
 
     public Multiple(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                    List<Result> results, Component component, Method method) {
+                    List<Result> results, Component component, Method method, List<Result> relations) {
         super(firstInstruction, lastInstruction);
         this.results = results;
         this.component = component;
         this.method = method;
+        this.relations = relations;
     }
 
     private void checkState() {

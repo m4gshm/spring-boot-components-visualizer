@@ -25,7 +25,7 @@ public class EvalContextFactoryCacheImpl implements EvalContextFactory {
 
     @Data
     @FieldDefaults(makeFinal = true)
-    private static class Key {
+    public static class Key {
         Component component;
         Method method;
     }

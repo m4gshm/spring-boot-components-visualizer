@@ -19,7 +19,6 @@ public class Constant extends Result implements ContextAware, Result.RelationsAw
     Component component;
     Method method;
 
-
     public Constant(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value,
                     List<Result> relations, Component component, Method method) {
         super(firstInstruction, lastInstruction);

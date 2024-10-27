@@ -24,19 +24,19 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
     final Component component;
     final Method method;
     final Class<?> componentType;
+    final List<Result> relations;
     Result result;
-    boolean evaluated;
 
     public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                  Eval eval, String description, DelayFunction<? extends Delay> evaluator,
-                 Result prev, Result result, boolean evaluated) {
+                 Result prev, List<Result> relations, Result result) {
         super(firstInstruction, lastInstruction);
         this.eval = eval;
         this.description = description;
         this.evaluator = (DelayFunction<Delay>) evaluator;
         this.prev = prev;
+        this.relations = relations;
         this.result = result;
-        this.evaluated = evaluated;
         component = eval.getComponent();
         method = eval.getMethod();
         componentType = eval.getComponent().getType();
@@ -44,51 +44,33 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
 
     @Override
     public Object getValue() {
-        var delayed = getDelayed(true, null);
+        //todo must throw Exception
+        var delayed = getDelayed(null);
         if (delayed == this) {
             throw new EvalBytecodeException("looped delay 2");
         }
         return delayed.getValue();
     }
 
-    public InstructionHandle getLastInstruction() {
-        if (evaluated) {
-            return lastInstruction;
-        }
-        var delayed = getDelayed(false, null);
-        return delayed.getLastInstruction();
-    }
-
-    public Result getDelayed(boolean resolve, Resolver resolver) {
+    public Result getDelayed(Resolver resolver) {
         var result = this.result;
-        var evaluate = !resolve;
-        if (resolve && !isResolved()) {
-            result = evaluator.call(this, true, resolver);
+        if (!isResolved()) {
+            result = evaluator.call(this, resolver);
             if (result == this) {
                 throw new EvalBytecodeException("looped delay 1");
             }
             this.result = result;
-            this.evaluated = true;
-        } else if (evaluate && !evaluated) {
-            result = evaluator.call(this, false, resolver);
-            this.result = result;
-            this.evaluated = true;
         }
         return result;
     }
-
-    public Delay evaluated(InstructionHandle lastInstruction) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true);
-    }
-
     public Delay withEval(Eval eval) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, null, true);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, relations, null);
     }
 
     @Override
     public String toString() {
         var txt = description == null || description.isBlank() ? "" : description + ",";
-        return "delay(" + txt + "evaluated:" + isEvaluated() + ", resolved:" + isResolved() + ")";
+        return "delay(" + txt + "resolved:" + isResolved() + ")";
     }
 
     @Override
@@ -96,28 +78,8 @@ public class Delay extends Result implements ContextAware, PrevAware, RelationsA
         return result != null && result.isResolved();
     }
 
-    @Override
-    public Method getMethod() {
-        return method;
-    }
-
-    @Override
-    public Component getComponent() {
-        return component;
-    }
-
-    @Override
-    public Class<?> getComponentType() {
-        return componentType;
-    }
-
-    @Override
-    public List<Result> getRelations() {
-        return List.of();
-    }
-
     @FunctionalInterface
     public interface DelayFunction<T extends Delay> {
-        Result call(T delay, Boolean needResolve, Resolver resolver);
+        Result call(T delay, Resolver resolver);
     }
 }
