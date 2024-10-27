@@ -89,7 +89,7 @@ public class JmsOperationsUtils {
     private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
                                                         String methodName, Eval eval, Resolver resolver) {
         try {
-            var ref = newMethodId(eval.getComponent().getType(), eval.getMethod());
+            var ref = newMethodId(eval.getMethod());
             if (paramVariant.size() < 2) {
                 return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName, ref, null));
             } else {

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
@@ -57,9 +58,8 @@ public class Component implements ComponentDependency {
         String name;
         Object unmanagedInstance;
 
-        public static ComponentKey newComponentKey(Component componentDependency) {
-            return new ComponentKey(componentDependency.getName(), componentDependency.getObject());
+        public static ComponentKey newComponentKey(Component component) {
+            return new ComponentKey(component.getName(), component.getObject());
         }
-
     }
 }

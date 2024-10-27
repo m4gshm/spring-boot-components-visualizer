@@ -181,7 +181,7 @@ public abstract class Result implements ContextAware {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         var that = (Result) o;
-        return Objects.equals(getComponent(), that.getComponent())
+        return Objects.equals(getComponentKey(), that.getComponentKey())
                 && Objects.equals(getMethod(), that.getMethod())
                 && Objects.equals(getInstruction(firstInstruction), getInstruction(that.firstInstruction))
                 && Objects.equals(getInstruction(lastInstruction), getInstruction(that.lastInstruction));
@@ -193,7 +193,7 @@ public abstract class Result implements ContextAware {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getComponent(), getMethod(), getInstruction(firstInstruction), getInstruction(lastInstruction));
+        return Objects.hash(getComponentKey(), getMethod(), getInstruction(firstInstruction), getInstruction(lastInstruction));
     }
 
     public List<Object> getValue(Resolver resolver) {

@@ -3,6 +3,7 @@ package io.github.m4gshm.connections.eval.bytecode;
 import io.github.m4gshm.connections.eval.result.*;
 import io.github.m4gshm.connections.model.CallPoint;
 import io.github.m4gshm.connections.model.Component;
+import io.github.m4gshm.connections.model.Component.ComponentKey;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ import static io.github.m4gshm.connections.eval.bytecode.LocalVariableUtils.*;
 import static io.github.m4gshm.connections.eval.bytecode.NotInvokedException.Reason.*;
 import static io.github.m4gshm.connections.eval.result.Result.*;
 import static io.github.m4gshm.connections.eval.result.Variable.VarType.MethodArg;
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
@@ -138,9 +140,8 @@ public class Eval {
     }
 
     private static ContextHierarchy getCallContext(Result variant) {
-        CallContext callContext;
         var contextAware = (ContextAware) variant;
-        callContext = newCallContext(contextAware.getComponent(), contextAware.getMethod(), variant);
+        var callContext = newCallContext(contextAware.getComponentKey(), contextAware.getMethod(), variant);
         if (variant instanceof RelationsAware) {
             var relationsAware = (RelationsAware) variant;
             var relations = relationsAware.getRelations();
@@ -234,7 +235,10 @@ public class Eval {
     }
 
     public static List<Result> expand(Result result) {
-        return result instanceof Multiple ? ((Multiple) result).getResults() : List.of(result);
+        return result instanceof Multiple ? ((Multiple) result).getResults()
+                : result instanceof Delay && result.isResolved()
+                ? expand(((Delay) result).getResult())
+                : List.of(result);
     }
 
     public static Result collapse(Collection<? extends Result> values, InstructionHandle instructionHandle,
@@ -446,6 +450,16 @@ public class Eval {
         return contextComponent.equals(unresolved.getComponent());
     }
 
+    private static List<List<Result>> getResolvedParameters(List<Result> parameters) {
+        var parameterVariants = parameters.stream().map(Eval::expand).collect(toList());
+        int dimensions = getDimensions(parameterVariants);
+        return flatResolvedVariants(dimensions, parameterVariants, parameters);
+    }
+
+    public ComponentKey getComponentKey() {
+        return newComponentKey(getComponent());
+    }
+
     private Map<Integer, List<Result>> resolveParameters(List<Result> parameters, Resolver resolver) {
         var resolvedParameters = new HashMap<Integer, List<Result>>();
         for (int i = 0; i < parameters.size(); i++) {
@@ -465,7 +479,7 @@ public class Eval {
     }
 
     public Object getObject() {
-        return this.component.getObject();
+        return this.getComponent().getObject();
     }
 
     @Override
@@ -983,17 +997,17 @@ public class Eval {
 
     public List<List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
         if (parameters.isEmpty()) {
-            return List.of(parameters);
+            return getResolvedParameters(parameters);
         }
 
         var allResolved = parameters.stream().allMatch(Result::isResolved);
         if (allResolved) {
-            return List.of(parameters);
+            return getResolvedParameters(parameters);
         }
 
         if (!(this.arguments == null || this.arguments.isEmpty())) {
             if (allResolved) {
-                return List.of(parameters);
+                return getResolvedParameters(parameters);
             }
             //inside a call point
             var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
@@ -1004,7 +1018,7 @@ public class Eval {
             //one arguments variant per a call point
             if (allResolved) {
                 if (!noArgumentVariants) {
-                    return List.of(parameters);
+                    return getResolvedParameters(parameters);
                 }
             }
             if (noArgumentVariants && resolver != null) {
@@ -1180,7 +1194,7 @@ public class Eval {
                 var delay = (Delay) value;
                 var delayComponent = delay.getComponent();
                 var delayMethod = delay.getMethod();
-                if (component.equals(delayComponent) && method.equals(delayMethod) && this.arguments != null) {
+                if (getComponentKey().equals(delayComponent) && method.equals(delayMethod) && this.arguments != null) {
                     delay = delay.withEval(this);
                 }
                 result = delay.getDelayed(resolver);
@@ -1287,13 +1301,13 @@ public class Eval {
     @Data
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     static class CallContext {
-        Component component;
+        ComponentKey component;
         Method method;
         @EqualsAndHashCode.Exclude
         Result result;
 
-        public static CallContext newCallContext(Component component, Method method, Result result) {
-            return new CallContext(component, method, result);
+        public static CallContext newCallContext(ComponentKey componentKey, Method method, Result result) {
+            return new CallContext(componentKey, method, result);
         }
 
         @Override

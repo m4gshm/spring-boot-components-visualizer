@@ -12,6 +12,7 @@ import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.List;
 
+import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static lombok.AccessLevel.PROTECTED;
 
 @Getter

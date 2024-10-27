@@ -1,5 +1,7 @@
 package io.github.m4gshm.connections.eval.bytecode;
 
+import io.github.m4gshm.connections.CallPointsHelper;
+import io.github.m4gshm.connections.ComponentsExtractor;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.Variable;
 import io.github.m4gshm.connections.model.CallPoint;
@@ -13,9 +15,10 @@ import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.Type;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.CallPointsHelper.getCallsHierarchy;
+import static io.github.m4gshm.connections.CallPointsHelper.*;
 import static io.github.m4gshm.connections.Utils.classByName;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
@@ -28,17 +31,17 @@ import static lombok.AccessLevel.PROTECTED;
 @FieldDefaults(makeFinal = true, level = PROTECTED)
 public class EvalContextFactoryImpl implements EvalContextFactory {
 
-    Map<Component, List<Component>> dependencyToDependentMap;
-    Map<Component, List<CallPoint>> callPointsCache;
     Map<CallCacheKey, Result> callCache;
+    DependentProvider dependentProvider;
+    CallPointsProvider callPointsProvider;
 
     public static List<List<Result>> computeArgumentVariants(Component component, Method method,
-                                                             Map<Component, List<Component>> dependencyToDependentMap,
-                                                             Map<Component, List<CallPoint>> callPointsCache,
                                                              Map<CallCacheKey, Result> callCache,
-                                                             EvalContextFactory evalContextFactory) {
+                                                             EvalContextFactory evalContextFactory,
+                                                             DependentProvider dependentProvider,
+                                                             CallPointsProvider callPointsProvider) {
         var methodCallPoints = getCallPoints(component, method.getName(), method.getArgumentTypes(),
-                dependencyToDependentMap, callPointsCache);
+                dependentProvider, callPointsProvider);
         var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, callCache, evalContextFactory);
         return methodArgumentVariants.values().stream()
                 .map(Map::entrySet)
@@ -49,12 +52,12 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     public static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
             Component component, String methodName, Type[] argumentTypes,
-            Map<Component, List<Component>> dependencyToDependentMap,
-            Map<Component, List<CallPoint>> callPointsCache) {
+            DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
         var declaringClass = component.getType();
-        var dependentOnThisComponent = getDependentOfComponent(component, dependencyToDependentMap);
+        var dependentOnThisComponent = getDependentOfComponent(component, dependentProvider);
         return dependentOnThisComponent.stream().map(dependentComponent -> {
-            var callPoints = getCallsHierarchy(dependentComponent, callPointsCache);
+
+            var callPoints = callPointsProvider.apply(dependentComponent);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
                 var matchedCallPoints = getMatchedCallPoints(dependentMethod, methodName, argumentTypes, declaringClass);
                 return entry(dependentMethod, matchedCallPoints);
@@ -64,9 +67,8 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     static List<Component> getDependentOfComponent(
-            Component component, Map<Component, List<Component>> dependencyToDependentMap) {
-        var dependencies = dependencyToDependentMap.getOrDefault(component, List.of());
-        return concat(Stream.of(component), dependencies.stream()).collect(toList());
+            Component component, DependentProvider dependentProvider) {
+        return concat(Stream.of(component), dependentProvider.apply(component).stream()).collect(toList());
     }
 
     static Map<Component, Map<CallPoint, List<Eval.EvalArguments>>> getEvalCallPointVariants(
@@ -157,7 +159,10 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         return new Eval(component,
                 new ConstantPoolGen(method.getConstantPool()),
                 bootstrapMethods, method,
-                computeArgumentVariants(component, method,
-                        dependencyToDependentMap, callPointsCache, callCache, this));
+                computeArgumentVariants(component, method, callCache, this, dependentProvider, callPointsProvider));
+    }
+
+    public interface DependentProvider extends Function<Component, List<Component>> {
+
     }
 }

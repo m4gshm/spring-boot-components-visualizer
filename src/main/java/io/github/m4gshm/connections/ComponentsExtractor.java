@@ -1,8 +1,9 @@
 package io.github.m4gshm.connections;
 
+import io.github.m4gshm.connections.CallPointsHelper.CallPointsProvider;
 import io.github.m4gshm.connections.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.connections.eval.bytecode.*;
-import io.github.m4gshm.connections.eval.result.ContextAware;
+import io.github.m4gshm.connections.eval.bytecode.EvalContextFactoryImpl.DependentProvider;
 import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
@@ -36,8 +37,11 @@ import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler
 import java.lang.Package;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.connections.CallPointsHelper.getMethods;
+import static io.github.m4gshm.connections.CallPointsHelper.isObject;
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.connections.UriUtils.joinURI;
 import static io.github.m4gshm.connections.Utils.*;
@@ -57,7 +61,7 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
-import static java.util.Objects.requireNonNull;
+import static java.util.function.UnaryOperator.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
 import static lombok.AccessLevel.PRIVATE;
@@ -113,26 +117,20 @@ public class ComponentsExtractor {
         return javaClasses;
     }
 
-    public static Map<Component, List<Component>> getDependencyToDependentMap(Map<ComponentKey, Component> componentMap) {
-        return componentMap.values().stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
-                        .map(dependency -> {
-                            var component = componentMap.getOrDefault(newComponentKey(dependency), dependency);
-                            return requireNonNull(component, "dependency");
-                        })
+    public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
+        return components.stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
                         .map(dependency -> entry(dependency, c))))
                 .collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
     }
 
-    private static Component filterUnusedInterfaces(Component component,
-                                                    Map<ComponentKey, Component> componentMap,
-                                                    Map<Component, List<Component>> dependencyToDependentMap,
-                                                    Map<Component, List<CallPoint>> callPointsCache) {
+    private static Component filterUnusedInterfaces(Component component, ComponentProvider changedComponentProvider,
+                                                    DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
         var interfaces = component.getInterfaces();
         if (interfaces == null || interfaces.isEmpty()) {
             return component;
         }
         var usedInterfaces = interfaces.stream().filter(iface -> {
-            return isCalled(iface, component, componentMap, dependencyToDependentMap, callPointsCache);
+            return isCalled(iface, component, changedComponentProvider, dependentProvider, callPointsProvider);
         }).collect(toLinkedHashSet());
         return !interfaces.equals(usedInterfaces)
                 ? component.toBuilder().interfaces(usedInterfaces).build()
@@ -140,40 +138,57 @@ public class ComponentsExtractor {
     }
 
     private static boolean isCalled(Interface iface, Component component,
-                                    Map<ComponentKey, Component> componentMap,
-                                    Map<Component, List<Component>> dependencyToDependentMap,
-                                    Map<Component, List<CallPoint>> callPointsCache) {
+                                    ComponentProvider changedComponentProvider,
+                                    DependentProvider dependentProvider,
+                                    CallPointsProvider callPointsProvider) {
         if (!iface.isExternalCallable()) {
             var result = iface.getEvalSource();
             var methodSource = iface.getMethodSource();
             if (result != null) {
                 var relations = getTopRelations(result);
-                var components = relations.stream().map(ContextAware::getComponent).collect(toSet());
-                var resolveGroups = relations.stream().collect(partitioningBy(r -> r.isResolved()));
-                var unresolved = resolveGroups.get(false);
-                var anyUnresolved = !unresolved.isEmpty();
-                if (anyUnresolved) {
-                    var externalCallableGroup = unresolved.stream().collect(partitioningBy(r -> {
-                        var rComponent = r.getComponent();
-                        var changedComponent = componentMap.getOrDefault(newComponentKey(rComponent), rComponent);
-                        var interfaces = changedComponent.getInterfaces();
-                        return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
-                    }));
-                    var externalCallable = !externalCallableGroup.get(true).isEmpty();
-                    return externalCallable;
-                } else {
-                    return true;
-                }
-//                var uncalledParts = relations.stream().collect(partitioningBy(relation -> {
-//                    var method = relation.getMethod();
-//                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
-//                            dependencyToDependentMap, callPointsCache);
-//                }));
-//                var allUncalled = uncalledParts.get(true).size() == relations.size();
+
+                var callGroups = relations.stream().collect(partitioningBy(relation -> {
+                    var method = relation.getMethod();
+                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
+                            dependentProvider, callPointsProvider);
+                }));
+                var uncalled = callGroups.get(true);
+//                var allUncalled = uncalled.size() == relations.size();
+
+                var externalCallableGroup = uncalled.stream().collect(partitioningBy(r -> {
+                    var rComponent = r.getComponent();
+                    var componentKey = newComponentKey(rComponent);
+                    var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
+                    var interfaces = changedComponent.getInterfaces();
+                    return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
+                }));
+                var externalCallable = !externalCallableGroup.get(true).isEmpty();
+
+                var called = externalCallable || uncalled.isEmpty();
+                return called;
+
+//                var components = relations.stream().map(ContextAware::getComponent).collect(toSet());
+//                var resolveGroups = relations.stream().collect(partitioningBy(r -> r.isResolved()));
+//                var unresolved = resolveGroups.get(false);
+//                var anyUnresolved = !unresolved.isEmpty();
+//                if (anyUnresolved) {
+//                    var externalCallableGroup = unresolved.stream().collect(partitioningBy(r -> {
+//                        var rComponent = r.getComponent();
+//                        var componentKey = newComponentKey(rComponent);
+//                        var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
+//                        var interfaces = changedComponent.getInterfaces();
+//                        return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
+//                    }));
+//                    var externalCallable = !externalCallableGroup.get(true).isEmpty();
+//                    return externalCallable;
+//                } else {
+//                    return true;
+//                }
+
 //                return !allUncalled;
             } else if (methodSource != null) {
                 return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
-                        dependencyToDependentMap, callPointsCache);
+                        dependentProvider, callPointsProvider);
             }
         }
         return true;
@@ -181,10 +196,9 @@ public class ComponentsExtractor {
 
     private static boolean isUncalled(Interface iface, Component component,
                                       Component relatedComponent, String methodName, Type[] methodArgumentTypes,
-                                      Map<Component, List<Component>> dependencyToDependentMap,
-                                      Map<Component, List<CallPoint>> callPointsCache) {
+                                      DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
         var methodCallPoints = getCallPoints(relatedComponent, methodName, methodArgumentTypes,
-                dependencyToDependentMap, callPointsCache);
+                dependentProvider, callPointsProvider);
         var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
         var uncalled = anotherDependent.isEmpty();
         if (uncalled) {
@@ -201,6 +215,28 @@ public class ComponentsExtractor {
             }
         }
         return Set.of(result);
+    }
+
+    private static DependentProvider newDependentProvider(Map<Component, List<Component>> dependencyToDependentWitInterfacesMap) {
+        return c -> dependencyToDependentWitInterfacesMap.getOrDefault(c, List.of());
+    }
+
+    private static CallPointsProvider newCallPointsProvider(HashMap<Component, List<CallPoint>> callPointsCache) {
+        return c -> {
+            if (callPointsCache.containsKey(c)) {
+                return callPointsCache.get(c);
+            } else {
+                callPointsCache.put(c, List.of());
+            }
+
+            var componentType = c.getType();
+            var javaClasses = getClassHierarchy(componentType);
+
+            List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
+            ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
+            callPointsCache.put(c, points);
+            return points;
+        };
     }
 
     public Components getComponents() {
@@ -235,26 +271,26 @@ public class ComponentsExtractor {
         var components = componentsPerName.values();
 
         var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
-        var callPointsCache = new HashMap<Component, List<CallPoint>>();
         var callCache = new HashMap<CallCacheKey, Result>();
 
         var resolver = StringifyResolver.newStringify(callCache);
 
-        var dependencyToDependentMap = getDependencyToDependentMap(components.stream().collect(toMap(ComponentKey::newComponentKey, c1 -> c1)));
+        var dependentProvider = newDependentProvider(getDependencyToDependentMap(components));
+        var callPointsProvider = newCallPointsProvider(new HashMap<>());
 
-        var evalContextFactory = //new EvalContextFactoryCacheImpl(
-                new EvalContextFactoryImpl(dependencyToDependentMap, callPointsCache, callCache);//, evalCache
-        //);
+        var evalContextFactory = new EvalContextFactoryCacheImpl(
+                new EvalContextFactoryImpl(callCache, dependentProvider, callPointsProvider), evalCache
+        );
 
         var componentsWithInterfaces = components.stream().map(component -> {
             return populateInterfaces(component, evalContextFactory, resolver, callCache);
         }).collect(toList());
 
-        var componentMap = componentsWithInterfaces.stream().collect(toMap(ComponentKey::newComponentKey, c1 -> c1));
-        var dependencyToDependentWitInterfacesMap = getDependencyToDependentMap(componentMap);
+        var componentWithInterfacesMap = componentsWithInterfaces.stream().collect(toMap(ComponentKey::newComponentKey, identity()));
+
         var filteredComponentsWithInterfaces = componentsWithInterfaces.stream()
                 .map(component -> !options.isIncludeUnusedFeignClientMethodsInInterfaces() ?
-                        filterUnusedInterfaces(component, componentMap, dependencyToDependentWitInterfacesMap, callPointsCache)
+                        filterUnusedInterfaces(component, componentWithInterfacesMap::get, dependentProvider, callPointsProvider)
                         : component)
                 .map(component -> options.isIgnoreNotFoundDependencies()
                         ? getComponentWithFilteredDependencies(component, componentsPerName)
@@ -695,6 +731,10 @@ public class ComponentsExtractor {
                 return false;
             }
         }).findFirst().orElse(null);
+    }
+
+    public interface ComponentProvider extends Function<ComponentKey, Component> {
+
     }
 
     @Data

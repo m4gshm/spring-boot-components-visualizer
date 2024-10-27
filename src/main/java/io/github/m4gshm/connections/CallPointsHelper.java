@@ -9,8 +9,7 @@ import org.apache.bcel.generic.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
@@ -20,26 +19,8 @@ import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
 
 public class CallPointsHelper {
-    public static List<CallPoint> getCallsHierarchy(Component component,
-                                                    Map<Component, List<CallPoint>> callPointsCache) {
 
-
-        if (callPointsCache.containsKey(component)) {
-            return callPointsCache.get(component);
-        } else {
-            callPointsCache.put(component, List.of());
-        }
-
-        var componentType = component.getType();
-        var javaClasses = ComponentsExtractor.getClassHierarchy(componentType);
-
-        List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
-        ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
-        callPointsCache.put(component, points);
-        return points;
-    }
-
-    private static Stream<? extends CallPoint> getMethods(JavaClass javaClass, Class<?> componentType) {
+    public static Stream<? extends CallPoint> getMethods(JavaClass javaClass, Class<?> componentType) {
         var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
         var methods = getMethods(javaClass);
         return methods != null
@@ -57,7 +38,7 @@ public class CallPointsHelper {
         return methods;
     }
 
-    private static boolean isObject(JavaClass javaClass) {
+    public static boolean isObject(JavaClass javaClass) {
         return "java.lang.Object".equals(javaClass.getClassName());
     }
 
@@ -129,6 +110,10 @@ public class CallPointsHelper {
                 .argumentTypes(argumentTypes)
                 .instruction(instructionHandle)
                 .build();
+    }
+
+    public interface CallPointsProvider extends Function<Component, List<CallPoint>> {
+
     }
 
 }
