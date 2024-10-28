@@ -18,14 +18,16 @@ public class Constant extends Result implements ContextAware, Result.RelationsAw
     List<Result> relations;
     Component component;
     Method method;
+    Object resolvedBy;
 
     public Constant(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Object value,
-                    List<Result> relations, Component component, Method method) {
+                    List<Result> relations, Component component, Method method, Object resolvedBy) {
         super(firstInstruction, lastInstruction);
         this.value = value;
         this.method = method;
         this.component = component;
         this.relations = relations;
+        this.resolvedBy = resolvedBy;
     }
 
     @Override

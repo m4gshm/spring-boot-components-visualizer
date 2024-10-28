@@ -51,6 +51,8 @@ import static io.github.m4gshm.connections.client.WebsocketClientUtils.extractWe
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.lookupClassInheritanceHierarchy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.unproxy;
 import static io.github.m4gshm.connections.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
+import static io.github.m4gshm.connections.eval.bytecode.StringifyResolver.Level.full;
+import static io.github.m4gshm.connections.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.Interface.Type.*;
@@ -252,7 +254,7 @@ public class ComponentsExtractor {
         var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
         var callCache = new HashMap<CallCacheKey, Result>();
 
-        var resolver = StringifyResolver.newStringify(callCache);
+        var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast(), callCache);
 
         var dependentProvider = newDependentProvider(getDependencyToDependentMap(components));
         var callPointsProvider = newCallPointsProvider(new HashMap<>());
@@ -727,6 +729,8 @@ public class ComponentsExtractor {
         @Builder.Default
         boolean ignoreNotFoundDependencies = true;
         boolean cropRootPackagePath;
+        @Builder.Default
+        StringifyResolver.Level stringifyLevel = varOnly;
 
         @Data
         @Builder
@@ -770,6 +774,5 @@ public class ComponentsExtractor {
                 return destination + ":" + direction;
             }
         }
-
     }
 }

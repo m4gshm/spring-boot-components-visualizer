@@ -77,18 +77,10 @@ cloud "output" as output #line.dotted;line:gray; {
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       interface "GET:/{id}" as out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
-      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
-        interface "GET:/{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1..
-        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1..
-        interface "GET:/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1..
-        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1..
-      }
-      frame "/load2" as output.http.http...service2..load2 #line.dotted;text:gray {
-        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}.intValue()}+2)}" as out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1...intValue....2..
-        service2LegacyImpl ....( out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1...intValue....2..
-        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}.intValue()}+2)}" as out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1...intValue....2..
-        service2LegacyImpl ....( out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1...intValue....2..
-      }
+      interface "GET:/load/{id}" as out.GET.http...service2.load..id.
+      service2LegacyImpl ....( out.GET.http...service2.load..id.
+      interface "GET:/load2/{id}" as out.GET.http...service2.load2..id.
+      service2LegacyImpl ....( out.GET.http...service2.load2..id.
     }
   }
   rectangle "web socket" as output.websocket {
@@ -111,7 +103,7 @@ cloud "output" as output #line.dotted;line:gray; {
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
 <#transparent,transparent>|jmsQueueEvents3|\n\
-<#transparent,transparent>|jmsQueue{CoreService.lambda$makeAll$0({i})}|" as output.jms.jmsQueueService.interfaces
+<#transparent,transparent>|jmsQueue{i}|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
     }
   }

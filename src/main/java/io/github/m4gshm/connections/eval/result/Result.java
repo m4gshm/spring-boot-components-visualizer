@@ -26,7 +26,6 @@ import static io.github.m4gshm.connections.eval.result.Illegal.Status.notAccessi
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notFound;
 import static io.github.m4gshm.connections.eval.result.Variable.VarType.LocalVar;
 import static io.github.m4gshm.connections.eval.result.Variable.VarType.MethodArg;
-import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PROTECTED;
@@ -42,18 +41,18 @@ public abstract class Result implements ContextAware {
     public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
                                    Component component, Method method, List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, invokeInstruction, lastInstruction, params, component, method);
+        return constant(value, invokeInstruction, lastInstruction, component, method, params);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    Component component, Method method, Result... relations) {
-        return constant(value, firstInstruction, lastInstruction, asList(relations), component, method);
+                                    Component component, Method method, List<Result> relations) {
+        return constant(value, firstInstruction, lastInstruction, component, method, null, relations);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    List<Result> relations, Component component, Method method) {
+                                    Component component, Method method, Object resolvedBy, List<Result> relations) {
         var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method);
+        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method, resolvedBy);
     }
 
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,

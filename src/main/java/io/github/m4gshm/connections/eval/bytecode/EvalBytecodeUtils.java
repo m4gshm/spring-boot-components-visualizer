@@ -121,7 +121,7 @@ public class EvalBytecodeUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, instructionHandle, instructionHandle, parent.getRelations(), component, method);
+            return constant(value, instructionHandle, instructionHandle, component, method, null, parent.getRelations());
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(e, constructor, instructionHandle, parent);
@@ -137,12 +137,14 @@ public class EvalBytecodeUtils {
                                       List<ParameterValue> parameters) {
         var callSite = getCallSite(methodAndArguments);
         var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, parameters, evalBytecode.getComponent(), evalBytecode.getMethod());
+        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, parameters,
+                evalBytecode.getComponent(), evalBytecode.getMethod());
     }
 
     private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {
         try {
-            return (CallSite) methodAndArguments.getHandler().invokeWithArguments(methodAndArguments.getBootstrapMethodArguments());
+            var bootstrapMethodArguments = methodAndArguments.getBootstrapMethodArguments();
+            return (CallSite) methodAndArguments.getHandler().invokeWithArguments(bootstrapMethodArguments);
         } catch (Throwable e) {
             throw new EvalBytecodeException(e);
         }
@@ -184,7 +186,7 @@ public class EvalBytecodeUtils {
     private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
                                         Result parent, Component component, Method method) {
         try {
-            return constant(field.get(object), lastInstruction, lastInstruction, component, method, parent);
+            return constant(field.get(object), lastInstruction, lastInstruction, component, method, asList(parent));
         } catch (IllegalAccessException e) {
             throw new EvalBytecodeException(e);
         }
