@@ -72,26 +72,33 @@ cloud "input" as input #line.dotted;line:gray; {
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:https://service2/{id}" as out.GET.https...service2..id.
-    service2FeignClient ....( out.GET.https...service2..id.
     interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
     standaloneService2Api ....( out.GET.standalone.service2..id.
-    frame "http://service2/load" as output.http.http...service2.load #line.dotted;text:gray {
-      collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+2)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+2)}|\n\
-<#transparent,transparent>|<r>GET: |/{{Integer.valueOf({MainController.get({id})})}.intValue()}+1|\n\
-<#transparent,transparent>|<r>GET: |/{{Integer.valueOf({MainController.save({id})})}.intValue()}+1|" as output.http.http...service2.load.interfaces
-      service2LegacyImpl ....(0 output.http.http...service2.load.interfaces
+    frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
+      interface "GET:/{id}" as out.GET.http...service2..id.
+      service2FeignClient ....( out.GET.http...service2..id.
+      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
+        interface "GET:/{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1..
+        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1..
+        interface "GET:/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}" as out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1..
+        service2LegacyImpl ....( out.GET.http...service2.load..Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1..
+      }
+      frame "/load2" as output.http.http...service2..load2 #line.dotted;text:gray {
+        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}.intValue()}+2)}" as out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1...intValue....2..
+        service2LegacyImpl ....( out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.get..id......intValue....1...intValue....2..
+        interface "GET:/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}.intValue()}+2)}" as out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1...intValue....2..
+        service2LegacyImpl ....( out.GET.http...service2.load2..Integer.valueOf....Integer.valueOf...Integer.valueOf..MainController.save..id......intValue....1...intValue....2..
+      }
     }
   }
   rectangle "web socket" as output.websocket {
     frame "service2StreamClientImpl" as output.websocket.service2StreamClientImpl.service2StreamClientImpl.interfaces #line.dotted;text:gray {
-      collections "<#transparent,transparent>|id|\n\
-<#transparent,transparent>|ws://currentURI-method|\n\
+      collections "<#transparent,transparent>|ws://currentURI-method|\n\
 <#transparent,transparent>|ws://currentURI-supplier|\n\
 <#transparent,transparent>|ws://defaultURI-static|\n\
 <#transparent,transparent>|ws://service-property-injected|\n\
 <#transparent,transparent>|ws://service-template|\n\
+<#transparent,transparent>|ws://service-template/{id}/|\n\
 <#transparent,transparent>|ws://service2|\n\
 <#transparent,transparent>|ws://service2-value-inject|\n\
 <#transparent,transparent>|ws://service3|" as output.websocket.service2StreamClientImpl.interfaces

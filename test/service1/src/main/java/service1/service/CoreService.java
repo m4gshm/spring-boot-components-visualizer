@@ -46,7 +46,7 @@ public class CoreService {
             if (firstLoad != null) {
                 return firstLoad;
             } else {
-                return service2LegacyImpl.get("load", -(intId + 2));
+                return service2LegacyImpl.get("load2", -(intId + 2));
             }
         } else {
             return standaloneService2Api.get(integerId);

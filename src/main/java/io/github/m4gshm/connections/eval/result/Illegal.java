@@ -13,7 +13,7 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Illegal extends Result implements Result.PrevAware {
+public class Illegal extends Result {
     Set<Status> status;
     Object target;
     Result prev;

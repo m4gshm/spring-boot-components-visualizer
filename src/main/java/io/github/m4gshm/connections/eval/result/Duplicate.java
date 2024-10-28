@@ -6,15 +6,13 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
 @Getter
-public class Duplicate extends Result implements ContextAware, Result.PrevAware {
+public class Duplicate extends Result implements ContextAware {
 
     private final Result onDuplicate;
-    private final Result prev;
 
-    public Duplicate(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Result onDuplicate, Result prev) {
+    public Duplicate(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Result onDuplicate) {
         super(firstInstruction, lastInstruction);
         this.onDuplicate = onDuplicate;
-        this.prev = prev;
     }
 
     @Override

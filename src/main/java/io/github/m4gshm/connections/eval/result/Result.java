@@ -67,9 +67,8 @@ public abstract class Result implements ContextAware {
                 storeInstructions);
     }
 
-    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction,
-                                      Result onDuplicate, Result prev) {
-        return new Duplicate(instructionHandle, lastInstruction, onDuplicate, prev);
+    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate) {
+        return new Duplicate(instructionHandle, lastInstruction, onDuplicate);
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle,
@@ -224,10 +223,6 @@ public abstract class Result implements ContextAware {
 
     public interface RelationsAware {
         List<Result> getRelations();
-    }
-
-    public interface PrevAware {
-        Result getPrev();
     }
 
     public interface Wrapper {

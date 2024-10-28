@@ -1,9 +1,7 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.Eval;
-import io.github.m4gshm.connections.eval.bytecode.UnresolvedResultException;
 import io.github.m4gshm.connections.eval.bytecode.UnresolvedVariableException;
-import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +14,7 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Variable extends Result implements ContextAware, PrevAware {
+public class Variable extends Result implements ContextAware {
     VarType varType;
     Eval evalContext;
     int index;

@@ -29,8 +29,7 @@ public class DelayInvoke extends Delay {
 
     @Override
     public DelayInvoke withEval(Eval eval) {
-        Object evaluator1 = evaluator;
         return new DelayInvoke(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayInvoke>) evaluator1, prev, object, arguments);
+                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, object, arguments);
     }
 }

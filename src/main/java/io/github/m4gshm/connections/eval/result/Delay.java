@@ -2,7 +2,6 @@ package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.Eval;
 import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
-import io.github.m4gshm.connections.eval.result.Result.PrevAware;
 import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
@@ -12,12 +11,11 @@ import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.List;
 
-import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static lombok.AccessLevel.PROTECTED;
 
 @Getter
 @FieldDefaults(level = PROTECTED)
-public class Delay extends Result implements ContextAware, PrevAware, RelationsAware {
+public class Delay extends Result implements ContextAware, RelationsAware {
     final Eval eval;
     final String description;
     final DelayFunction<Delay> evaluator;

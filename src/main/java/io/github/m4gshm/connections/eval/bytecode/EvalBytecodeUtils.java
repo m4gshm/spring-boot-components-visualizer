@@ -39,7 +39,6 @@ import static io.github.m4gshm.connections.eval.result.Result.*;
 import static java.util.Arrays.asList;
 import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
-import static org.springframework.aop.support.AopUtils.getTargetClass;
 
 @Slf4j
 @UtilityClass
@@ -161,18 +160,6 @@ public class EvalBytecodeUtils {
     public static Class<?> toClass(String rawClassName) {
         var className = rawClassName.replace("/", ".");
         return getClassByName(className);
-    }
-
-    public static Result getFieldValue(Result result, String name, InstructionHandle instructionHandle,
-                                       InstructionHandle lastInstruction, ConstantPoolGen constantPoolGen,
-                                       Eval eval1, Result parent) {
-        var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        return delay(instructionText, instructionHandle, lastInstruction, eval1, parent, List.of(result),
-                (thisDelay, unevaluatedHandler) -> {
-                    var object = result.getValue(unevaluatedHandler).get(0);
-                    return getFieldValue(getTargetObject(object), getTargetClass(object), name, instructionHandle,
-                            lastInstruction, thisDelay, thisDelay.getComponent(), thisDelay.getMethod());
-                });
     }
 
     public static Object getTargetObject(Object candidate) {

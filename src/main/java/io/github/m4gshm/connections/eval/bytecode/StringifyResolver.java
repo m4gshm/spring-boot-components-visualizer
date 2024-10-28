@@ -65,6 +65,8 @@ public class StringifyResolver implements Resolver {
             return stringifyDelay((Delay) current, ex);
         } else if (current instanceof Constant) {
             return current;
+        } else if(current instanceof Duplicate) {
+            return stringifyUnresolved(((Duplicate)current).getOnDuplicate(), ex);
         }
         throw new UnresolvedResultException("bad stringify", current);
     }
@@ -161,9 +163,9 @@ public class StringifyResolver implements Resolver {
                         });
             } else {
                 if (instruction instanceof ArithmeticInstruction) {
-                    var first = resolve(eval.eval(eval.getPrev(instructionHandle), delay, callCache), ex);
+                    var first = resolve(eval.evalPrev(instructionHandle, delay, callCache), ex);
                     var second = instruction.consumeStack(constantPoolGen) == 2
-                            ? resolve(eval.eval(eval.getPrev(first.getLastInstruction()), callCache), ex): null;
+                            ? resolve(eval.evalPrev(first, callCache), ex): null;
 
                     List<String> arithmeticString;
                     try {
@@ -178,9 +180,9 @@ public class StringifyResolver implements Resolver {
                             .collect(toList());
                     return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), component, method);
                 } else if (instruction instanceof ArrayInstruction) {
-                    var element = eval.eval(eval.getPrev(instructionHandle), delay, callCache);
-                    var index = eval.eval(eval.getPrev(element.getLastInstruction()), delay, callCache);
-                    var array = eval.eval(eval.getPrev(index.getLastInstruction()), delay, callCache);
+                    var element = eval.evalPrev(instructionHandle, delay, callCache);
+                    var index = eval.evalPrev(element, callCache);
+                    var array = eval.evalPrev(index, callCache);
                     var result = stringifyValue(array);
                     var lastInstruction = array.getLastInstruction();
                     return constant(result, lastInstruction, lastInstruction, component, method, delay, element, index, array);

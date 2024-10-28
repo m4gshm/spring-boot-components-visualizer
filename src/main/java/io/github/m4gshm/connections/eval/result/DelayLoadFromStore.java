@@ -23,8 +23,7 @@ public class DelayLoadFromStore extends Delay {
 
     @Override
     public Delay withEval(Eval eval) {
-        Object evaluator1 = evaluator;
         return new DelayLoadFromStore(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayLoadFromStore>) evaluator1, prev, storeInstructions);
+                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, prev, storeInstructions);
     }
 }

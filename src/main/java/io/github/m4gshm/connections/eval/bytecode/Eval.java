@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.*;
 
+import java.lang.Deprecated;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
@@ -40,6 +41,7 @@ import static java.util.stream.Stream.*;
 import static lombok.AccessLevel.PRIVATE;
 import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.Const.*;
+import static org.springframework.aop.support.AopUtils.getTargetClass;
 
 @Slf4j
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -529,10 +531,13 @@ public class Eval {
                 var storeInstructions = storeResults.stream()
                         .map(storeResult -> eval(storeResult.getFirstInstruction(), parent, callCache))
                         .collect(toList());
-                return delayLoadFromStored(description, instructionHandle, this, parent, storeInstructions, (thisDelay, resolver) -> {
+                var first = List.of(storeInstructions.get(0));
+                return delayLoadFromStored(description, instructionHandle, this, parent, first, (thisDelay, resolver) -> {
                     var eval = thisDelay.getEval();
                     var resolved = thisDelay.getStoreInstructions().stream()
-                            .flatMap(storeResult -> expand(eval.resolve(storeResult, resolver)).stream())
+                            .flatMap(storeResult -> {
+                                return expand(eval.resolve(storeResult, resolver)).stream();
+                            })
                             .collect(toList());
                     return collapse(resolved, instructionHandle, instructionHandle, constantPoolGen,
                             component, method);
@@ -562,11 +567,9 @@ public class Eval {
                         : variable(this, localVarIndex, null, errType, instructionHandle, parent);
             } else {
                 //log
-                var onSave = getPrev(instructionHandle);
-                //skip
-                var onSaveResult = eval(onSave, callCache);
-                var lastInstruction = getPrev(onSaveResult.getLastInstruction());
-                return eval(lastInstruction, parent, callCache);
+                //removed from stack
+                var onSaveResult = evalPrev(instructionHandle, callCache);
+                return evalPrev(onSaveResult, callCache);
             }
         } else if (instruction instanceof GETSTATIC) {
             var getStatic = (GETSTATIC) instruction;
@@ -576,18 +579,22 @@ public class Eval {
             return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, parent, component, method);
         } else if (instruction instanceof GETFIELD) {
             var getField = (GETFIELD) instruction;
-            var evalFieldOwnedObject = eval(getPrev(instructionHandle), parent, callCache);
+            var evalFieldOwnedObject = evalPrev(instructionHandle, parent, callCache);
             var fieldName = getField.getFieldName(constantPoolGen);
             var lastInstruction = evalFieldOwnedObject.getLastInstruction();
-            return getFieldValue(evalFieldOwnedObject, fieldName, instructionHandle, lastInstruction,
-                    constantPoolGen, this, parent);
+            var relations = List.of(evalFieldOwnedObject);
+            return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, unevaluatedHandler) -> {
+                var object = evalFieldOwnedObject.getValue(unevaluatedHandler).get(0);
+                return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName, instructionHandle,
+                        lastInstruction, thisDelay, thisDelay.getComponent(), thisDelay.getMethod());
+            });
         } else if (instruction instanceof CHECKCAST) {
-            return eval(getPrev(instructionHandle), parent, callCache);
+            return evalPrev(instructionHandle, parent, callCache);
         } else if (instruction instanceof InvokeInstruction) {
             return evalInvoke(instructionHandle, (InvokeInstruction) instruction, parent, callCache);
         } else if (instruction instanceof ANEWARRAY) {
             var anewarray = (ANEWARRAY) instruction;
-            var size = eval(getPrev(instructionHandle), parent, callCache);
+            var size = evalPrev(instructionHandle, parent, callCache);
             var lastInstruction = size.getLastInstruction();
             var relations = List.of(size);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
@@ -603,9 +610,9 @@ public class Eval {
             return constant(value, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackConsumer) {
             //AASTORE
-            var element = eval(getPrev(instructionHandle), parent, callCache);
-            var index = eval(getPrev(element.getLastInstruction()), parent, callCache);
-            var array = eval(getPrev(index.getLastInstruction()), parent, callCache);
+            var element = evalPrev(instructionHandle, parent, callCache);
+            var index = evalPrev(element, callCache);
+            var array = evalPrev(index, callCache);
             var lastInstruction = array.getLastInstruction();
             var relations = List.of(element, index, array);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
@@ -621,9 +628,9 @@ public class Eval {
                 return constant(result, instructionHandle, lastInstruction, component, getMethod(), element, index, array);
             });
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackProducer) {
-            var element = eval(getPrev(instructionHandle), parent, callCache);
-            var index = eval(getPrev(element.getLastInstruction()), parent, callCache);
-            var array = eval(getPrev(index.getLastInstruction()), parent, callCache);
+            var element = evalPrev(instructionHandle, parent, callCache);
+            var index = evalPrev(element, callCache);
+            var array = evalPrev(index, callCache);
             var lastInstruction = array.getLastInstruction();
             var relations = List.of(element, index, array);
             //AALOAD
@@ -633,15 +640,14 @@ public class Eval {
                     var a = (Object[]) result;
                     var i = (int) index.getValue();
                     var e = a[i];
-                    return constant(e, lastInstruction, lastInstruction,
-                            component, getMethod(), element, index, array);
+                    return constant(e, lastInstruction, lastInstruction, component, getMethod(), element, index, array);
                 } else {
                     throw newInvalidEvalException("expected result class array but was " + result.getClass(),
                             instruction, constantPoolGen.getConstantPool());
                 }
             });
         } else if (instruction instanceof ARRAYLENGTH) {
-            var arrayRef = eval(getPrev(instructionHandle), parent, callCache);
+            var arrayRef = evalPrev(instructionHandle, parent, callCache);
             var relations = List.of(arrayRef);
             return delay(instructionText, instructionHandle, arrayRef.getLastInstruction(), this, parent, relations, (thisDelay, resolver) -> {
                 return thisDelay.getEval().resolve(arrayRef, resolver);
@@ -654,11 +660,10 @@ public class Eval {
                 return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay, getComponent(), getMethod());
             });
         } else if (instruction instanceof DUP) {
-            var prev = getPrev(instructionHandle);
-            var dup = eval(prev, callCache);
-            return duplicate(instructionHandle, prev, dup, parent);
+            var dup = evalPrev(instructionHandle, callCache);
+            return duplicate(instructionHandle, dup.getLastInstruction(), dup);
         } else if (instruction instanceof DUP2) {
-//            return eval(getPrev(instructionHandle), resolver);
+//            return evalPrev(instructionHandle, resolver);
         } else if (instruction instanceof POP) {
             var onRemove = getPrev(instructionHandle);
             //log removed
@@ -673,7 +678,7 @@ public class Eval {
             var prev = onRemove.getPrev();
             return eval(prev, parent, callCache);
         } else if (instruction instanceof POP2) {
-//            return eval(getPrev(instructionHandle), resolver);
+//            return evalPrev(instructionHandle, resolver);
         } else if (instruction instanceof ACONST_NULL) {
             return constant(null, instructionHandle, instructionHandle, component, method, parent);
         } else if (instruction instanceof IfInstruction) {
@@ -683,16 +688,15 @@ public class Eval {
                 current = getPrev(instructionHandle);
                 args[i] = eval(current, parent, callCache);
             }
-            var lastInstruction = args.length > 0 ? args[0].getLastInstruction() : instructionHandle;
+            var prev = args.length > 0 ? evalPrev(args[0], callCache) : evalPrev(instructionHandle, parent, callCache);
             //now only positive scenario
             //todo need evaluate negative branch
-            return eval(getPrev(lastInstruction), parent, callCache);
+            return prev;
         } else if (instruction instanceof ConversionInstruction) {
             //I2L,
             var conv = (ConversionInstruction) instruction;
             var convertTo = conv.getType(constantPoolGen);
-            var convertedValueInstruction = getPrev(instructionHandle);
-            var convertedValueResult = eval(convertedValueInstruction, parent, callCache);
+            var convertedValueResult = evalPrev(instructionHandle, parent, callCache);
             var lastInstruction = convertedValueResult.getLastInstruction();
             var relations = List.of(convertedValueResult);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
@@ -707,8 +711,8 @@ public class Eval {
             });
         } else if (instruction instanceof ArithmeticInstruction) {
             var arith = (ArithmeticInstruction) instruction;
-            var first = eval(getPrev(instructionHandle), parent, callCache);
-            var second = consumeStack == 2 ? eval(getPrev(first.getLastInstruction()), parent, callCache) : null;
+            var first = evalPrev(instructionHandle, parent, callCache);
+            var second = consumeStack == 2 ? evalPrev(first, callCache) : null;
             var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
             var relations = second != null ? List.of(first, second) : List.of(first);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
@@ -961,6 +965,7 @@ public class Eval {
         }).collect(toList())).collect(toList());
     }
 
+    //todo need to migrates on evalPrev in place of getPrev
     public InvokeObject evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments, Result parent,
                                          Map<CallCacheKey, Result> callCache) {
         final InstructionHandle firstInstruction, lastInstruction;
@@ -983,8 +988,7 @@ public class Eval {
             objectCallResult = null;
         } else if (invokeInstruction instanceof INVOKESPECIAL || invokeInstruction instanceof INVOKEVIRTUAL
                 || invokeInstruction instanceof INVOKEINTERFACE) {
-            var prev = getPrev(lastArgInstruction);
-            objectCallResult = eval(prev, parent, callCache);
+            objectCallResult = evalPrev(lastArgInstruction, parent, callCache);
             firstInstruction = objectCallResult.getFirstInstruction();
             lastInstruction = objectCallResult.getLastInstruction();
         } else {
@@ -1001,9 +1005,9 @@ public class Eval {
         }
 
         var allResolved = parameters.stream().allMatch(Result::isResolved);
-        if (allResolved) {
-            return getResolvedParameters(parameters);
-        }
+//        if (allResolved) {
+//            return getResolvedParameters(parameters);
+//        }
 
         if (!(this.arguments == null || this.arguments.isEmpty())) {
             if (allResolved) {
@@ -1192,15 +1196,18 @@ public class Eval {
         } else if (value instanceof Delay) {
             try {
                 var delay = (Delay) value;
-                var delayComponent = delay.getComponent();
+                var delayComponentKey = delay.getComponentKey();
                 var delayMethod = delay.getMethod();
-                if (getComponentKey().equals(delayComponent) && method.equals(delayMethod) && this.arguments != null) {
+                var componentKey = getComponentKey();
+                if (componentKey.equals(delayComponentKey) && method.equals(delayMethod) && this.arguments != null) {
                     delay = delay.withEval(this);
                 }
                 result = delay.getDelayed(resolver);
             } catch (UnresolvedVariableException e) {
                 result = resolveOrThrow(value, resolver, e);
             }
+        } else if (value instanceof Duplicate) {
+            result = resolve(((Duplicate)value).getOnDuplicate(), resolver);
         } else {
             result = value;
         }
@@ -1212,8 +1219,7 @@ public class Eval {
         var values = new Result[argumentsAmount];
         var current = instructionHandle;
         for (int i = argumentsAmount; i > 0; i--) {
-            var prev = getPrev(current);
-            var eval = eval(prev, parent, callCache);
+            var eval = evalPrev(current, parent, callCache);
             var valIndex = i - 1;
             values[valIndex] = eval;
             current = eval.getLastInstruction();
@@ -1240,6 +1246,22 @@ public class Eval {
             instructionHandle = instructionHandle.getPrev();
         }
         return instructionHandle;
+    }
+
+    public Result evalPrev(InstructionHandle instructionHandle, Result parent, Map<CallCacheKey, Result> callCache) {
+        return eval(getPrev(instructionHandle), parent, callCache);
+    }
+
+    public Result evalPrev(InstructionHandle instructionHandle, Map<CallCacheKey, Result> callCache) {
+        return evalPrev(instructionHandle, null, callCache);
+    }
+
+    public Result evalPrev(Result result, Map<CallCacheKey, Result> callCache) {
+        if (result instanceof Duplicate) {
+            return ((Duplicate) result).getOnDuplicate();
+        } else {
+            return eval(getPrev(result.getLastInstruction()), callCache);
+        }
     }
 
     private InstructionHandle getFirstJumpedAbove(InstructionHandle instructionHandle) {
@@ -1320,6 +1342,8 @@ public class Eval {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class EvalArguments {
         List<Result> arguments;
+        //todo incompatibility with Duplicated result
+        @Deprecated
         InstructionHandle lastArgInstruction;
 
         @Override
