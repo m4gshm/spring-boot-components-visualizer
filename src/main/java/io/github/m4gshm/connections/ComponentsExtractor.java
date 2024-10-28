@@ -141,55 +141,34 @@ public class ComponentsExtractor {
                                     ComponentProvider changedComponentProvider,
                                     DependentProvider dependentProvider,
                                     CallPointsProvider callPointsProvider) {
-        if (!iface.isExternalCallable()) {
-            var result = iface.getEvalSource();
-            var methodSource = iface.getMethodSource();
-            if (result != null) {
-                var relations = getTopRelations(result);
+        if (iface.isExternalCallable()) {
+            return true;
+        }
+        var result = iface.getEvalSource();
+        var methodSource = iface.getMethodSource();
+        if (result != null) {
+            var relations = getTopRelations(result);
 
-                var callGroups = relations.stream().collect(partitioningBy(relation -> {
-                    var method = relation.getMethod();
-                    return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
-                            dependentProvider, callPointsProvider);
-                }));
-                var uncalled = callGroups.get(true);
-//                var allUncalled = uncalled.size() == relations.size();
-
-                var externalCallableGroup = uncalled.stream().collect(partitioningBy(r -> {
-                    var rComponent = r.getComponent();
-                    var componentKey = newComponentKey(rComponent);
-                    var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
-                    var interfaces = changedComponent.getInterfaces();
-                    return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
-                }));
-                var externalCallable = !externalCallableGroup.get(true).isEmpty();
-
-                var called = externalCallable || uncalled.isEmpty();
-                return called;
-
-//                var components = relations.stream().map(ContextAware::getComponent).collect(toSet());
-//                var resolveGroups = relations.stream().collect(partitioningBy(r -> r.isResolved()));
-//                var unresolved = resolveGroups.get(false);
-//                var anyUnresolved = !unresolved.isEmpty();
-//                if (anyUnresolved) {
-//                    var externalCallableGroup = unresolved.stream().collect(partitioningBy(r -> {
-//                        var rComponent = r.getComponent();
-//                        var componentKey = newComponentKey(rComponent);
-//                        var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
-//                        var interfaces = changedComponent.getInterfaces();
-//                        return interfaces != null && interfaces.stream().anyMatch(i -> i.isExternalCallable());
-//                    }));
-//                    var externalCallable = !externalCallableGroup.get(true).isEmpty();
-//                    return externalCallable;
-//                } else {
-//                    return true;
-//                }
-
-//                return !allUncalled;
-            } else if (methodSource != null) {
-                return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
+            var callGroups = relations.stream().collect(partitioningBy(relation -> {
+                var method = relation.getMethod();
+                return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
                         dependentProvider, callPointsProvider);
-            }
+            }));
+            var uncalled = callGroups.get(true);
+
+            var externalCallableGroup = uncalled.stream().collect(partitioningBy(r -> {
+                var rComponent = r.getComponent();
+                var componentKey = newComponentKey(rComponent);
+                var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
+                var interfaces = changedComponent.getInterfaces();
+                return interfaces != null && interfaces.stream().anyMatch(Interface::isExternalCallable);
+            }));
+            var externalCallable = !externalCallableGroup.get(true).isEmpty();
+
+            return externalCallable || uncalled.isEmpty();
+        } else if (methodSource != null) {
+            return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
+                    dependentProvider, callPointsProvider);
         }
         return true;
     }
@@ -289,7 +268,7 @@ public class ComponentsExtractor {
         var componentWithInterfacesMap = componentsWithInterfaces.stream().collect(toMap(ComponentKey::newComponentKey, identity()));
 
         var filteredComponentsWithInterfaces = componentsWithInterfaces.stream()
-                .map(component -> !options.isIncludeUnusedFeignClientMethodsInInterfaces() ?
+                .map(component -> !options.isIncludeUnusedOutInterfaces() ?
                         filterUnusedInterfaces(component, componentWithInterfacesMap::get, dependentProvider, callPointsProvider)
                         : component)
                 .map(component -> options.isIgnoreNotFoundDependencies()
@@ -742,7 +721,7 @@ public class ComponentsExtractor {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
-        public boolean includeUnusedFeignClientMethodsInInterfaces;
+        public boolean includeUnusedOutInterfaces;
         BeanFilter exclude;
         boolean failFast;
         @Builder.Default
