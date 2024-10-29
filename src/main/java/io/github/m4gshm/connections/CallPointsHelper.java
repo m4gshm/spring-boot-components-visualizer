@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
-import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
 
 public class CallPointsHelper {
@@ -57,13 +56,13 @@ public class CallPointsHelper {
         var callPoints = new ArrayList<CallPoint>();
         for (var instructionHandle1 : instructionHandles) {
             var instruction = instructionHandle1.getInstruction();
-            if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE || instruction instanceof INVOKEDYNAMIC) {
-                var invokeInstruction = (InvokeInstruction) instruction;
-                var callPoint = ofNullable(newInvokeDynamicCallPoint(instructionHandle1, bootstrapMethods, constantPoolGen))
-                        .orElseGet(() -> newInvokeCallPoint(instructionHandle1, invokeInstruction, constantPoolGen));
-                if (callPoint != null) {
-                    callPoints.add(callPoint);
-                }
+            var callPoint = (instruction instanceof INVOKEDYNAMIC)
+                    ? newInvokeDynamicCallPoint(instructionHandle1, bootstrapMethods, constantPoolGen)
+                    : instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE
+                    ? newInvokeCallPoint(instructionHandle1, (InvokeInstruction) instruction, constantPoolGen)
+                    : null;
+            if (callPoint != null) {
+                callPoints.add(callPoint);
             }
         }
         return CallPoint.builder()

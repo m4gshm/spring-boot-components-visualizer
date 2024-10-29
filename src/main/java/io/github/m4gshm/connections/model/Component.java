@@ -22,7 +22,7 @@ public class Component implements ComponentDependency {
     String path;
     Class<?> type;
     boolean configuration;
-    Set<Interface> interfaces;
+    List<Interface> interfaces;
     Set<Component> dependencies;
 
     @Override

@@ -33,6 +33,7 @@ import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.Utils.loadedClass;
@@ -46,6 +47,7 @@ import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
+import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
@@ -339,13 +341,14 @@ public class ComponentsExtractorUtils {
             var dependencies = new LinkedHashSet<>(lDependencies);
             dependencies.addAll(rDependencies);
             var interfaces = mergeInterfaces(lInterfaces, rInterfaces);
-            return l.toBuilder().dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies))).interfaces(unmodifiableSet(interfaces)).build();
+            return l.toBuilder().dependencies(unmodifiableSet(new LinkedHashSet<>(dependencies)))
+                    .interfaces(unmodifiableList(interfaces)).build();
         }, LinkedHashMap::new));
     }
 
     @SafeVarargs
-    public static LinkedHashSet<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
-        return of(interfaces).filter(Objects::nonNull).flatMap(Collection::stream).collect(toLinkedHashSet());
+    public static List<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
+        return of(interfaces).filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
     }
 
     public static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {

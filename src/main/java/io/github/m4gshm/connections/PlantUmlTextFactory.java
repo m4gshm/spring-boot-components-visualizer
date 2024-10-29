@@ -1251,7 +1251,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
             Predicate<Component> componentsConcatenationCondition = hasNoInterfaces();
 
             public static Predicate<Component> hasNoInterfaces() {
-                return c -> ofNullable(c.getInterfaces()).map(Set::isEmpty).orElse(true);
+                return c -> ofNullable(c.getInterfaces()).map(Collection::isEmpty).orElse(true);
             }
         }
 

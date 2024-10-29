@@ -31,6 +31,7 @@ import static org.apache.bcel.Const.*;
 @FieldDefaults(makeFinal = true, level = AccessLevel.PROTECTED)
 public class StringifyResolver implements Resolver {
 
+    public static final String THIS = "this";
     Level level;
     Map<CallCacheKey, Result> callCache;
     boolean failFast;
@@ -193,7 +194,7 @@ public class StringifyResolver implements Resolver {
                     var localVariable = findLocalVariable(method, localVariables, instructionHandle);
 
                     var name = localVariable != null ? localVariable.getName() : null;
-                    if ("this".equals(name)) {
+                    if (THIS.equals(name)) {
                         var value = eval.getObject();
                         return constant(value, instructionHandle, instructionHandle, component, method, this, asList(delay));
                     }
@@ -255,7 +256,7 @@ public class StringifyResolver implements Resolver {
             var resolved = resolver.resolve(parameter, exception);
             return resolved.getValue();
         }
-        Object value = pv.getValue();
+        var value = pv.getValue();
         if (value == null) {
             return null;
         }
@@ -264,14 +265,19 @@ public class StringifyResolver implements Resolver {
         if (valueClass.isPrimitive() || packageName.startsWith("java")) {
             return value;
         }
+
+        if (level != full) {
+            return null;
+        }
+
         var instructionHandle = parameter.getFirstInstruction();
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof LoadInstruction) {
             var loadInst = (LoadInstruction) instruction;
-            var localVariable = getLocalVariable(parameter.getMethod(), loadInst.getIndex(),
-                    instructionHandle);
-            if (localVariable != null && localVariable.getName() != null) {
-                return localVariable.getName();
+            var localVariable = getLocalVariable(parameter.getMethod(), loadInst.getIndex(), instructionHandle);
+            var name = localVariable != null ? localVariable.getName() : null;
+            if (!(name == null || THIS.equals(name))) {
+                return name;
             }
         }
         var simpleName = value.getClass().getSimpleName();
