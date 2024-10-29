@@ -38,7 +38,6 @@ import java.lang.Package;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.CallPointsHelper.getMethods;
@@ -168,7 +167,16 @@ public class ComponentsExtractor {
             }));
             var externalCallable = !externalCallableGroup.get(true).isEmpty();
 
-            return externalCallable || uncalled.isEmpty();
+            var isCalled = externalCallable || uncalled.isEmpty();
+            if (isCalled) {
+                return true;
+            } else {
+                var externalRelations = relations.stream().filter(r -> !component.equals(r.getComponent()))
+                        .collect(toSet());
+                var externalRelationsResolved = !externalRelations.isEmpty() && externalRelations.stream()
+                        .allMatch(Result::isResolved);
+                return externalRelationsResolved;
+            }
         } else if (methodSource != null) {
             return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
                     dependentProvider, callPointsProvider);
