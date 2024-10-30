@@ -15,8 +15,8 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.eval.bytecode.Eval.*;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClass;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.toClasses;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.toClass;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.toClasses;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethod;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodInfo;
 import static io.github.m4gshm.connections.eval.bytecode.LocalVariableUtils.*;
@@ -50,7 +50,7 @@ public class StringifyResolver implements Resolver {
         return parameterValues;
     }
 
-    public Result stringifyUnresolved(Result current, EvalBytecodeException ex) {
+    public Result stringifyUnresolved(Result current, EvalException ex) {
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
@@ -72,7 +72,7 @@ public class StringifyResolver implements Resolver {
         throw new UnresolvedResultException("bad stringify", current);
     }
 
-    private Result stringifyDelay(Delay delay, EvalBytecodeException ex) {
+    private Result stringifyDelay(Delay delay, EvalException ex) {
         var instructionHandle = delay.getFirstInstruction();
         var instruction = instructionHandle.getInstruction();
         var eval = delay.getEval();
@@ -138,11 +138,11 @@ public class StringifyResolver implements Resolver {
                             this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
                                 try {
                                     return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
-                                } catch (EvalBytecodeException e) {
+                                } catch (EvalException e) {
                                     throw e;
                                 }
                             });
-                } catch (EvalBytecodeException e) {
+                } catch (EvalException e) {
                     throw e;
                 }
             } else if (instruction instanceof INVOKESPECIAL) {
@@ -408,9 +408,9 @@ public class StringifyResolver implements Resolver {
     private List<String> invoke(Result first, Result second, BiFunction<String, String, String> op) {
         if (level == full) {
             return invokeVariants(expand(first), expand(second), op);
-        } else if (resolvedBy(first, loopControl()) == this) {
+        } else if (resolvedBy(first, this, loopControl())) {
             return stringifyValue(first).stream().map(o -> o + "").collect(toList());
-        } else if (resolvedBy(second, loopControl()) == this) {
+        } else if (resolvedBy(second, this, loopControl())) {
             return stringifyValue(second).stream().map(o -> o + "").collect(toList());
         } else {
             return invokeVariants(expand(first), expand(second), op);
@@ -422,20 +422,22 @@ public class StringifyResolver implements Resolver {
         return o -> touched.put(o, o) == null;
     }
 
-    private Object resolvedBy(Result result, Predicate<Object> touched) {
+    private boolean resolvedBy(Result result, Object resolver, Predicate<Object> touched) {
         if (!touched.test(result)) {
             //log
-            return null;
+            return false;
         }
         if (result instanceof Constant) {
             var constant = (Constant) result;
             var resolvedBy = constant.getResolvedBy();
             if (resolvedBy != null) {
-                return resolvedBy;
+                return resolvedBy == resolver;
             } else {
-                return constant.getRelations().stream().map(r -> resolvedBy(r, touched)).filter(Objects::nonNull)
-                        .findFirst().orElse(null);
+                return constant.getRelations().stream().anyMatch(r -> resolvedBy(r, resolver, touched));
             }
+        } else if (result instanceof Multiple) {
+            var multiple = (Multiple) result;
+            return multiple.getResults().stream().anyMatch(r -> resolvedBy(r, resolver, touched));
         }
         return false;
     }
@@ -450,12 +452,17 @@ public class StringifyResolver implements Resolver {
     }
 
     private List<Object> stringifyValue(Result result) {
+        if (result instanceof Multiple) {
+            var multiple = (Multiple) result;
+            return multiple.getResults().stream().map(this::stringifyValue).filter(Objects::nonNull)
+                    .flatMap(Collection::stream).collect(toList());
+        }
         try {
             return result.getValue(this::stringifyUnresolved);
         } catch (NotInvokedException e) {
             //log
             throw e;
-        } catch (EvalBytecodeException e) {
+        } catch (EvalException e) {
             if (failFast) {
                 throw new IllegalStateException("unexpected eval bytecode error", e);
             } else {
@@ -480,7 +487,7 @@ public class StringifyResolver implements Resolver {
     }
 
     @Override
-    public Result resolve(Result unresolved, EvalBytecodeException cause) {
+    public Result resolve(Result unresolved, EvalException cause) {
         return stringifyUnresolved(unresolved, cause);
     }
 

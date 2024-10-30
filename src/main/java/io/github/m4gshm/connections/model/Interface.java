@@ -9,8 +9,10 @@ import lombok.experimental.FieldDefaults;
 
 import static lombok.AccessLevel.PRIVATE;
 
+
 @Data
 @Builder(toBuilder = true)
+@RequiredArgsConstructor
 @FieldDefaults(level = PRIVATE, makeFinal = true)
 public class Interface {
     Object core;
@@ -18,9 +20,9 @@ public class Interface {
     String id;
     Direction direction;
     Type type;
+    boolean externalCallable;
     MethodId methodSource;
     Result evalSource;
-    boolean externalCallable;
 
     public CharSequence getName() {
         var name = this.name != null ? this.name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
@@ -34,6 +36,10 @@ public class Interface {
 
     public String getId() {
         return id != null ? id : core != null ? core.toString() : String.valueOf(getName());
+    }
+
+    public Key toKey() {
+        return Key.builder().id(getId()).direction(getDirection()).type(getType()).build();
     }
 
     @Getter
@@ -57,6 +63,18 @@ public class Interface {
         Type() {
             fullName = this.name();
         }
+    }
+
+    @Data
+    @Builder
+    @FieldDefaults(level = PRIVATE, makeFinal = true)
+    public static class Key {
+        Object core;
+        CharSequence name;
+        String id;
+        Direction direction;
+        Type type;
+        boolean externalCallable;
     }
 
 }

@@ -7,7 +7,7 @@ import org.apache.bcel.generic.Type;
 
 import java.util.Arrays;
 
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getClassByName;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.getClassByName;
 import static lombok.AccessLevel.PRIVATE;
 
 @Data

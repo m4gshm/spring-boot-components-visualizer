@@ -8,6 +8,8 @@ import io.github.m4gshm.connections.eval.result.Resolver;
 import io.github.m4gshm.connections.eval.result.Result;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.HttpMethod;
+import lombok.Data;
+import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
@@ -24,7 +26,7 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -68,30 +70,48 @@ public class RestOperationsUtils {
         var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
         var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
-        return variants.stream().flatMap(variant -> {
-            var pathArg = variant.get(1);
-            return getHttpMethodStream(variant, methodName, pathArg, resolver);
-        }).collect(toList());
-    }
-
-    private static Stream<HttpMethod> getHttpMethodStream(List<Result> variant, String methodName,
-                                                          Result pathArg, Resolver resolver) {
-        try {
-            final List<String> httpMethods;
-            if ("exchange".equals(methodName)) {
-                var resolvedHttpMethodArg = variant.get(2);
-                httpMethods = getStrings(resolvedHttpMethodArg.getValue(resolver));
-            } else {
-                httpMethods = List.of(getHttpMethod(methodName));
-            }
-            var paths = getStrings(pathArg.getValue(resolver));
-
-            return paths.stream().flatMap(path -> httpMethods.stream()
-                    .map(httpMethod -> HttpMethod.builder().method(httpMethod).path(path).evalSource(pathArg).build()));
-        } catch (NotInvokedException e) {
-            //log
-            return Stream.empty();
+        @Data
+        @FieldDefaults(makeFinal = true)
+        class ArgVariant {
+            Result pathArg;
+            Result httpMethodArg;
         }
+
+        @Data
+        @FieldDefaults(makeFinal = true)
+        class PathVariant {
+            Result pathArg;
+            String httpMethod;
+            String path;
+        }
+
+        var methods = variants.stream().map(variant -> {
+            var pathArg = variant.get(1);
+            var httpMethodArg = "exchange".equals(methodName) ? variant.get(2) : null;
+            return new ArgVariant(pathArg, httpMethodArg);
+        }).distinct().flatMap(variant -> {
+            var pathArg = variant.pathArg;
+            var resolvedHttpMethodArg = "exchange".equals(methodName) ? variant.httpMethodArg : null;
+
+            List<String> httpMethods;
+            List<String> paths;
+            try {
+                httpMethods = resolvedHttpMethodArg != null
+                        ? getStrings(resolvedHttpMethodArg.getValue(resolver))
+                        : List.of(getHttpMethod(methodName));
+                paths = getStrings(pathArg.getValue(resolver));
+            } catch (NotInvokedException e) {
+                //log
+                httpMethods = List.of();
+                paths = List.of();
+            }
+            var httpMethods1 = httpMethods;
+
+            return paths.stream().flatMap(path -> httpMethods1.stream().map(httpMethod -> new PathVariant(pathArg, httpMethod, path)));
+        }).distinct().map(variant -> {
+            return HttpMethod.builder().method(variant.httpMethod).path(variant.path).evalSource(variant.pathArg).build();
+        }).collect(toList());
+        return methods;
     }
 
     private static List<String> getStrings(List<Object> values) {

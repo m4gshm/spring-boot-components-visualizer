@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;

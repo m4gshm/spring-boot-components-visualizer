@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getClassByName;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.getClassByName;
 import static io.github.m4gshm.connections.eval.bytecode.MethodInfo.newMethodInfo;
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
@@ -83,7 +83,7 @@ public class InvokeDynamicUtils {
             } else if (constant instanceof ConstantObject) {
                 return ((ConstantObject) constant).getConstantValue(cp);
             } else {
-                throw new EvalBytecodeException("unsupported bootstrap method argument type " + constant);
+                throw new EvalException("unsupported bootstrap method argument type " + constant);
             }
         }).collect(toList());
 
@@ -145,7 +145,7 @@ public class InvokeDynamicUtils {
         try {
             return privateLookupIn(targetClass, lookup);
         } catch (IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -160,7 +160,7 @@ public class InvokeDynamicUtils {
             return lookupVirtual(lookup, targetClass, methodName, methodType);
         } else {
             var message = "unsupported method handle referenceKind " + referenceKind;
-            throw new EvalBytecodeException(message);
+            throw new EvalException(message);
         }
     }
 
@@ -169,7 +169,7 @@ public class InvokeDynamicUtils {
             var declaredMethod = targetClass.getDeclaredMethod(methodName, methodType.parameterArray());
             declaredMethod.setAccessible(true);
         } catch (Exception e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -178,7 +178,7 @@ public class InvokeDynamicUtils {
         try {
             return lookup.findSpecial(targetClass, methodName, methodType, targetClass);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -187,7 +187,7 @@ public class InvokeDynamicUtils {
         try {
             return lookup.findStatic(targetClass, name, methodType);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -196,7 +196,7 @@ public class InvokeDynamicUtils {
         try {
             return lookup.findVirtual(targetClass, methodName, methodType);
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 

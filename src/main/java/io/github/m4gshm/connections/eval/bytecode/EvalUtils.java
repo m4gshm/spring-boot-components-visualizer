@@ -42,7 +42,7 @@ import static java.util.stream.StreamSupport.stream;
 
 @Slf4j
 @UtilityClass
-public class EvalBytecodeUtils {
+public class EvalUtils {
 
     private static final Class<SpringProxy> springProxyClass = loadedClass(() -> SpringProxy.class);
 
@@ -53,7 +53,7 @@ public class EvalBytecodeUtils {
         try {
             javaClass = Repository.lookupClass(componentType);
         } catch (ClassNotFoundException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
         classes.add(javaClass);
         try {
@@ -96,7 +96,7 @@ public class EvalBytecodeUtils {
             var value = methodHandle.invokeWithArguments(asList(arguments));
             return invoked(value, firstInstruction, lastArgInstruction, component, method, parameters);
         } catch (Throwable e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -105,7 +105,7 @@ public class EvalBytecodeUtils {
         try {
             constructor = lookup.get();
         } catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
         return constructor;
     }
@@ -117,7 +117,7 @@ public class EvalBytecodeUtils {
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
         } catch (NoSuchMethodException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
@@ -146,7 +146,7 @@ public class EvalBytecodeUtils {
             var bootstrapMethodArguments = methodAndArguments.getBootstrapMethodArguments();
             return (CallSite) methodAndArguments.getHandler().invokeWithArguments(bootstrapMethodArguments);
         } catch (Throwable e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -188,7 +188,7 @@ public class EvalBytecodeUtils {
         try {
             return constant(field.get(object), lastInstruction, lastInstruction, component, method, asList(parent));
         } catch (IllegalAccessException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
@@ -217,16 +217,12 @@ public class EvalBytecodeUtils {
         try {
             return classByName(className);
         } catch (ClassNotFoundException e) {
-            throw new EvalBytecodeException(e);
+            throw new EvalException(e);
         }
     }
 
-    public static Class<?> getClassByNameOrNull(String className) {
-        try {
-            return classByName(className);
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
+    public static String stringForLog(Type[] argumentTypes) {
+        return Arrays.stream(argumentTypes).map(t -> t + "").reduce((l, r) -> l + "," + r).orElse("");
     }
 
     @FunctionalInterface

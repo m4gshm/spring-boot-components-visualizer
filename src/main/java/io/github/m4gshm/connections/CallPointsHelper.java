@@ -13,7 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.client.Utils.getBootstrapMethods;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static java.util.stream.Collectors.toList;
 

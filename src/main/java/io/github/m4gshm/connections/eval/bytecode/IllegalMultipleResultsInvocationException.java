@@ -4,7 +4,7 @@ import io.github.m4gshm.connections.eval.result.Multiple;
 import lombok.Getter;
 
 @Getter
-public class IllegalMultipleResultsInvocationException extends EvalBytecodeException {
+public class IllegalMultipleResultsInvocationException extends EvalException {
     private final Multiple variable;
 
     public IllegalMultipleResultsInvocationException(Multiple multiple) {

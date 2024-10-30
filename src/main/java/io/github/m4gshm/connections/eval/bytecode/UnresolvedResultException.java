@@ -4,7 +4,7 @@ import io.github.m4gshm.connections.eval.result.Result;
 import lombok.Getter;
 
 @Getter
-public class UnresolvedResultException extends EvalBytecodeException {
+public class UnresolvedResultException extends EvalException {
     private final Result result;
 
     public UnresolvedResultException(String message, Exception cause, Result result) {

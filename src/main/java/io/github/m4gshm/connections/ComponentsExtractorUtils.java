@@ -5,12 +5,11 @@ import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.connections.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.connections.ComponentsExtractor.JmsClient;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.EvalException;
 import io.github.m4gshm.connections.model.Component;
 import io.github.m4gshm.connections.model.Component.ComponentKey;
 import io.github.m4gshm.connections.model.HttpMethod;
 import io.github.m4gshm.connections.model.Interface;
-import io.github.m4gshm.connections.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
@@ -32,12 +31,12 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.stream.Collector;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.connections.Utils.loadedClass;
-import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
+import static io.github.m4gshm.connections.Utils.*;
 import static io.github.m4gshm.connections.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.connections.model.HttpMethod.ALL;
 import static io.github.m4gshm.connections.model.Interface.Direction.in;
@@ -50,6 +49,7 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
+import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
@@ -117,9 +117,13 @@ public class ComponentsExtractorUtils {
             Collection<E> elements, Supplier<Class<A>> supplier
     ) {
         var annotationClass = loadedClass(supplier);
-        return annotationClass != null ? elements.stream().collect(toMap(element -> element, element -> {
-            return getMergedRepeatableAnnotations(element, annotationClass);
-        })) : Map.of();
+        if (annotationClass != null) {
+            return elements.stream().collect(toMap(identity(), element -> {
+                return getMergedRepeatableAnnotations(element, annotationClass);
+            }, warnDuplicated(), LinkedHashMap::new));
+        } else {
+            return Map.of();
+        }
     }
 
     public static Collection<Method> getMethods(Class<?> type) {
@@ -273,7 +277,7 @@ public class ComponentsExtractorUtils {
             return field.get(object);
         } catch (Exception e) {
             if (throwException) {
-                throw new EvalBytecodeException(e);
+                throw new EvalException(e);
             }
             log.debug("eval getFieldValue {}, of object type {}", field, object != null ? object.getClass() : null, e);
             return null;
@@ -302,9 +306,9 @@ public class ComponentsExtractorUtils {
                         .destination(destination)
                         .direction(jmsClient.getDirection())
                         .build())
+                .externalCallable(contextManaged)
                 .evalSource(jmsClient.getEvalSource())
                 .methodSource(jmsClient.getMethodSource())
-                .externalCallable(contextManaged)
                 .build();
     }
 
@@ -372,7 +376,7 @@ public class ComponentsExtractorUtils {
         return beanDefinitionNames;
     }
 
-    public static void handleError(String errMsg, String componentName, EvalBytecodeException e, boolean failFast) {
+    public static void handleError(String errMsg, String componentName, EvalException e, boolean failFast) {
         if (failFast) {
             log.error("{} {}", errMsg, componentName, e);
             throw e;

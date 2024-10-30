@@ -41,7 +41,7 @@ public class Utils {
     public static <T> BinaryOperator<T> warnDuplicated() {
         return (l, r) -> {
             if (l != r) {
-                log.warn("Duplicate components detected: first {}, second {}", l, r);
+                log.warn("Duplicate detected: first {}, second {}", l, r);
             }
             return l;
         };

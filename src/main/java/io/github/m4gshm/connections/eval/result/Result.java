@@ -4,7 +4,7 @@ import io.github.m4gshm.connections.eval.bytecode.Eval;
 import io.github.m4gshm.connections.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.connections.eval.bytecode.Eval.InvokeObject;
 import io.github.m4gshm.connections.eval.bytecode.Eval.ParameterValue;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.EvalException;
 import io.github.m4gshm.connections.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.connections.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.connections.model.Component;
@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.getInstructionString;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.getInstructionString;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notAccessible;
 import static io.github.m4gshm.connections.eval.result.Illegal.Status.notFound;
 import static io.github.m4gshm.connections.eval.result.Variable.VarType.LocalVar;
@@ -96,7 +96,7 @@ public abstract class Result implements ContextAware {
         if (startPC > 0) {
             var componentType = evalContext.getComponent().getType();
             var method = evalContext.getMethod();
-            throw new EvalBytecodeException("argument's variable ust has 0 startPC, " +
+            throw new EvalException("argument's variable ust has 0 startPC, " +
                     localVariable.getName() + ", " + componentType.getName() + "." +
                     method.getName() + method.getSignature());
         }
@@ -143,7 +143,10 @@ public abstract class Result implements ContextAware {
             return flatValues.get(0);
         } else {
             var relations = values.stream().map(v -> v instanceof RelationsAware ? ((RelationsAware) v).getRelations() : null)
-                    .filter(Objects::nonNull).flatMap(Collection::stream).collect(toLinkedHashSet());
+                    .filter(Objects::nonNull)
+                    .flatMap(Collection::stream)
+                    .distinct()
+                    .collect(toLinkedHashSet());
             return new Multiple(firstInstruction, lastInstruction, flatValues, component, method, new ArrayList<>(relations));
         }
     }
@@ -197,7 +200,7 @@ public abstract class Result implements ContextAware {
     public List<Object> getValue(Resolver resolver) {
         try {
             return singletonList(getValue());
-        } catch (EvalBytecodeException e) {
+        } catch (EvalException e) {
             if (resolver != null) {
                 Result resolved;
                 try {
@@ -221,6 +224,16 @@ public abstract class Result implements ContextAware {
     public abstract boolean isResolved();
 
     public interface RelationsAware {
+        static Set<Result> getTopRelations(Result result) {
+            if (result instanceof RelationsAware) {
+                var relations = ((RelationsAware) result).getRelations();
+                if (!relations.isEmpty()) {
+                    return relations.stream().flatMap(r -> getTopRelations(r).stream()).collect(toLinkedHashSet());
+                }
+            }
+            return Set.of(result);
+        }
+
         List<Result> getRelations();
     }
 

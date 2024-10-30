@@ -18,7 +18,8 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.connections.CallPointsHelper.CallPointsProvider;
 import static io.github.m4gshm.connections.Utils.classByName;
-import static java.util.Arrays.asList;
+import static io.github.m4gshm.connections.Utils.warnDuplicated;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.stringForLog;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -53,33 +54,40 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             Component component, String methodName, Type[] argumentTypes,
             DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
         var declaringClass = component.getType();
-        var dependentOnThisComponent = getDependentOfComponent(component, dependentProvider);
-        return dependentOnThisComponent.stream().map(dependentComponent -> {
+        var dependentOnThisComponent = concat(Stream.of(component), dependentProvider.apply(component).stream()).collect(toList());
+        if (log.isDebugEnabled()) {
+            var depend = dependentOnThisComponent.stream().map(Component::getName).collect(toList());
+            log.debug("dependent on component {}: {}", component.getName(), depend);
+        }
+        var callPoints = getCallPoints(declaringClass, methodName, argumentTypes, dependentOnThisComponent, callPointsProvider);
+        return callPoints;
+    }
 
+    public static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
+            Class<?> declaringClass, String methodName, Type[] argumentTypes, List<Component> dependentOnThisComponent,
+            CallPointsProvider callPointsProvider) {
+
+        return dependentOnThisComponent.stream().map(dependentComponent -> {
             var callPoints = callPointsProvider.apply(dependentComponent);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
                 var matchedCallPoints = getMatchedCallPoints(dependentMethod, methodName, argumentTypes, declaringClass);
                 if (!matchedCallPoints.isEmpty() && log.isDebugEnabled()) {
                     var first = matchedCallPoints.get(0);
                     log.debug("match call point of {}.{}({}) inside {}.{}({}) as first call of {}.{}({})",
-                            declaringClass.getName(), methodName, asList(argumentTypes),
+                            declaringClass.getName(), methodName, stringForLog(argumentTypes),
                             ownerClassName(dependentMethod), dependentMethod.getMethodName(),
-                            asList(dependentMethod.getArgumentTypes()),
-                            ownerClassName(first), first.getMethodName(), asList(first.getArgumentTypes()));
+                            stringForLog(dependentMethod.getArgumentTypes()),
+                            ownerClassName(first), first.getMethodName(), stringForLog(first.getArgumentTypes()));
                 }
                 return entry(dependentMethod, matchedCallPoints);
-            }).filter(e -> !e.getValue().isEmpty()).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+            }).filter(e -> !e.getValue().isEmpty()).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
+                    warnDuplicated(), LinkedHashMap::new));
             return !callersWithVariants.isEmpty() ? entry(dependentComponent, callersWithVariants) : null;
-        }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue, warnDuplicated(), LinkedHashMap::new));
     }
 
     private static String ownerClassName(CallPoint dependentMethod) {
         return dependentMethod.getOwnerClass() != null ? dependentMethod.getOwnerClass().getName() : dependentMethod.getOwnerClassName();
-    }
-
-    static List<Component> getDependentOfComponent(
-            Component component, DependentProvider dependentProvider) {
-        return concat(Stream.of(component), dependentProvider.apply(component).stream()).collect(toList());
     }
 
     static Map<Component, Map<CallPoint, List<Eval.EvalArguments>>> getEvalCallPointVariants(
@@ -97,9 +105,10 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 var eval = evalContextFactory.getEvalContext(dependentComponent, javaClass, method);
                 var argumentVariants = evalCallPointArgumentVariants(callPoint, matchedCallPoints, eval, callCache);
                 return argumentVariants;
-            }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+            }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
+                    warnDuplicated(), LinkedHashMap::new));
             return entry(dependentComponent, variants);
-        }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue, warnDuplicated(), LinkedHashMap::new));
     }
 
     static Map.Entry<CallPoint, List<Eval.EvalArguments>> evalCallPointArgumentVariants(
@@ -109,7 +118,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
                 return Eval.evalArguments(callPoint, eval, callCache);
-            } catch (EvalBytecodeException e) {
+            } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
                     var variable = (Variable) result;

@@ -1,7 +1,7 @@
 package io.github.m4gshm.connections.eval.result;
 
 import io.github.m4gshm.connections.eval.bytecode.Eval;
-import io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException;
+import io.github.m4gshm.connections.eval.bytecode.EvalException;
 import io.github.m4gshm.connections.eval.result.Result.RelationsAware;
 import io.github.m4gshm.connections.model.Component;
 import lombok.Getter;
@@ -46,7 +46,7 @@ public class Delay extends Result implements ContextAware, RelationsAware {
         //todo must throw Exception
         var delayed = getDelayed(null);
         if (delayed == this) {
-            throw new EvalBytecodeException("looped delay 2");
+            throw new EvalException("looped delay 2");
         }
         return delayed.getValue();
     }
@@ -56,7 +56,7 @@ public class Delay extends Result implements ContextAware, RelationsAware {
         if (!isResolved()) {
             result = evaluator.call(this, resolver);
             if (result == this) {
-                throw new EvalBytecodeException("looped delay 1");
+                throw new EvalException("looped delay 1");
             }
             this.result = result;
         }

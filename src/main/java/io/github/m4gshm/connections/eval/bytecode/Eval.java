@@ -19,11 +19,12 @@ import java.util.Map.Entry;
 import java.util.function.BiFunction;
 
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
+import static io.github.m4gshm.connections.Utils.toLinkedHashSet;
 import static io.github.m4gshm.connections.eval.bytecode.ArithmeticUtils.computeArithmetic;
 import static io.github.m4gshm.connections.eval.bytecode.Eval.CallContext.newCallContext;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException.newInvalidEvalException;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeException.newUnsupportedEvalException;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.*;
+import static io.github.m4gshm.connections.eval.bytecode.EvalException.newInvalidEvalException;
+import static io.github.m4gshm.connections.eval.bytecode.EvalException.newUnsupportedEvalException;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.*;
 import static io.github.m4gshm.connections.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.connections.eval.bytecode.LocalVariableUtils.*;
 import static io.github.m4gshm.connections.eval.bytecode.NotInvokedException.Reason.*;
@@ -152,10 +153,10 @@ public class Eval {
             }).filter(c -> c.current != null).flatMap(c -> {
                 return callContext.equals(c.current) ? c.parents.stream() : of(c);
             }).collect(toMap(c -> c.current, c -> c.parents, (l, r) -> {
-                return concat(l.stream(), r.stream()).filter(h -> h.current != null).collect(toSet());
-            }));
+                return concat(l.stream(), r.stream()).filter(h -> h.current != null).collect(toLinkedHashSet());
+            }, LinkedHashMap::new));
             var parents = parentContexts.entrySet().stream().map(e -> new ContextHierarchy(e.getKey(), e.getValue()))
-                    .collect(toSet());
+                    .collect(toLinkedHashSet());
             return new ContextHierarchy(callContext, parents);
         }
         return new ContextHierarchy(callContext, Set.of());
@@ -283,7 +284,7 @@ public class Eval {
 
         var values = new ArrayList<Result>();
         var unresolvedVars = new ArrayList<UnresolvedVariableException>();
-        var errors = new ArrayList<EvalBytecodeException>();
+        var errors = new ArrayList<EvalException>();
 
         for (var parameterValues : parametersVariants) {
             try {
@@ -291,7 +292,7 @@ public class Eval {
                 values.add(apply);
             } catch (UnresolvedVariableException e) {
                 unresolvedVars.add(e);
-            } catch (EvalBytecodeException e) {
+            } catch (EvalException e) {
                 errors.add(e);
             }
         }
@@ -488,7 +489,7 @@ public class Eval {
     public String toString() {
         return "Eval{" +
                 "componentName='" + getComponentName() + "', " +
-                "method='" + EvalBytecodeUtils.toString(method) + '\'' +
+                "method='" + EvalUtils.toString(method) + '\'' +
                 '}';
     }
 
@@ -543,8 +544,9 @@ public class Eval {
                             component, method);
                 });
             }
-            if (log.isDebugEnabled()) {
-                log.debug("not found store for {}", instructionText);
+            if (log.isTraceEnabled()) {
+                log.trace("not found store for {} inside of {}.{}({})", name != null ? "'" + name + "' variable" : instructionText,
+                        getTargetClass(getComponent()).getName(), method.getName(), stringForLog(method.getArgumentTypes()));
             }
             if (localVariable == null) {
                 var argumentType = this.method.getArgumentTypes()[loadIndex - 1];
@@ -849,7 +851,7 @@ public class Eval {
         var lastInstruction = invoke.getLastInstruction();
         var results = callWithParameterVariants(invoke, parameterClasses, resolver, call, callCache,
                 parameterVariants, lastInstruction);
-        var unresolved = results.get(false).stream().map(p -> p.exception).distinct().collect(toList());
+        var unresolved = results.get(false).stream().map(p -> p.exception).collect(toList());
         var resolved = results.get(true).stream().map(p -> p.result).collect(toList());
         if (resolved.isEmpty()) {
             if (throwNoCall) {
@@ -872,9 +874,10 @@ public class Eval {
             InstructionHandle lastInstruction) {
         return parameterVariants.stream().map(parameterVariant -> {
             try {
-                return new InvokedResult(resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
-                        resolver, call, callCache), null);
-            } catch (EvalBytecodeException /*UnresolvedVariableException*/ e) {
+                var result = resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
+                        resolver, call, callCache);
+                return new InvokedResult(result, null);
+            } catch (EvalException /*UnresolvedVariableException*/ e) {
                 //log
                 return new InvokedResult(null, e);
             }
@@ -1070,7 +1073,8 @@ public class Eval {
                         .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
                         .reduce(1, (l, r) -> l * r);
                 var evalContextArgsVariants = getEvalContextArgsVariants(dimensions, evalContextArgs);
-                for (var variant : evalContextArgsVariants) {
+                var compressedEvalContextArgsVariants = compress(evalContextArgsVariants, evalContextArgs);
+                for (var variant : compressedEvalContextArgsVariants) {
                     var evalWithArguments = this.withArguments(variant);
                     var resolvedVars = evalWithArguments.resolveParameters(parameters, resolver);
                     if (resolvedVars != null) {
@@ -1080,6 +1084,10 @@ public class Eval {
             }
         }
         return resolvedAll;
+    }
+
+    private List<Map<Integer, Result>> compress(List<Map<Integer, Result>> evalContextArgsVariants, Map<Integer, Result> evalContextArgs) {
+        return evalContextArgsVariants.stream().distinct().collect(toList());
     }
 
     private Map<Integer, Result> getEvalContextArgs(List<Result> arguments, Resolver resolver) {
@@ -1098,7 +1106,7 @@ public class Eval {
                 } else {
                     return null;
                 }
-            } catch (EvalBytecodeException e) {
+            } catch (EvalException e) {
                 //log
                 return null;
             }
@@ -1118,11 +1126,11 @@ public class Eval {
         var declaredMethod = getDeclaredMethod(type, methodName, argTypes);
         if (declaredMethod == null) {
             log.info("{}, method not found '{}.{}', instruction {}", msg, type.getName(), methodName,
-                    EvalBytecodeUtils.toString(invokeInstruction, constantPoolGen));
+                    EvalUtils.toString(invokeInstruction, constantPoolGen));
             return notFound(methodName, invokeInstruction, invoke);
         } else if (!declaredMethod.trySetAccessible()) {
             log.warn("{}, method is not accessible, method '{}.{}', instruction {}", msg, type.getName(), methodName,
-                    EvalBytecodeUtils.toString(invokeInstruction, constantPoolGen));
+                    EvalUtils.toString(invokeInstruction, constantPoolGen));
             return notAccessible(declaredMethod, invokeInstruction, invoke);
         }
         Object result;
@@ -1134,7 +1142,7 @@ public class Eval {
         }
         if (log.isDebugEnabled()) {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, type.getName(), methodName,
-                    result, EvalBytecodeUtils.toString(invokeInstruction, constantPoolGen));
+                    result, EvalUtils.toString(invokeInstruction, constantPoolGen));
         }
         return invoked(result, invokeInstruction, lastInstruction, this.getComponent(), this.getMethod(), parameters);
     }
@@ -1206,7 +1214,7 @@ public class Eval {
                 result = resolveOrThrow(value, resolver, e);
             }
         } else if (value instanceof Duplicate) {
-            result = resolve(((Duplicate)value).getOnDuplicate(), resolver);
+            result = resolve(((Duplicate) value).getOnDuplicate(), resolver);
         } else {
             result = value;
         }
@@ -1300,7 +1308,7 @@ public class Eval {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class InvokedResult {
         Result result;
-        EvalBytecodeException exception;
+        EvalException exception;
     }
 
     @Data

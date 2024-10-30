@@ -353,9 +353,7 @@ public class PlantUmlTextFactory implements io.github.m4gshm.connections.SchemaF
 
                                 var shortName = interfaceName.subSequence(commonInterfacePrefix.length(), interfaceName.length());
                                 return entry(anInterface.toBuilder().name(shortName).build(), ee.getValue());
-                            }).collect(
-                                    toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new)
-                            );
+                            }).collect(toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new));
                         }, warnDuplicated(), LinkedHashMap::new));
             }
 

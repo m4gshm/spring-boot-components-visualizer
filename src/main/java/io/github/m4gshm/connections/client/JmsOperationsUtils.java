@@ -27,7 +27,7 @@ import static io.github.m4gshm.connections.ComponentsExtractor.getClassHierarchy
 import static io.github.m4gshm.connections.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.connections.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.connections.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.connections.eval.bytecode.EvalBytecodeUtils.instructionHandleStream;
+import static io.github.m4gshm.connections.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.connections.model.Interface.Direction.*;
 import static io.github.m4gshm.connections.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;

@@ -12,8 +12,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true)
 public class EvalContextFactoryCacheImpl implements EvalContextFactory {
-    EvalContextFactory evalContextFactory;
     Map<Key, Eval> cache;
+    EvalContextFactory evalContextFactory;
 
     @Override
     public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
