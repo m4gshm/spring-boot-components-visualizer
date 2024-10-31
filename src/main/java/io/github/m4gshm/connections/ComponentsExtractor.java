@@ -192,7 +192,7 @@ public class ComponentsExtractor {
         var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
         var uncalled = anotherDependent.isEmpty();
         if (uncalled) {
-            log.info("exclude unused interface {} of component {}", iface.getId(), component.getName());
+            log.info("exclude unused interface: {} - {}",  component.getName(), iface.getId());
         }
         return uncalled;
     }
@@ -285,7 +285,7 @@ public class ComponentsExtractor {
         var filteredComponentsWithInterfaces = componentsWithInterfaces.stream().peek(component -> {
             var interfaces = component.getInterfaces();
             if (interfaces != null && !interfaces.isEmpty()) {
-                var format = "component interfaces: component {}, interfaces {}";
+                var format = "component interfaces: {} - {}";
                 if (log.isInfoEnabled()) {
                     log.info(format, component.getName(), namesForLog(interfaces));
                 } else if (log.isDebugEnabled()) {

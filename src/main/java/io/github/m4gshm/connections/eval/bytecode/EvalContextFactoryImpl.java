@@ -55,9 +55,9 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
         var declaringClass = component.getType();
         var dependentOnThisComponent = concat(Stream.of(component), dependentProvider.apply(component).stream()).collect(toList());
-        if (log.isDebugEnabled()) {
+        if (log.isTraceEnabled()) {
             var depend = dependentOnThisComponent.stream().map(Component::getName).collect(toList());
-            log.debug("dependent on component {}: {}", component.getName(), depend);
+            log.trace("dependent on component {}: {}", component.getName(), depend);
         }
         var callPoints = getCallPoints(declaringClass, methodName, argumentTypes, dependentOnThisComponent, callPointsProvider);
         return callPoints;
