@@ -4,12 +4,10 @@ import io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvide
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.components.visualizer.eval.bytecode.*;
 import io.github.m4gshm.components.visualizer.model.*;
-eximport io.github.m4gshm.connections.eval.bytecode.*;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.DependentProvider;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
-import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
 import io.github.m4gshm.components.visualizer.model.Interface.Direction;
 import lombok.Builder;

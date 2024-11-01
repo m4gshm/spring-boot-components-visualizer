@@ -1,7 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import io.github.m4gshm.components.visualizer.eval.result.*;
-import io.github.m4gshm.connections.eval.result.*;
 import io.github.m4gshm.components.visualizer.model.CallPoint;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;

@@ -3,7 +3,6 @@ package io.github.m4gshm.components.visualizer;
 import com.google.common.base.Strings;
 import io.github.m4gshm.components.visualizer.model.*;
 import io.github.m4gshm.components.visualizer.model.Package;
-import io.github.m4gshm.connections.model.*;
 import io.github.m4gshm.components.visualizer.model.Interface.Type;
 import lombok.Builder;
 import lombok.Data;
