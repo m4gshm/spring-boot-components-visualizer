@@ -42,11 +42,11 @@ public class CoreService {
         var result = service2FeignClient.get(integerId);
         if (result == null) {
             var intId = requireNonNull(integerId);
-            var firstLoad = service2LegacyImpl.get("load", intId);
+            var firstLoad = service2LegacyImpl.get("load", ++intId);
             if (firstLoad != null) {
                 return firstLoad;
             } else {
-                return service2LegacyImpl.get("load", -(intId + 1));
+                return service2LegacyImpl.get("load2", -(intId + 2));
             }
         } else {
             return standaloneService2Api.get(integerId);

@@ -75,11 +75,14 @@ cloud "output" as output #line.dotted;line:gray; {
       interface "GET:/{id}" as out.GET.http...service2..id.
       service2FeignClient ....( out.GET.http...service2..id.
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
-        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.get({id})})}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf({MainController.save({id})})}|" as output.http.http...service2..load.interfaces
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|" as output.http.http...service2..load.interfaces
         service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
+      }
+      frame "/load2" as output.http.http...service2..load2 #line.dotted;text:gray {
+        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}.intValue()}+2)}|\n\
+<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}.intValue()}+2)}|" as output.http.http...service2..load2.interfaces
+        service2LegacyImpl ....(0 output.http.http...service2..load2.interfaces
       }
     }
   }
