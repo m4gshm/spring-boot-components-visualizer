@@ -1,6 +1,6 @@
 package io.github.m4gshm.components.visualizer.client;
 
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsClient;
+import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
@@ -44,10 +44,10 @@ public class JmsOperationsUtils {
     private static final Set<String> jmsQueueClassNames = Set.of("javax.jms.Queue", "jakarta.jms.Queue");
     private static final Set<String> jmsTopicClassNames = Set.of("javax.jms.Topic", "jakarta.jms.Topic");
 
-    public static List<JmsClient> extractJmsClients(Component component,
-                                                    Map<CallCacheKey, Result> callCache,
-                                                    EvalContextFactory evalContextFactory,
-                                                    Resolver resolver) {
+    public static List<JmsService> extractJmsClients(Component component,
+                                                     Map<CallCacheKey, Result> callCache,
+                                                     EvalContextFactory evalContextFactory,
+                                                     Resolver resolver) {
         var javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
@@ -66,7 +66,7 @@ public class JmsOperationsUtils {
         }).collect(toList());
     }
 
-    private static List<JmsClient> extractJmsClients(
+    private static List<JmsService> extractJmsClients(
             Component component, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
             Map<CallCacheKey, Result> callCache, Eval eval, Resolver resolver) {
         log.trace("extractJmsClients, componentName {}", component.getName());
@@ -86,8 +86,8 @@ public class JmsOperationsUtils {
         }
     }
 
-    private static Stream<JmsClient> getJmsClientStream(List<Result> paramVariant, Direction direction,
-                                                        String methodName, Eval eval, Resolver resolver) {
+    private static Stream<JmsService> getJmsClientStream(List<Result> paramVariant, Direction direction,
+                                                         String methodName, Eval eval, Resolver resolver) {
         try {
             var ref = newMethodId(eval.getMethod());
             if (paramVariant.size() < 2) {
@@ -104,8 +104,8 @@ public class JmsOperationsUtils {
         }
     }
 
-    private static JmsClient newJmsClient(String destination, Direction direction, String methodName, MethodId methodSource, Result result) {
-        return JmsClient.builder()
+    private static JmsService newJmsClient(String destination, Direction direction, String methodName, MethodId methodSource, Result result) {
+        return JmsService.builder()
                 .destination(destination)
                 .direction(direction)
                 .name(methodName)

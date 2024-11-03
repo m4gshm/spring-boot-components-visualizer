@@ -194,11 +194,14 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
 
     protected List<Union> getUnions(InterfaceGroup.Key key) {
         var directionGroupTypeId = getElementId(key);
-        var result = key.getComponent() != null
-                ? newUnion(getElementId(directionGroupTypeId, key.getComponent().getName(), "interfaces", key.getUntyped()),
-                key.getComponent().getName(), getComponentGroupUnionStyle(key))
-                : key.getType() != null ? newUnion(directionGroupTypeId, key.getType().getFullName(), getInterfaceTypeUnionStyle(key))
-                : key.getDirection() != null ? newUnion(getElementId(key.getDirection().name(), key.getUntyped()), key.getDirection().name(),
+        var component = key.getComponent();
+        var type = key.getType();
+        var direction = key.getDirection();
+        var result = component != null
+                ? newUnion(getElementId(directionGroupTypeId, component.getName(), "interfaces", key.getUntyped()),
+                component.getName(), getComponentGroupUnionStyle(key))
+                : type != null ? newUnion(directionGroupTypeId, type.getFullName(), getInterfaceTypeUnionStyle(key))
+                : direction != null ? newUnion(getElementId(direction.name(), key.getUntyped()), direction.name(),
                 getDirectionGroupUnionStyle(key))
                 : null;
         var unions = new ArrayList<Union>();

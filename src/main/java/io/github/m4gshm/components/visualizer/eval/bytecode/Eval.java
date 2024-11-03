@@ -482,7 +482,7 @@ public class Eval {
     }
 
     public Object getObject() {
-        return this.getComponent().getObject();
+        return this.getComponent().getBean();
     }
 
     @Override
