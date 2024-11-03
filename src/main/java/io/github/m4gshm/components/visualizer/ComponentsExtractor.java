@@ -34,7 +34,6 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import java.lang.Package;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
@@ -263,7 +262,7 @@ public class ComponentsExtractor {
         });
     }
 
-    public Components getComponents() {
+    public Components getComponents(Class<?>... rootPackageClasses) {
         var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
         var excludeNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
         var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
@@ -284,19 +283,22 @@ public class ComponentsExtractor {
         }), excludeNames, excludePackages, excludeTypes).collect(toMap(BeanInfo::getName, e -> e,
                 warnDuplicated(), LinkedHashMap::new));
 
+        var rootPackageNames = (rootPackageClasses.length > 0
+                ? stream(rootPackageClasses)
+                : ofNullable(findSpringBootAppBean(beans)).map(BeanInfo::getType)
+        ).map(Class::getPackageName).collect(toList());
+
+        var rootGroupedBeans = beans.values().stream().collect(partitioningBy(e ->
+                isRootRelatedBean(e.getType(), rootPackageNames)));
+
         var componentCache = new HashMap<String, Set<Component>>();
 
-        var rootPackage = getPackage(findRootComponent(beans, componentCache));
-        var rootPackageName = rootPackage != null ? rootPackage.getName() : null;
-        var rootGroupedBeans = beans.values().stream().collect(partitioningBy(e ->
-                isRootRelatedBean(e.getType(), rootPackageName)));
-
         var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
-                .flatMap(beanInfo -> getComponents(beanInfo, rootPackage, beans, componentCache))
+                .flatMap(beanInfo -> getComponents(beanInfo, rootPackageNames, beans, componentCache))
                 .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())).collect(toList());
 
         var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream().flatMap(beanInfo -> {
-            var websocketHandlers = extractInWebsocketHandlers(beanInfo.getName(), beanInfo.getType(), rootPackage,
+            var websocketHandlers = extractInWebsocketHandlers(beanInfo.getName(), beanInfo.getType(), rootPackageNames,
                     beans, componentCache);
             return websocketHandlers.stream();
         }).collect(toList());
@@ -373,16 +375,13 @@ public class ComponentsExtractor {
         return filter(dependencyNames.map(allBeans::get), excludeBeanNames, excludePackages, excludeTypes);
     }
 
-    protected Component findRootComponent(Map<String, BeanInfo> allBeans, Map<String, Set<Component>> componentCache) {
-        return allBeans.entrySet().stream().filter(e -> isSpringBootMainClass(e.getValue().getType())).flatMap(e -> {
-                    var beanInfo = e.getValue();
-                    return getComponents(beanInfo, null, allBeans, componentCache);
-                })
-                .filter(Objects::nonNull)
-                .findFirst().orElse(null);
+    protected BeanInfo findSpringBootAppBean(Map<String, BeanInfo> allBeans) {
+        return allBeans.values().stream().filter(beanInfo -> isSpringBootMainClass(beanInfo.getType()))
+                .findFirst()
+                .orElse(null);
     }
 
-    private Stream<Component> getComponents(BeanInfo beanInfo, Package rootPackage,
+    private Stream<Component> getComponents(BeanInfo beanInfo, Collection<String> rootPackage,
                                             Map<String, BeanInfo> beans,
                                             Map<String, Set<Component>> componentCache) {
         String componentName = beanInfo.getName();
@@ -462,14 +461,12 @@ public class ComponentsExtractor {
                 .collect(toList());
     }
 
-    protected String getComponentPath(Class<?> componentType, Package rootPackage) {
+    protected String getComponentPath(Class<?> componentType, Collection<String> rootPackageNames) {
         var typePackageName = componentType.getPackage().getName();
         final String path;
         if (options.isCropRootPackagePath()) {
-            var rootPackageName = Optional.ofNullable(rootPackage).map(Package::getName).orElse("");
-            path = typePackageName.startsWith(rootPackageName)
-                    ? typePackageName.substring(rootPackageName.length())
-                    : typePackageName;
+            var rootPackageName = rootPackageNames.stream().filter(typePackageName::startsWith).findFirst().orElse("");
+            path = typePackageName.substring(rootPackageName.length());
         } else {
             path = typePackageName;
         }
@@ -596,7 +593,7 @@ public class ComponentsExtractor {
         return List.of();
     }
 
-    protected Set<Component> getDependencies(String componentName, Package rootPackage,
+    protected Set<Component> getDependencies(String componentName, Collection<String> rootPackage,
                                              Map<String, BeanInfo> beans, Map<String, Set<Component>> cache) {
         var dependencies = context.getBeanFactory().getDependenciesForBean(componentName);
         return getFilteredDependencyBeans(stream(dependencies), beans)
@@ -605,8 +602,9 @@ public class ComponentsExtractor {
                 .collect(toLinkedHashSet());
     }
 
-    protected Collection<Component> extractInWebsocketHandlers(String componentName, Class<?> componentType, Package rootPackage,
-                                                               Map<String, BeanInfo> beans, Map<String, Set<Component>> cache) {
+    protected Collection<Component> extractInWebsocketHandlers(
+            String componentName, Class<?> componentType, Collection<String> rootPackageNames,
+            Map<String, BeanInfo> beans, Map<String, Set<Component>> cache) {
         if (webSocketConfigClass != null && webSocketConfigClass.isAssignableFrom(componentType)) {
             var cachedComponents = cache.get(componentName);
             if (cachedComponents != null) {
@@ -621,7 +619,7 @@ public class ComponentsExtractor {
                     var components = simpleUrlHandlerMapping.getUrlMap().entrySet().stream().flatMap(entry -> {
                         var wsHandlerPath = entry.getValue();
                         var wsUrl = entry.getKey();
-                        return getWebsocketComponents(wsUrl, wsHandlerPath, rootPackage, beans, cache);
+                        return getWebsocketComponents(wsUrl, wsHandlerPath, rootPackageNames, beans, cache);
                     }).filter(Objects::nonNull).collect(toLinkedHashSet());
                     cache.put(componentName, components);
                     return components;
@@ -631,8 +629,10 @@ public class ComponentsExtractor {
         return List.of();
     }
 
-    protected Stream<Component> getWebsocketComponents(String wsUrl, Object wsHandler, Package rootPackage,
-                                                       Map<String, BeanInfo> beans, Map<String, Set<Component>> cache) {
+    protected Stream<Component> getWebsocketComponents(
+            String wsUrl, Object wsHandler, Collection<String> rootPackageNames,
+            Map<String, BeanInfo> beans, Map<String, Set<Component>> cache
+    ) {
         var anInterface = Interface.builder()
                 .direction(in)
                 .type(ws)
@@ -665,21 +665,20 @@ public class ComponentsExtractor {
                 componentStream = cached.stream();
             } else {
                 var webSocketHandlerClass = webSocketHandler.getClass();
-                var webSocketHandlerComponentBuilder = (
-                        (managed)
-                                ? Component.builder().bean(webSocketHandler).name(webSocketHandlerName)
-                                : Component.builder().bean(webSocketHandler)
+                var webSocketHandlerComponentBuilder = ((managed)
+                        ? Component.builder().bean(webSocketHandler).name(webSocketHandlerName)
+                        : Component.builder().bean(webSocketHandler)
                 )
                         .type(webSocketHandlerClass)
                         .configuration(isSpringConfiguration(webSocketHandlerClass))
-                        .path(getComponentPath(webSocketHandlerClass, rootPackage));
+                        .path(getComponentPath(webSocketHandlerClass, rootPackageNames));
 
                 var unmanagedDependencies = getUnmanagedDependencies(webSocketHandlerClass, webSocketHandler, new HashMap<>());
                 final var dependencies = !managed ? unmanagedDependencies : Stream.concat(
-                        getDependencies(webSocketHandlerName, rootPackage, beans, cache).stream(),
+                        getDependencies(webSocketHandlerName, rootPackageNames, beans, cache).stream(),
                         unmanagedDependencies.stream()).collect(toLinkedHashSet());
                 var webSocketHandlerComponent = webSocketHandlerComponentBuilder
-                        .path(getComponentPath(webSocketHandlerClass, rootPackage))
+                        .path(getComponentPath(webSocketHandlerClass, rootPackageNames))
                         .interfaces(List.of(anInterface))
                         .dependencies(unmodifiableSet(dependencies)).build();
                 componentStream = flatDependencies(webSocketHandlerComponent);

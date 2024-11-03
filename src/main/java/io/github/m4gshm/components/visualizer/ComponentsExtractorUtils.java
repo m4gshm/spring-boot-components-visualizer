@@ -352,6 +352,10 @@ public class ComponentsExtractorUtils {
                 .methodSource(jmsService.getMethodSource());
     }
 
+    public static boolean isRootRelatedBean(Class<?> type, Collection<String> rootPackageNames) {
+        return rootPackageNames.stream().anyMatch(rootPackageName -> isRootRelatedBean(type, rootPackageName));
+    }
+
     public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
         if (rootPackageName != null) {
             var relatedType = Stream.ofNullable(type)
