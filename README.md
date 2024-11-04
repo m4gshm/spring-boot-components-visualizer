@@ -1,7 +1,7 @@
 # Spring Boot components visualizer (under construction)
 
-A tool to visualize external and internal connections of a Sprint Boot
-application.
+A tool for visualizing components, interfaces, and their relations in a
+Spring Boot application.
 
 By default, generates a PlantUML schema with Spring components,
 relations and interfaces like mvc controllers, websocket services, jms
