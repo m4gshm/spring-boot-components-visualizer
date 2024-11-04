@@ -1,9 +1,9 @@
 package io.github.m4gshm.components.visualizer;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import lombok.var;
-
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;

@@ -1,7 +1,9 @@
 package io.github.m4gshm.components.visualizer.model;
-import lombok.var;
 
-import lombok.*;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NonNull;
+import lombok.ToString;
 import lombok.experimental.FieldDefaults;
 
 import java.util.List;

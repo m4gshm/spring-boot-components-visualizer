@@ -1,11 +1,11 @@
 package io.github.m4gshm.components.visualizer;
-import com.google.common.collect.ImmutableList;
-import io.github.m4gshm.components.visualizer.model.InterfaceType;
-import lombok.var;
 
+import com.google.common.collect.ImmutableList;
 import io.github.m4gshm.components.visualizer.PlantUmlTextFactory.RowsCols;
 import io.github.m4gshm.components.visualizer.model.HttpMethodsGroup;
+import io.github.m4gshm.components.visualizer.model.InterfaceType;
 import lombok.experimental.UtilityClass;
+import lombok.var;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -1,13 +1,11 @@
 package io.github.m4gshm.components.visualizer.model;
-import com.google.common.collect.ImmutableMap;
-import lombok.var;
 
+import com.google.common.collect.ImmutableMap;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
-
-import java.util.Map;
+import lombok.var;
 
 import static lombok.AccessLevel.PRIVATE;
 

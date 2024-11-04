@@ -1,17 +1,12 @@
 package io.github.m4gshm.components.visualizer;
+
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import lombok.var;
-
-import com.google.common.base.Strings;
-import io.github.m4gshm.components.visualizer.model.*;
 import io.github.m4gshm.components.visualizer.model.Package;
-import io.github.m4gshm.components.visualizer.model.InterfaceType;
-import lombok.Builder;
-import lombok.Data;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import io.github.m4gshm.components.visualizer.model.*;
+import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 

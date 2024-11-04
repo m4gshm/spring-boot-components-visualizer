@@ -15,6 +15,7 @@ public class IndentStringAppender {
     private final String lineBreak;
     private int level;
     private boolean newLine;
+
     public IndentStringAppender(StringBuilder out, String intend) {
         this(out, intend, "\n");
     }

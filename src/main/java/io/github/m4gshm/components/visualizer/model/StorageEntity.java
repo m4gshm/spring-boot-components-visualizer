@@ -1,5 +1,4 @@
 package io.github.m4gshm.components.visualizer.model;
-import lombok.var;
 
 import lombok.Builder;
 import lombok.Data;

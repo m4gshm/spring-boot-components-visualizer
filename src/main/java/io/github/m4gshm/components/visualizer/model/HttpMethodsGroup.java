@@ -1,14 +1,13 @@
 package io.github.m4gshm.components.visualizer.model;
-import com.google.common.collect.ImmutableMap;
-import lombok.var;
 
+import com.google.common.collect.ImmutableMap;
 import io.github.m4gshm.components.visualizer.UriUtils;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static io.github.m4gshm.components.visualizer.PlantUmlTextFactoryUtils.newEmptyGroup;

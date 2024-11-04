@@ -1,11 +1,11 @@
 package io.github.m4gshm.components.visualizer.model;
-import lombok.var;
 
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 
 import static lombok.AccessLevel.PRIVATE;
 import static org.apache.commons.lang3.StringUtils.isBlank;

@@ -1,8 +1,8 @@
 package io.github.m4gshm.components.visualizer;
-import lombok.var;
 
 import io.github.m4gshm.components.visualizer.model.CallPoint;
 import io.github.m4gshm.components.visualizer.model.Component;
+import lombok.var;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
