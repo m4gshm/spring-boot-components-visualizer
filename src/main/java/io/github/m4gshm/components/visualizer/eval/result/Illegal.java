@@ -2,7 +2,6 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.IllegalInvokeException;
 import io.github.m4gshm.components.visualizer.model.Component;
-import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
@@ -11,12 +10,11 @@ import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
 
-@Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Illegal extends Result {
-    Set<Status> status;
-    Object target;
-    Result prev;
+    private final Set<Status> status;
+    private final Object target;
+    private final Result prev;
 
     public Illegal(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                    Set<Status> status, Object target, Result prev) {
@@ -44,6 +42,18 @@ public class Illegal extends Result {
     @Override
     public Component getComponent() {
         return prev.getComponent();
+    }
+
+    public Set<Status> getStatus() {
+        return this.status;
+    }
+
+    public Object getTarget() {
+        return this.target;
+    }
+
+    public Result getPrev() {
+        return this.prev;
     }
 
     public enum Status {

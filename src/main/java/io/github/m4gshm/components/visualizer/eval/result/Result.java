@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
+import com.google.common.collect.ImmutableSet;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.InvokeObject;
@@ -8,9 +9,8 @@ import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.Delay.DelayFunction;
 import io.github.m4gshm.components.visualizer.model.Component;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.Instruction;
@@ -31,12 +31,15 @@ import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.generic.Type.getType;
 
-@Data
-@RequiredArgsConstructor
 @FieldDefaults(level = PROTECTED, makeFinal = true)
 public abstract class Result implements ContextAware {
-    InstructionHandle firstInstruction;
-    InstructionHandle lastInstruction;
+    protected final InstructionHandle firstInstruction;
+    protected final InstructionHandle lastInstruction;
+
+    public Result(InstructionHandle firstInstruction, InstructionHandle lastInstruction) {
+        this.firstInstruction = firstInstruction;
+        this.lastInstruction = lastInstruction;
+    }
 
     public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
                                    Component component, Method method, List<ParameterValue> parameters) {
@@ -125,11 +128,11 @@ public abstract class Result implements ContextAware {
     }
 
     public static Illegal notAccessible(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notAccessible), element, source);
+        return new Illegal(callInstruction, callInstruction, ImmutableSet.of(notAccessible), element, source);
     }
 
     public static Illegal notFound(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notFound), element, source);
+        return new Illegal(callInstruction, callInstruction, ImmutableSet.of(notFound), element, source);
     }
 
     public static Result multiple(List<? extends Result> values, InstructionHandle firstInstruction,
@@ -223,6 +226,18 @@ public abstract class Result implements ContextAware {
 
     public abstract boolean isResolved();
 
+    public InstructionHandle getFirstInstruction() {
+        return this.firstInstruction;
+    }
+
+    public InstructionHandle getLastInstruction() {
+        return this.lastInstruction;
+    }
+
+    public String toString() {
+        return "Result(firstInstruction=" + this.getFirstInstruction() + ", lastInstruction=" + this.getLastInstruction() + ")";
+    }
+
     public interface RelationsAware {
         static Set<Result> getTopRelations(Result result) {
             if (result instanceof RelationsAware) {
@@ -231,7 +246,7 @@ public abstract class Result implements ContextAware {
                     return relations.stream().flatMap(r -> getTopRelations(r).stream()).collect(toLinkedHashSet());
                 }
             }
-            return Set.of(result);
+            return ImmutableSet.of(result);
         }
 
         List<Result> getRelations();

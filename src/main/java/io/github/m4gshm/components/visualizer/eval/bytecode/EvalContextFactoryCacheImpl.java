@@ -1,4 +1,5 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Data;

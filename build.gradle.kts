@@ -17,6 +17,7 @@ configurations.annotationProcessor {
 
 dependencies {
     compileOnly("org.projectlombok:lombok:1.18.34")
+    testCompileOnly("org.projectlombok:lombok:1.18.34")
 
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -75,11 +76,15 @@ tasks.build {
     }
 }
 
+//tasks.withType<JavaCompile> {
+//    this.options.compilerArgs = listOf("-verbose")
+//}
+
 java {
     withSourcesJar()
     withJavadocJar()
-    targetCompatibility = JavaVersion.VERSION_11
-    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_1_8
     modularity.inferModulePath.set(true)
 }
 

@@ -26,7 +26,7 @@ package "service1" as service1 #line.dotted;text:gray {
         component jmsQueueService as jmsQueueService
       }
       package "rest" as service1.service.external.rest #line.dotted;text:gray {
-        component service2FeignClient as service2FeignClient
+        component service1.service.external.rest.Service2FeignClient as service1.service.external.rest.Service2FeignClient
         component service2LegacyImpl as service2LegacyImpl
         component standaloneService2Api as standaloneService2Api
       }
@@ -41,14 +41,14 @@ package "service1" as service1 #line.dotted;text:gray {
 }
 coreService ..> documentRepository
 coreService ..> jmsQueueService
-coreService ..> service2FeignClient
+coreService ..> service1.service.external.rest.Service2FeignClient
 coreService ..> service2LegacyImpl
 coreService ..> simpleEntityRepository
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
 mainController ..> coreService
 periodUpdateService ..> jmsQueueService
-periodUpdateService ..> service2FeignClient
+periodUpdateService ..> service1.service.external.rest.Service2FeignClient
 periodUpdateService ..> userRepository
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
@@ -82,7 +82,7 @@ cloud "output" as output #line.dotted;line:gray; {
     standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       interface "GET:/{id}" as out.GET.http...service2..id.
-      service2FeignClient ....( out.GET.http...service2..id.
+      service1.service.external.rest.Service2FeignClient ....( out.GET.http...service2..id.
       interface "GET:/load/{id}" as out.GET.http...service2.load..id.
       service2LegacyImpl ....( out.GET.http...service2.load..id.
       interface "GET:/load2/{id}" as out.GET.http...service2.load2..id.

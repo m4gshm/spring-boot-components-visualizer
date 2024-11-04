@@ -2,6 +2,8 @@ package service1;
 
 import io.github.m4gshm.components.visualizer.ComponentsExtractor;
 import io.github.m4gshm.components.visualizer.PlantUmlTextFactory;
+import io.github.m4gshm.components.visualizer.extractor.Options;
+import lombok.var;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -25,7 +27,7 @@ public class SchemaGeneratorTest2 {
 
     @Test
     public void generatePlantUml() {
-        var extractor = new ComponentsExtractor(context, ComponentsExtractor.Options.builder().failFast(true).stringifyLevel(full).build());
+        var extractor = new ComponentsExtractor(context, Options.builder().failFast(true).stringifyLevel(full).build());
 
         var schema = schemaFactory.create(extractor.getComponents(), schemaFactory.getOptions().toBuilder()
                 .concatenateInterfaces(PlantUmlTextFactory.Options.ConcatenateInterfacesOptions.builder()

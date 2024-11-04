@@ -1,9 +1,13 @@
 package io.github.m4gshm.components.visualizer;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import lombok.var;
 
 import com.google.common.base.Strings;
 import io.github.m4gshm.components.visualizer.model.*;
 import io.github.m4gshm.components.visualizer.model.Package;
-import io.github.m4gshm.components.visualizer.model.Interface.Type;
+import io.github.m4gshm.components.visualizer.model.InterfaceType;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -21,6 +25,7 @@ import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.copyOf;
 import static com.google.common.collect.Lists.reverse;
+import static io.github.m4gshm.components.visualizer.MapUtils.entry;
 import static io.github.m4gshm.components.visualizer.PlantUmlTextFactory.Direction.*;
 import static io.github.m4gshm.components.visualizer.PlantUmlTextFactory.HtmlMethodsGroupBy.path;
 import static io.github.m4gshm.components.visualizer.PlantUmlTextFactory.Options.newUnionStyle;
@@ -31,26 +36,26 @@ import static io.github.m4gshm.components.visualizer.UriUtils.PATH_DELIMITER;
 import static io.github.m4gshm.components.visualizer.Utils.toLinkedHashSet;
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
 import static io.github.m4gshm.components.visualizer.model.HttpMethodsGroup.makeGroupsHierarchyByHttpMethodUrl;
-import static io.github.m4gshm.components.visualizer.model.Interface.Type.*;
+import static io.github.m4gshm.components.visualizer.model.InterfaceType.*;
 import static io.github.m4gshm.components.visualizer.model.StorageEntity.Engine.jpa;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
-import static java.util.Map.entry;
 import static java.util.Objects.requireNonNull;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.concat;
 import static lombok.AccessLevel.PRIVATE;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @Slf4j
 public class PlantUmlTextFactory implements SchemaFactory<String> {
 
     public static final String INDENT = "  ";
-    public static final Map<String, List<String>> DEFAULT_ESCAPES = Map.of(
-            "", List.of(" "), ".",
-            List.of("-", "+", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]",
+    public static final Map<String, List<String>> DEFAULT_ESCAPES = ImmutableMap.of(
+            "", ImmutableList.of(" "), ".",
+            ImmutableList.of("-", "+", PATH_DELIMITER, ":", "?", "=", ",", "&", "*", "$", "{", "}", "(", ")", "[", "]",
                     "#", "\"", "'", "%"));
     public static final String LINE_DOTTED_TEXT_GRAY = "line.dotted;text:gray";
     public static final String LINE_DOTTED_LINE_GRAY = "line.dotted;line:gray;";
@@ -118,8 +123,8 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         var componentStream = components.getComponents().stream();
         if (options.ignoreSprintConfigurations) {
             var configGrouped = componentStream.collect(groupingBy(Component::isConfiguration));
-            componentStream = configGrouped.getOrDefault(false, List.of()).stream();
-            var configNames = configGrouped.getOrDefault(true, List.of())
+            componentStream = configGrouped.getOrDefault(false, Collections.emptyList()).stream();
+            var configNames = configGrouped.getOrDefault(true, Collections.emptyList())
                     .stream().map(Component::getName).collect(toSet());
             componentStream = componentStream.map(c -> {
                 var dependencies = c.getDependencies();
@@ -169,7 +174,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     }
 
     protected void printGroupedInterfaces(IndentStringAppender out, Collection<InterfaceGroup> groupedInterfaces) {
-        if (groupedInterfaces != null) for (var interfaceGroup : groupedInterfaces) {
+        if (groupedInterfaces != null) for (InterfaceGroup interfaceGroup : groupedInterfaces) {
             var key = interfaceGroup.getKey();
             var interfaces = interfaceGroup.getInterfaces();
             var hasInterfaces = interfaces != null && !interfaces.isEmpty();
@@ -221,14 +226,14 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         return options.componentGroupUnionStyle.apply(key);
     }
 
-    protected UnionStyle getInterfaceSubgroupsUnionStyle(Direction directionGroup, Type type) {
+    protected UnionStyle getInterfaceSubgroupsUnionStyle(Direction directionGroup, InterfaceType type) {
         return options.getInterfaceSubgroupsUnionStyle().apply(directionGroup, type);
     }
 
     protected List<InterfaceGroup> getGroupedInterfaces(Collection<Component> components) {
         var interfaceComparator = options.getSort().getInterfaces();
         var componentsByInterfaces = components.stream()
-                .flatMap(component -> Stream.ofNullable(component.getInterfaces())
+                .flatMap(component -> StreamUtils.ofNullable(component.getInterfaces())
                         .flatMap(s -> interfaceComparator != null ? s.stream().sorted(interfaceComparator) : s.stream())
                         .map(anInterface -> entry(anInterface, component)))
                 .collect(groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList())));
@@ -253,7 +258,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
             var key = group.getKey();
             var anInterface = e.getKey();
             var newKey = key.toBuilder().direction(mapDirection(anInterface.getDirection())).build();
-            return Map.entry(newKey, e);
+            return entry(newKey, e);
         }).collect(groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue,
                 toMap(Entry::getKey, Entry::getValue, warnDuplicated(), LinkedHashMap::new)))
         );
@@ -292,7 +297,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         return groupByComponent(group, options.groupedByComponent);
     }
 
-    protected InterfaceGroup groupByComponent(InterfaceGroup group, Collection<Type> include) {
+    protected InterfaceGroup groupByComponent(InterfaceGroup group, Collection<InterfaceType> include) {
         var interfacesByComponent = group.getInterfaces().entrySet().stream().flatMap(entry ->
                 entry.getValue().stream().map(component -> entry(component, entry.getKey()))
         ).collect(groupingBy(Entry::getKey, LinkedHashMap::new, mapping(Entry::getValue, toList())));
@@ -303,8 +308,8 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
             var key = group.getKey();
             var includedAndExcluded = interfaces.stream().collect(groupingBy(i -> include.contains(i.getType()),
                     LinkedHashMap::new, toList()));
-            var included = includedAndExcluded.getOrDefault(true, List.of());
-            var others = includedAndExcluded.getOrDefault(false, List.of());
+            var included = includedAndExcluded.getOrDefault(true, Collections.emptyList());
+            var others = includedAndExcluded.getOrDefault(false, Collections.emptyList());
             for (var anInterface : others) {
                 excluded.computeIfAbsent(anInterface, k -> new ArrayList<>()).add(component);
             }
@@ -318,7 +323,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         return group.toBuilder().interfaces(excluded).groups(groups).build();
     }
 
-    protected Direction mapDirection(Interface.Direction direction) {
+    protected Direction mapDirection(io.github.m4gshm.components.visualizer.model.Direction direction) {
         return options.mapDirection.apply(direction);
     }
 
@@ -411,7 +416,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
             var text = format("%s", unionBorder);
             out.append(text);
             if (supportNameIdStyle) {
-                if (!name.isBlank()) {
+                if (!isBlank(name)) {
                     out.append(format(" \"%s\"", name));
                     if (id != null) {
                         checkUniqueId(id, name);
@@ -470,7 +475,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         }
         var reducedGroup = group.toBuilder().name(part).methods(newMethods).groups(subGroups);
         var reducedGroupMethods = newMethods != null ? newMethods : new LinkedHashMap<HttpMethod, HttpMethod>();
-        var reducedSubGroups = Stream.ofNullable(subGroups).flatMap(m -> m.entrySet().stream()).map(e -> {
+        var reducedSubGroups = StreamUtils.ofNullable(subGroups).flatMap(m -> m.entrySet().stream()).map(e -> {
             var value = e.getValue();
             var reduced = reduceUrlBasedHttpMethodGroups(value);
             var key = reduced.getName();
@@ -562,8 +567,8 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         var distinct = grouped.get(false);
         var concatenation = grouped.get(true);
         return ConcatenatedComponentGroup.builder()
-                .distinct(distinct != null ? distinct : Set.of())
-                .concatenation(concatenation != null ? concatenation : Set.of())
+                .distinct(distinct != null ? distinct : ImmutableSet.of())
+                .concatenation(concatenation != null ? concatenation : ImmutableSet.of())
                 .build();
     }
 
@@ -609,7 +614,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
                                               UnionStyle style, Map<Interface, List<Component>> interfaceComponentLink,
                                               Map<HttpMethod, Interface> httpMethods) {
         var groupMethods = group.getMethods();
-        var groupInterfaces = Stream.ofNullable(groupMethods).flatMap(e -> e.entrySet().stream()).map(e -> {
+        var groupInterfaces = StreamUtils.ofNullable(groupMethods).flatMap(e -> e.entrySet().stream()).map(e -> {
             var groupHttpMethod = e.getKey();
             var origHttpMethod = e.getValue();
             var anInterface = httpMethods.get(origHttpMethod);
@@ -662,7 +667,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
 
     protected String renderStorage(StorageEntity storage, String interfaceId) {
         var storedTo = storage.getStoredTo();
-        var tables = storedTo.stream().reduce("", (l, r) -> (l.isBlank() ? "" : l + "\n") + r);
+        var tables = storedTo.stream().reduce("", (l, r) -> (isBlank(l) ? "" : l + "\n") + r);
         var noteId = getElementId(interfaceId, "table_name");
         var caption = storage.getEngine() == jpa ? "table" : "collection";
         if (storedTo.size() > 1) {
@@ -682,7 +687,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         var concatenatedComponent = !componentName.equals(concatenatedComponentId);
         var componentId = concatenatedComponent ? concatenatedComponentId : plantUmlAlias(componentName);
         var printed = options.reduceDuplicatedElementRelations &&
-                printedInterfaceRelations.getOrDefault(componentId, Set.of()).contains(interfaceId);
+                printedInterfaceRelations.getOrDefault(componentId, ImmutableSet.of()).contains(interfaceId);
         if (printed) {
             return;
         }
@@ -707,27 +712,27 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         printedInterfaceRelations.computeIfAbsent(componentId, k -> new LinkedHashSet<>()).add(interfaceId);
     }
 
-    protected String renderOut(Type type, String interfaceId, boolean concatenatedInterface,
+    protected String renderOut(InterfaceType type, String interfaceId, boolean concatenatedInterface,
                                String componentId, boolean concatenatedComponent) {
         return format((type == jms ? "%s ....> %s" : (concatenatedInterface ? "%s ....(0 %s" : "%s ....( %s")) + "\n", componentId, interfaceId);
     }
 
-    protected String renderOutIn(Type type, String interfaceId, boolean concatenatedInterface,
+    protected String renderOutIn(InterfaceType type, String interfaceId, boolean concatenatedInterface,
                                  String componentId, boolean concatenatedComponent) {
         return format("%1$s ....> %2$s\n%1$s <.... %2$s#line.dotted\n", componentId, interfaceId);
     }
 
-    protected String renderIn(Type type, String interfaceId, boolean concatenatedInterface,
+    protected String renderIn(InterfaceType type, String interfaceId, boolean concatenatedInterface,
                               String componentId, boolean concatenatedComponent) {
         return format("%s %s)....> %s\n", interfaceId, concatenatedInterface ? "0" : "", componentId);
     }
 
-    protected String renderInternal(Type type, String interfaceId, boolean concatenatedInterface,
+    protected String renderInternal(InterfaceType type, String interfaceId, boolean concatenatedInterface,
                                     String componentId, boolean concatenatedComponent) {
         return format("%s .. %s\n", interfaceId, componentId);
     }
 
-    protected String renderLink(Type type, String interfaceId, boolean concatenatedInterface,
+    protected String renderLink(InterfaceType type, String interfaceId, boolean concatenatedInterface,
                                 String componentId, boolean concatenatedComponent) {
         return format("%s .... %s\n", interfaceId, componentId);
     }
@@ -931,7 +936,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
 
     protected String getElementId(InterfaceGroup.Key key) {
         var direction = ofNullable(key.getDirection()).map(Enum::name).orElse(null);
-        var type = ofNullable(key.getType()).map(Type::getFullName).orElse(null);
+        var type = ofNullable(key.getType()).map(InterfaceType::getFullName).orElse(null);
         var component = ofNullable(key.getComponent()).map(Component::getName).orElse(null);
         return getElementId(direction, type, component, key.getUntyped());
     }
@@ -975,7 +980,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         var dependencies = ofNullable(component.getDependencies()).map(d -> {
             var componentComparator = options.getSort().getDependencies();
             return componentComparator != null ? d.stream().sorted(componentComparator).collect(toList()) : d;
-        }).orElse(Set.of());
+        }).orElse(ImmutableSet.of());
 
         for (var dependency : dependencies) {
             printComponentReference(out, component, dependency);
@@ -998,7 +1003,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     }
 
     protected boolean isAlreadyPrinted(String finalComponentName, String dependencyName) {
-        return printedConcatenatedComponentRelations.getOrDefault(finalComponentName, Set.of()).contains(dependencyName);
+        return printedConcatenatedComponentRelations.getOrDefault(finalComponentName, ImmutableSet.of()).contains(dependencyName);
     }
 
     protected ComponentNameCheck checkComponentName(Component component) {
@@ -1085,9 +1090,9 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class ConcatenatedComponentGroup {
         @Builder.Default
-        Collection<Component> concatenation = Set.of();
+        Collection<Component> concatenation = ImmutableSet.of();
         @Builder.Default
-        Collection<Component> distinct = Set.of();
+        Collection<Component> distinct = ImmutableSet.of();
     }
 
     @Data
@@ -1095,9 +1100,9 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class ConcatenatedInterfacesGroup {
         @Builder.Default
-        Map<Interface, List<Component>> concatenation = Map.of();
+        Map<Interface, List<Component>> concatenation = ImmutableMap.of();
         @Builder.Default
-        Map<Interface, List<Component>> distinct = Map.of();
+        Map<Interface, List<Component>> distinct = ImmutableMap.of();
     }
 
     @Data
@@ -1145,7 +1150,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         @Builder.Default
         Map<String, List<String>> idCharReplaces = DEFAULT_ESCAPES;
         @Builder.Default
-        Function<Interface.Direction, Direction> mapDirection = Options::defaultDirectionName;
+        Function<io.github.m4gshm.components.visualizer.model.Direction, Direction> mapDirection = Options::defaultDirectionName;
         @Builder.Default
         Function<InterfaceGroup.Key, UnionStyle> directionGroupUnionStyle = key -> newUnionStyle(cloud, LINE_DOTTED_LINE_GRAY);
         @Builder.Default
@@ -1153,11 +1158,11 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         @Builder.Default
         Function<InterfaceGroup.Key, UnionStyle> componentGroupUnionStyle = key -> newUnionStyle(frame, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
-        BiFunction<Direction, Type, UnionStyle> interfaceSubgroupsUnionStyle = (directionGroup, type) -> newUnionStyle(frame, LINE_DOTTED_TEXT_GRAY);
+        BiFunction<Direction, InterfaceType, UnionStyle> interfaceSubgroupsUnionStyle = (directionGroup, type) -> newUnionStyle(frame, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
         Function<String, UnionStyle> packagePathUnion = path -> newUnionStyle(pack, LINE_DOTTED_TEXT_GRAY);
         @Builder.Default
-        BiPredicate<Direction, Type> supportGroups = (directionName, type) -> type != null && Set.of(http, jms, ws).contains(type);
+        BiPredicate<Direction, InterfaceType> supportGroups = (directionName, type) -> type != null && ImmutableSet.of(http, jms, ws).contains(type);
         @Builder.Default
         Function<Direction, HtmlMethodsGroupBy> htmlMethodsGroupBy = direction -> path;
         @Builder.Default
@@ -1179,7 +1184,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         @Builder.Default
         boolean groupByInterfaceType = true;
         @Builder.Default
-        Set<Interface.Type> groupedByComponent = Set.of(jms, ws, kafka);
+        Set<InterfaceType> groupedByComponent = ImmutableSet.of(jms, ws, kafka);
 
         public static UnionStyle newUnionStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();
@@ -1189,7 +1194,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
             return UnionStyle.builder().unionBorder(unionBorder).style(style).build();
         }
 
-        public static UnionBorder unionBorder(Type type) {
+        public static UnionBorder unionBorder(InterfaceType type) {
             if (type != null) switch (type) {
                 case jms:
                     return queue;
@@ -1199,7 +1204,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
             return rectangle;
         }
 
-        public static Direction defaultDirectionName(Interface.Direction direction) {
+        public static Direction defaultDirectionName(io.github.m4gshm.components.visualizer.model.Direction direction) {
             switch (direction) {
                 case in:
                     return input;
@@ -1282,7 +1287,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         @FieldDefaults(makeFinal = true, level = PRIVATE)
         public static class Key {
             Direction direction;
-            Type type;
+            InterfaceType type;
             Component component;
             String untyped;
 

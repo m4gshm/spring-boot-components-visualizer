@@ -1,4 +1,6 @@
 package io.github.m4gshm.components.visualizer.model;
+import com.google.common.collect.ImmutableMap;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.UriUtils;
 import lombok.Builder;
@@ -6,6 +8,7 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static io.github.m4gshm.components.visualizer.PlantUmlTextFactoryUtils.newEmptyGroup;
@@ -35,7 +38,7 @@ public class HttpMethodsGroup {
         }
 
         var oldMethods = currentGroup.getMethods();
-        var methods = new LinkedHashMap<>(oldMethods != null ? oldMethods : Map.of());
+        var methods = new LinkedHashMap<>(oldMethods != null ? oldMethods : ImmutableMap.of());
         var groupedMethod = httpMethod.toBuilder().path("").build();
         methods.put(groupedMethod, httpMethod);
         if (prevGroupsLevel != null) {

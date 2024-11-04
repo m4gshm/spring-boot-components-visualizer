@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer;
 
+import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.springframework.core.env.Environment;
@@ -12,6 +13,7 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 @Slf4j
+@UtilityClass
 public class Utils {
 
     public static <T> Collector<T, ?, LinkedHashSet<T>> toLinkedHashSet() {
@@ -74,4 +76,5 @@ public class Utils {
         }
         return Class.forName(className);
     }
+
 }

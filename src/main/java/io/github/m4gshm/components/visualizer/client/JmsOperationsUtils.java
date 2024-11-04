@@ -1,6 +1,9 @@
 package io.github.m4gshm.components.visualizer.client;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import lombok.var;
 
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
+import io.github.m4gshm.components.visualizer.extractor.JmsService;
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
@@ -9,18 +12,17 @@ import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
-import io.github.m4gshm.components.visualizer.model.Interface.Direction;
+import io.github.m4gshm.components.visualizer.model.Direction;
 import io.github.m4gshm.components.visualizer.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
@@ -28,7 +30,7 @@ import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.ge
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
-import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
+import static io.github.m4gshm.components.visualizer.model.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -41,23 +43,23 @@ public class JmsOperationsUtils {
     public static final String UNDEFINED_DESTINATION = "undefined";
     public static final String DEFAULT_DESTINATION = "jmsTemplate-default";
     //todo move to options
-    private static final Set<String> jmsQueueClassNames = Set.of("javax.jms.Queue", "jakarta.jms.Queue");
-    private static final Set<String> jmsTopicClassNames = Set.of("javax.jms.Topic", "jakarta.jms.Topic");
+    private static final Set<String> jmsQueueClassNames = ImmutableSet.of("javax.jms.Queue", "jakarta.jms.Queue");
+    private static final Set<String> jmsTopicClassNames = ImmutableSet.of("javax.jms.Topic", "jakarta.jms.Topic");
 
     public static List<JmsService> extractJmsClients(Component component,
                                                      Map<CallCacheKey, Result> callCache,
                                                      EvalContextFactory evalContextFactory,
                                                      Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+        List<JavaClass> javaClasses = getClassHierarchy(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
-            var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
-            var methods = javaClass.getMethods();
+            ConstantPoolGen constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
+            Method[] methods = javaClass.getMethods();
 
             return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
-                var instruction = instructionHandle.getInstruction();
-                var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
+                Instruction instruction = instructionHandle.getInstruction();
+                Class<? extends JmsOperations> expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
-                var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
+                boolean match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(component, instructionHandle,
                         constantPoolGen, callCache, evalContextFactory.getEvalContext(component, javaClass, method), resolver).stream()
@@ -70,16 +72,16 @@ public class JmsOperationsUtils {
             Component component, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
             Map<CallCacheKey, Result> callCache, Eval eval, Resolver resolver) {
         log.trace("extractJmsClients, componentName {}", component.getName());
-        var instruction = (InvokeInstruction) instructionHandle.getInstruction();
+        InvokeInstruction instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
-        var methodName = instruction.getMethodName(constantPoolGen);
-        var direction = getJmsDirection(methodName);
+        String methodName = instruction.getMethodName(constantPoolGen);
+        Direction direction = getJmsDirection(methodName);
         if (direction == undefined) {
-            return List.of();
+            return ImmutableList.of();
         } else {
-            var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
-            var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
-            var results = variants.stream().flatMap(paramVariant -> {
+            DelayInvoke result = (DelayInvoke) eval.eval(instructionHandle, callCache);
+            List<List<Result>> variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
+            List<JmsService> results = variants.stream().flatMap(paramVariant -> {
                 return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);
             }).collect(toList());
             return results;
@@ -89,12 +91,12 @@ public class JmsOperationsUtils {
     private static Stream<JmsService> getJmsClientStream(List<Result> paramVariant, Direction direction,
                                                          String methodName, Eval eval, Resolver resolver) {
         try {
-            var ref = newMethodId(eval.getMethod());
+            MethodId ref = newMethodId(eval.getMethod());
             if (paramVariant.size() < 2) {
                 return Stream.of(newJmsClient(DEFAULT_DESTINATION, direction, methodName, ref, null));
             } else {
-                var first = paramVariant.get(1);
-                var destinations = eval.resolveExpand(first, resolver);
+                Result first = paramVariant.get(1);
+                List<Result> destinations = eval.resolveExpand(first, resolver);
                 return destinations.stream().flatMap(result -> result.getValue(resolver).stream()
                         .map(rawDestination -> newJmsClient(getDestination(rawDestination), direction, methodName, ref, result)));
             }
@@ -119,8 +121,8 @@ public class JmsOperationsUtils {
         try {
             if (firstArg instanceof CharSequence) destination = firstArg.toString();
             else {
-                var firstArgClass = firstArg.getClass();
-                var name = firstArgClass.getName();
+                Class<?> firstArgClass = firstArg.getClass();
+                String name = firstArgClass.getName();
                 String methodName;
                 if (jmsQueueClassNames.contains(name)) {
                     methodName = "getQueueName";
@@ -130,7 +132,7 @@ public class JmsOperationsUtils {
                     methodName = null;
                 }
                 if (methodName != null) {
-                    var method = getDeclaredMethod(firstArgClass, methodName, new Class[0]);
+                    java.lang.reflect.Method method = getDeclaredMethod(firstArgClass, methodName, new Class[0]);
                     destination = (String) method.invoke(firstArg);
                 } else {
                     //log
@@ -145,7 +147,7 @@ public class JmsOperationsUtils {
     }
 
     static Direction getJmsDirection(String methodName) {
-        var methodNameLowerCase = methodName.toLowerCase();
+        String methodNameLowerCase = methodName.toLowerCase();
         int sendIndex = methodNameLowerCase.indexOf("send");
         int receiveIndex = methodNameLowerCase.indexOf("receive");
         return sendIndex >= 0 && receiveIndex > sendIndex ? outIn : sendIndex >= 0

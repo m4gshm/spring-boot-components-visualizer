@@ -1,19 +1,24 @@
 package io.github.m4gshm.components.visualizer;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.FeignClient;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod.TriggerType;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
+import io.github.m4gshm.components.visualizer.extractor.FeignClient;
+import io.github.m4gshm.components.visualizer.extractor.JmsService;
+import io.github.m4gshm.components.visualizer.extractor.ScheduledMethod;
+import io.github.m4gshm.components.visualizer.extractor.ScheduledMethod.TriggerType;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
+import io.github.m4gshm.components.visualizer.model.Direction;
 import io.github.m4gshm.components.visualizer.model.HttpMethod;
 import io.github.m4gshm.components.visualizer.model.Interface;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -37,19 +42,19 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.components.visualizer.MapUtils.entry;
 import static io.github.m4gshm.components.visualizer.Utils.*;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
+import static io.github.m4gshm.components.visualizer.model.Direction.in;
 import static io.github.m4gshm.components.visualizer.model.HttpMethod.ALL;
-import static io.github.m4gshm.components.visualizer.model.Interface.Direction.in;
-import static io.github.m4gshm.components.visualizer.model.Interface.Type.jms;
-import static io.github.m4gshm.components.visualizer.model.Interface.Type.ws;
+import static io.github.m4gshm.components.visualizer.model.InterfaceType.jms;
+import static io.github.m4gshm.components.visualizer.model.InterfaceType.ws;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.lang.reflect.Proxy.isProxyClass;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
-import static java.util.Map.entry;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
@@ -111,7 +116,7 @@ public class ComponentsExtractorUtils {
     ) {
         var annotationClass = loadedClass(supplier);
         return annotationClass != null ? elements.stream().map(element -> extractor.apply(element, annotationClass))
-                .flatMap(Collection::stream).collect(toCollection(LinkedHashSet::new)) : Set.of();
+                .flatMap(Collection::stream).collect(toCollection(LinkedHashSet::new)) : ImmutableSet.of();
     }
 
     public static <A extends Annotation, E extends AnnotatedElement> Map<E, Collection<A>> getMergedRepeatableAnnotationsMap(
@@ -123,14 +128,15 @@ public class ComponentsExtractorUtils {
                 return getMergedRepeatableAnnotations(element, annotationClass);
             }, warnDuplicated(), LinkedHashMap::new));
         } else {
-            return Map.of();
+            return ImmutableMap.of();
         }
     }
 
     public static Collection<Method> getMethods(Class<?> type) {
         var methods = new LinkedHashSet<>(Arrays.asList(type.getMethods()));
         var superclass = type.getSuperclass();
-        var superMethods = (superclass != null && !Object.class.equals(superclass)) ? getMethods(superclass) : List.<Method>of();
+        Collection<Method> superMethods = (superclass != null && !Object.class.equals(superclass))
+                ? getMethods(superclass) : ImmutableList.of();
         methods.addAll(superMethods);
         return methods;
     }
@@ -138,9 +144,9 @@ public class ComponentsExtractorUtils {
     public static Collection<HttpMethod> extractControllerHttpMethods(Class<?> beanType) {
         var restController = getAnnotation(beanType, () -> Controller.class);
         if (restController == null) {
-            return List.of();
+            return Collections.emptyList();
         }
-        var rootPath = ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
+        var rootPath = StreamUtils.ofNullable(getAnnotation(beanType, () -> RequestMapping.class))
                 .map(RequestMapping::path).flatMap(Arrays::stream).findFirst().orElse("");
         return getAllMergedAnnotations(getMethods(beanType), () -> RequestMapping.class).stream().flatMap(requestMapping -> {
             var methods = getHttpMethods(requestMapping);
@@ -154,13 +160,13 @@ public class ComponentsExtractorUtils {
     }
 
     public static Collection<String> getPaths(RequestMapping requestMapping) {
-        var path = List.of(requestMapping.path());
-        return path.isEmpty() ? List.of("") : path;
+        var path = Arrays.asList(requestMapping.path());
+        return path.isEmpty() ? ImmutableList.of("") : path;
     }
 
     public static List<String> getHttpMethods(RequestMapping requestMapping) {
         var methods = Stream.of(requestMapping.method()).map(Enum::name).collect(toList());
-        return methods.isEmpty() ? List.of(ALL) : methods;
+        return methods.isEmpty() ? ImmutableList.of(ALL) : methods;
     }
 
     public static String concatPath(String path, String root) {
@@ -333,7 +339,7 @@ public class ComponentsExtractorUtils {
         } catch (NoSuchMethodException e) {
             current = type.getSuperclass();
         }
-        return Optional.ofNullable(type).map(Class::getInterfaces).stream().flatMap(Arrays::stream).map(iface -> {
+        return StreamUtils.stream(Optional.ofNullable(type).map(Class::getInterfaces)).flatMap(Arrays::stream).map(iface -> {
             return getDeclaredMethod(iface, name, argumentTypes);
         }).filter(Objects::nonNull).findFirst().orElse(null);
     }
@@ -358,9 +364,9 @@ public class ComponentsExtractorUtils {
 
     public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
         if (rootPackageName != null) {
-            var relatedType = Stream.ofNullable(type)
-                    .flatMap(aClass -> concat(Stream.of(entry(aClass, aClass.getPackage())), getInterfaces(aClass)
-                            .map(c -> entry(c, c.getPackage()))))
+            var relatedType = StreamUtils.ofNullable(type)
+                    .flatMap(aClass -> concat(Stream.of(getEntry(aClass)), getInterfaces(aClass).map(c -> getEntry(c)))
+                            .filter(Objects::nonNull))
                     .filter(e -> e.getValue().getName().startsWith(rootPackageName))
                     .findFirst().orElse(null);
             if (relatedType != null) {
@@ -369,6 +375,10 @@ public class ComponentsExtractorUtils {
             }
         }
         return false;
+    }
+
+    private static Map.Entry<? extends Class<?>, Package> getEntry(Class<?> c) {
+        return Optional.ofNullable(c.getPackage()).map(ap -> entry(c, ap)).orElse(null);
     }
 
     public static Stream<Class<?>> getInterfaces(Class<?> aClass) {
@@ -400,7 +410,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static boolean isMatchAny(String value, Set<String> regExps) {
-        return regExps.stream().anyMatch(value::matches);
+        return value != null && regExps.stream().anyMatch(value::matches);
     }
 
     public static Stream<String> toFilteredByName(Set<String> excludeBeanNames, Stream<String> beanDefinitionNames) {
@@ -428,7 +438,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static Stream<Component> flatDependencies(Component component) {
-        var dependencies = component.getDependencies();
+        Set<Component> dependencies = component.getDependencies();
         return concat(Stream.of(component), dependencies != null ? dependencies.stream() : empty());
     }
 
@@ -447,7 +457,7 @@ public class ComponentsExtractorUtils {
         return Component.builder().name(name).bean(object).build();
     }
 
-    public static String getWebsocketInterfaceId(Interface.Direction direction, String uri) {
+    public static String getWebsocketInterfaceId(Direction direction, String uri) {
         return direction + ":" + ws + ":" + uri;
     }
 

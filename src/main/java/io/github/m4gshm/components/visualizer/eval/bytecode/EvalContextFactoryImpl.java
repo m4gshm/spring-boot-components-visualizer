@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import com.google.common.collect.ImmutableList;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Variable;
 import io.github.m4gshm.components.visualizer.model.CallPoint;
@@ -7,6 +8,7 @@ import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.ConstantPoolGen;
@@ -17,10 +19,10 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvider;
+import static io.github.m4gshm.components.visualizer.MapUtils.entry;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.concat;
@@ -133,7 +135,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 } else {
                     log.info("{} is aborted by error", "evalCallPointArgumentVariants", e);
                 }
-                return List.<Eval.EvalArguments>of();
+                return ImmutableList.<Eval.EvalArguments>of();
             }
         }).flatMap(Collection::stream).filter(Objects::nonNull).collect(toList());
         return !argVariants.isEmpty() ? entry(dependentMethod, argVariants) : null;

@@ -1,13 +1,13 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import io.github.m4gshm.components.visualizer.StreamUtils;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
 import io.github.m4gshm.components.visualizer.eval.result.Delay;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.NonNull;
-import lombok.experimental.UtilityClass;
-import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.JavaClass;
@@ -17,6 +17,7 @@ import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.InstructionList;
 import org.apache.bcel.generic.Type;
+import org.slf4j.Logger;
 import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
@@ -33,18 +34,21 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredField;
+import static io.github.m4gshm.components.visualizer.ReflectionUtils.trySetAccessible;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.Utils.loadedClass;
 import static io.github.m4gshm.components.visualizer.eval.result.Result.*;
 import static java.util.Arrays.asList;
-import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
 
-@Slf4j
-@UtilityClass
-public class EvalUtils {
+public final class EvalUtils {
 
     private static final Class<SpringProxy> springProxyClass = loadedClass(() -> SpringProxy.class);
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(EvalUtils.class);
+
+    private EvalUtils() {
+        throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
+    }
 
     public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
         ArrayList<JavaClass> classes = new ArrayList<>();
@@ -73,8 +77,8 @@ public class EvalUtils {
             return null;
         }
         if (Proxy.isProxyClass(componentType)) {
-            var interfaces = componentType.getInterfaces();
-            var firstInterface = Arrays.stream(interfaces).findFirst().orElse(null);
+            Class<?>[] interfaces = componentType.getInterfaces();
+            Class<?> firstInterface = Arrays.stream(interfaces).findFirst().orElse(null);
             if (interfaces.length > 1) {
                 log.debug("unproxy {} as first interface {}", componentType, firstInterface);
             }
@@ -93,7 +97,7 @@ public class EvalUtils {
                          InstructionHandle lastArgInstruction,
                          List<ParameterValue> parameters, Component component, Method method) {
         try {
-            var value = methodHandle.invokeWithArguments(asList(arguments));
+            Object value = methodHandle.invokeWithArguments(asList(arguments));
             return invoked(value, firstInstruction, lastArgInstruction, component, method, parameters);
         } catch (Throwable e) {
             throw new EvalException(e);
@@ -119,7 +123,7 @@ public class EvalUtils {
         } catch (NoSuchMethodException e) {
             throw new EvalException(e);
         }
-        if (constructor.trySetAccessible()) try {
+        if (trySetAccessible(constructor)) try {
             var value = constructor.newInstance(arguments);
             return constant(value, instructionHandle, instructionHandle, component, method, null, parent.getRelations());
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
@@ -135,15 +139,15 @@ public class EvalUtils {
                                       @NonNull InstructionHandle lastArgInstruction, Eval evalBytecode,
                                       BootstrapMethodHandlerAndArguments methodAndArguments,
                                       List<ParameterValue> parameters) {
-        var callSite = getCallSite(methodAndArguments);
-        var lambdaInstance = callSite.dynamicInvoker();
+        CallSite callSite = getCallSite(methodAndArguments);
+        MethodHandle lambdaInstance = callSite.dynamicInvoker();
         return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, parameters,
                 evalBytecode.getComponent(), evalBytecode.getMethod());
     }
 
     private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {
         try {
-            var bootstrapMethodArguments = methodAndArguments.getBootstrapMethodArguments();
+            List<Object> bootstrapMethodArguments = methodAndArguments.getBootstrapMethodArguments();
             return (CallSite) methodAndArguments.getHandler().invokeWithArguments(bootstrapMethodArguments);
         } catch (Throwable e) {
             throw new EvalException(e);
@@ -151,16 +155,16 @@ public class EvalUtils {
     }
 
     public static Class<?>[] toClasses(Type[] types) {
-        var args = new Class[types.length];
+        Class[] args = new Class[types.length];
         for (int i = 0; i < types.length; i++) {
-            var argumentType = types[i];
+            Type argumentType = types[i];
             args[i] = toClass(argumentType.getClassName());
         }
         return args;
     }
 
     public static Class<?> toClass(String rawClassName) {
-        var className = rawClassName.replace("/", ".");
+        String className = rawClassName.replace("/", ".");
         return getClassByName(className);
     }
 
@@ -177,8 +181,8 @@ public class EvalUtils {
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
                                        InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
                                        Result parent, Component component, Method method) {
-        var field = getDeclaredField(objectClass, name);
-        return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
+        Field field = getDeclaredField(objectClass, name);
+        return field == null ? Result.notFound(name, getFieldInstruction, parent) : trySetAccessible(field)
                 ? getFieldValue(object, field, lastInstruction, parent, component, method)
                 : notAccessible(field, getFieldInstruction, parent);
     }
@@ -197,7 +201,7 @@ public class EvalUtils {
     }
 
     public static Stream<InstructionHandle> instructionHandleStream(Code code) {
-        return ofNullable(code).map(Code::getCode).flatMap(bc -> instructionHandleStream(new InstructionList(bc)));
+        return StreamUtils.ofNullable(code).map(Code::getCode).flatMap(bc -> instructionHandleStream(new InstructionList(bc)));
     }
 
     public static Stream<InstructionHandle> instructionHandleStream(InstructionList instructionHandles) {
@@ -226,7 +230,7 @@ public class EvalUtils {
     }
 
     @FunctionalInterface
-    public interface MethodHandleLookup {
+    public static interface MethodHandleLookup {
         MethodHandle get() throws NoSuchMethodException, IllegalAccessException;
     }
 

@@ -2,6 +2,7 @@ package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.Type;
 
@@ -19,13 +20,13 @@ public class MethodInfo {
     int referenceKind;
 
     public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool cp) {
-        var constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
+        ConstantCP constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
         if (constantCP instanceof ConstantMethodref || constantCP instanceof ConstantInterfaceMethodref) {
-            var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
-            var methodName = constantNameAndType.getName(cp);
-            var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = getClassByName(constantCP.getClass(cp));
-            var referenceKind = constant.getReferenceKind();
+            ConstantNameAndType constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
+            String methodName = constantNameAndType.getName(cp);
+            String methodSignature = constantNameAndType.getSignature(cp);
+            Class<?> targetClass = getClassByName(constantCP.getClass(cp));
+            int referenceKind = constant.getReferenceKind();
             return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
         } else {
             return null;

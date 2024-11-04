@@ -1,4 +1,6 @@
 package io.github.m4gshm.components.visualizer.client;
+import com.google.common.collect.ImmutableList;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
@@ -10,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 
+import java.util.Collections;
 import java.util.List;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.toParameters;
@@ -24,7 +27,7 @@ public class Utils {
             return eval.resolveInvokeParameters(invoke, parameters, resolver);
         } catch (NotInvokedException e) {
             log.info("no call variants for {} inside {}", eval.getMethod().getName(), component.getName());
-            return List.of();
+            return ImmutableList.of();
         }
     }
 

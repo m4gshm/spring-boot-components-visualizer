@@ -1,10 +1,14 @@
 package io.github.m4gshm.components.visualizer;
 
+
 import lombok.experimental.UtilityClass;
+import lombok.var;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
+
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @UtilityClass
 public class UriUtils {
@@ -47,7 +51,7 @@ public class UriUtils {
 
         var parts = new ArrayList<String>();
 
-        if (!path.isBlank()) {
+        if (!isBlank(path)) {
             var first = true;
             var tokenizer = new StringTokenizer(path, PATH_DELIMITER, false);
             while (tokenizer.hasMoreTokens()) {

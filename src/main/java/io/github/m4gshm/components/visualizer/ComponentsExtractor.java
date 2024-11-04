@@ -1,24 +1,28 @@
 package io.github.m4gshm.components.visualizer;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvider;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.Options.BeanFilter;
 import io.github.m4gshm.components.visualizer.eval.bytecode.*;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.DependentProvider;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
+import io.github.m4gshm.components.visualizer.extractor.BeanInfo;
+import io.github.m4gshm.components.visualizer.extractor.FeignClient;
+import io.github.m4gshm.components.visualizer.extractor.Options;
+import io.github.m4gshm.components.visualizer.extractor.Options.BeanFilter;
 import io.github.m4gshm.components.visualizer.model.*;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
-import io.github.m4gshm.components.visualizer.model.Interface.Direction;
-import lombok.Builder;
-import lombok.Data;
-import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.Type;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.jpa.repository.support.JpaMetamodelEntityInformation;
 import org.springframework.data.mongodb.repository.query.MongoEntityInformation;
@@ -34,7 +38,6 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
@@ -42,6 +45,7 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.getMethods;
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.isObject;
+import static io.github.m4gshm.components.visualizer.ClassUtils.getPackageName;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.*;
 import static io.github.m4gshm.components.visualizer.UriUtils.joinURI;
 import static io.github.m4gshm.components.visualizer.Utils.*;
@@ -50,12 +54,11 @@ import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.
 import static io.github.m4gshm.components.visualizer.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.lookupClassInheritanceHierarchy;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
+import static io.github.m4gshm.components.visualizer.model.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.Interface.Call.external;
 import static io.github.m4gshm.components.visualizer.model.Interface.Call.scheduled;
-import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
-import static io.github.m4gshm.components.visualizer.model.Interface.Type.*;
+import static io.github.m4gshm.components.visualizer.model.InterfaceType.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static io.github.m4gshm.components.visualizer.model.StorageEntity.Engine.jpa;
 import static io.github.m4gshm.components.visualizer.model.StorageEntity.Engine.mongo;
@@ -63,11 +66,11 @@ import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
-import static java.util.Map.entry;
+import static java.util.Optional.ofNullable;
 import static java.util.function.UnaryOperator.identity;
 import static java.util.stream.Collectors.*;
-import static java.util.stream.Stream.*;
-import static lombok.AccessLevel.PRIVATE;
+import static java.util.stream.Stream.empty;
+import static java.util.stream.Stream.of;
 import static org.springframework.beans.factory.BeanFactory.FACTORY_BEAN_PREFIX;
 
 @Slf4j
@@ -95,7 +98,7 @@ public class ComponentsExtractor {
     }
 
     private static List<Interface> getOutFeignHttpInterfaces(FeignClient feignClient) {
-        return ofNullable(feignClient).flatMap(client -> ofNullable(client.getHttpMethods())
+        return StreamUtils.ofNullable(feignClient).flatMap(client -> StreamUtils.ofNullable(client.getHttpMethods())
                 .filter(Objects::nonNull).flatMap(Collection::stream).map(httpMethod -> {
                     var clientUrl = client.getUrl();
                     var methodUrl = httpMethod.getPath();
@@ -115,14 +118,14 @@ public class ComponentsExtractor {
             javaClasses = lookupClassInheritanceHierarchy(componentType);
         } catch (EvalException e) {
             log.debug("getClassHierarchy {}", componentType, e);
-            javaClasses = List.of();
+            javaClasses = Collections.emptyList();
         }
         return javaClasses;
     }
 
     public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
-        return components.stream().flatMap(c -> ofNullable(c.getDependencies()).flatMap(d -> d.stream()
-                        .map(dependency -> entry(dependency, c))))
+        return components.stream().flatMap(c -> StreamUtils.ofNullable(c.getDependencies()).flatMap(d -> d.stream()
+                        .map(dependency -> MapUtils.entry(dependency, c))))
                 .collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
     }
 
@@ -153,17 +156,17 @@ public class ComponentsExtractor {
             var relations = RelationsAware.getTopRelations(result);
 
             var callGroups = relations.stream().collect(partitioningBy(relation -> {
-                var method = relation.getMethod();
+                Method method = relation.getMethod();
                 return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
                         dependentProvider, callPointsProvider);
             }));
             var unused = callGroups.get(true);
 
             var externalCallableGroup = unused.stream().collect(partitioningBy(r -> {
-                var rComponent = r.getComponent();
-                var componentKey = newComponentKey(rComponent);
-                var changedComponent = Optional.ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
-                var interfaces = changedComponent.getInterfaces();
+                Component rComponent = r.getComponent();
+                ComponentKey componentKey = newComponentKey(rComponent);
+                Component changedComponent = ofNullable(changedComponentProvider.apply(componentKey)).orElse(rComponent);
+                List<Interface> interfaces = changedComponent.getInterfaces();
                 return interfaces != null && interfaces.stream().anyMatch(ComponentsExtractor::isExternalCalled);
             }));
             var externalCallable = !externalCallableGroup.get(true).isEmpty();
@@ -187,16 +190,16 @@ public class ComponentsExtractor {
 
     private static boolean isExternalCalled(Interface iface) {
         var call = iface.getCall();
-        return call != null && Set.of(external, scheduled).contains(call);
+        return call != null && ImmutableSet.of(external, scheduled).contains(call);
     }
 
     private static boolean isUncalled(Interface iface, Component component,
                                       Component relatedComponent, String methodName, Type[] methodArgumentTypes,
                                       DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
-        var methodCallPoints = getCallPoints(relatedComponent, methodName, methodArgumentTypes, dependentProvider,
+        Map<Component, Map<CallPoint, List<CallPoint>>> methodCallPoints = getCallPoints(relatedComponent, methodName, methodArgumentTypes, dependentProvider,
                 callPointsProvider);
-        var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
-        var uncalled = anotherDependent.isEmpty();
+        List<Component> anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
+        boolean uncalled = anotherDependent.isEmpty();
         if (uncalled) {
             log.info("exclude unused interface: {} - {}", component.getName(), iface.getId());
         }
@@ -204,7 +207,7 @@ public class ComponentsExtractor {
     }
 
     private static DependentProvider newDependentProvider(Map<Component, List<Component>> dependencyToDependentWitInterfacesMap) {
-        return c -> dependencyToDependentWitInterfacesMap.getOrDefault(c, List.of());
+        return c -> dependencyToDependentWitInterfacesMap.getOrDefault(c, Collections.emptyList());
     }
 
     private static CallPointsProvider newCallPointsProvider(HashMap<Component, List<CallPoint>> callPointsCache) {
@@ -212,11 +215,11 @@ public class ComponentsExtractor {
             if (callPointsCache.containsKey(c)) {
                 return callPointsCache.get(c);
             } else {
-                callPointsCache.put(c, List.of());
+                callPointsCache.put(c, Collections.emptyList());
             }
 
-            var componentType = c.getType();
-            var javaClasses = getClassHierarchy(componentType);
+            Class<?> componentType = c.getType();
+            List<JavaClass> javaClasses = getClassHierarchy(componentType);
 
             List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
             ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
@@ -230,13 +233,13 @@ public class ComponentsExtractor {
     }
 
     private static Component removeDuplicatedInterfaces(Component component) {
-        var interfaces = component.getInterfaces();
-        var aggregated = interfaces.stream().collect(groupingBy(Interface::toKey, toLinkedHashSet()));
-        var uniqueInterfaces = aggregated.values().stream().flatMap(i -> {
+        List<Interface> interfaces = component.getInterfaces();
+        Map<IntrfaceKey, LinkedHashSet<Interface>> aggregated = interfaces.stream().collect(groupingBy(Interface::toKey, toLinkedHashSet()));
+        List<Interface> uniqueInterfaces = aggregated.values().stream().flatMap(i -> {
             if (i.size() > 1 && log.isDebugEnabled()) {
                 log.debug("reduce duplicated interfaces: component {}, interface {}", component.getName(), namesForLog(i));
             }
-            return i.stream().findFirst().stream();
+            return StreamUtils.stream(i.stream().findFirst());
         }).collect(toList());
         return component.toBuilder().interfaces(uniqueInterfaces).build();
     }
@@ -244,13 +247,13 @@ public class ComponentsExtractor {
     private static Stream<BeanInfo> filter(Stream<BeanInfo> beanInfos, Set<String> excludeNames,
                                            Set<String> excludePackages, Set<Class<?>> excludeTypes) {
         return beanInfos.filter(Objects::nonNull).filter(beanInfo -> {
-            var componentType = beanInfo.getType();
-            var componentName = beanInfo.getName();
+            Class<?> componentType = beanInfo.getType();
+            String componentName = beanInfo.getName();
             if (excludeNames.contains(componentName)) {
                 log.info("component is excluded by name, component {}, type {}", componentName, componentType.getName());
                 return false;
             }
-            if (isMatchAny(componentType.getPackage().getName(), excludePackages)) {
+            if (isMatchAny(getPackageName(componentType), excludePackages)) {
                 log.info("component is excluded by package, component {}, type {}", componentName, componentType.getName());
                 return false;
             }
@@ -263,10 +266,10 @@ public class ComponentsExtractor {
     }
 
     public Components getComponents(Class<?>... rootPackageClasses) {
-        var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
-        var excludeNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
-        var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
-        var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
+        var exclude = ofNullable(this.options).map(Options::getExclude);
+        var excludeNames = exclude.map(BeanFilter::getBeanName).orElse(ImmutableSet.of());
+        var excludeTypes = exclude.map(BeanFilter::getType).orElse(ImmutableSet.of());
+        var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(ImmutableSet.of());
 
         var beanFactory = context.getBeanFactory();
 
@@ -285,19 +288,19 @@ public class ComponentsExtractor {
 
         var rootPackageNames = (rootPackageClasses.length > 0
                 ? stream(rootPackageClasses)
-                : ofNullable(findSpringBootAppBean(beans)).map(BeanInfo::getType)
-        ).map(Class::getPackageName).collect(toList());
+                : StreamUtils.ofNullable(findSpringBootAppBean(beans)).map(BeanInfo::getType)
+        ).map(c -> getPackageName(c)).filter(Objects::nonNull).collect(toList());
 
         var rootGroupedBeans = beans.values().stream().collect(partitioningBy(e ->
                 isRootRelatedBean(e.getType(), rootPackageNames)));
 
         var componentCache = new HashMap<String, Set<Component>>();
 
-        var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
+        var rootComponents = rootGroupedBeans.getOrDefault(true, Collections.emptyList()).stream()
                 .flatMap(beanInfo -> getComponents(beanInfo, rootPackageNames, beans, componentCache))
                 .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())).collect(toList());
 
-        var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream().flatMap(beanInfo -> {
+        var additionalComponents = rootGroupedBeans.getOrDefault(false, Collections.emptyList()).stream().flatMap(beanInfo -> {
             var websocketHandlers = extractInWebsocketHandlers(beanInfo.getName(), beanInfo.getType(), rootPackageNames,
                     beans, componentCache);
             return websocketHandlers.stream();
@@ -307,7 +310,7 @@ public class ComponentsExtractor {
         var components = componentsPerName.values();
 
         var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
-        var callCache = new HashMap<CallCacheKey, Result>();
+        HashMap<CallCacheKey, Result> callCache = null;//new HashMap<>();
 
         var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast(), callCache);
 
@@ -368,10 +371,10 @@ public class ComponentsExtractor {
     }
 
     protected Stream<BeanInfo> getFilteredDependencyBeans(Stream<String> dependencyNames, Map<String, BeanInfo> allBeans) {
-        var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
-        var excludeBeanNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
-        var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
-        var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
+        var exclude = ofNullable(this.options).map(Options::getExclude);
+        var excludeBeanNames = exclude.map(BeanFilter::getBeanName).orElse(ImmutableSet.of());
+        var excludeTypes = exclude.map(BeanFilter::getType).orElse(ImmutableSet.of());
+        var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(ImmutableSet.of());
         return filter(dependencyNames.map(allBeans::get), excludeBeanNames, excludePackages, excludeTypes);
     }
 
@@ -396,7 +399,7 @@ public class ComponentsExtractor {
         if (feignClient != null) {
             componentType = feignClient.getType();
             var interfaces = getOutFeignHttpInterfaces(feignClient);
-            var name = !feignClient.name.equals(feignClient.url) ? feignClient.name : componentName;
+            var name = !feignClient.getName().equals(feignClient.getName()) ? feignClient.getName() : componentName;
             var component = Component.builder()
                     .name(name)
                     .bean(bean)
@@ -405,7 +408,7 @@ public class ComponentsExtractor {
                     .configuration(isSpringConfiguration(componentType))
                     .interfaces(interfaces)
                     .build();
-            componentCache.put(componentName, Set.of(component));
+            componentCache.put(componentName, ImmutableSet.of(component));
             return Stream.of(component);
         } else {
             var websocketHandlers = extractInWebsocketHandlers(componentName, componentType, rootPackage, beans, componentCache);
@@ -421,7 +424,7 @@ public class ComponentsExtractor {
                         .configuration(isSpringConfiguration(componentType))
                         .dependencies(dependencies)
                         .build();
-                componentCache.put(componentName, Set.of(component));
+                componentCache.put(componentName, ImmutableSet.of(component));
                 return Stream.of(component);
             }
         }
@@ -462,7 +465,7 @@ public class ComponentsExtractor {
     }
 
     protected String getComponentPath(Class<?> componentType, Collection<String> rootPackageNames) {
-        var typePackageName = componentType.getPackage().getName();
+        var typePackageName = getPackageName(componentType);
         final String path;
         if (options.isCropRootPackagePath()) {
             var rootPackageName = rootPackageNames.stream().filter(typePackageName::startsWith).findFirst().orElse("");
@@ -527,7 +530,7 @@ public class ComponentsExtractor {
                                 .direction(internal)
                                 .core(StorageEntity.builder()
                                         .entityType(type)
-                                        .storedTo(List.of(collectionName))
+                                        .storedTo(ImmutableList.of(collectionName))
                                         .engine(mongo)
                                         .build())
                                 .build());
@@ -551,7 +554,7 @@ public class ComponentsExtractor {
         } catch (EvalException e) {
             handleError("jms client getting error, component", componentName, e, options.isFailFast());
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     protected List<Interface> getOutWsInterfaces(Component component, String componentName,
@@ -569,7 +572,7 @@ public class ComponentsExtractor {
         } catch (EvalException e) {
             handleError("jws client getting error, component", componentName, e, options.isFailFast());
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     protected List<Interface> getOutRestTemplateInterfaces(
@@ -590,7 +593,7 @@ public class ComponentsExtractor {
         } catch (EvalException e) {
             handleError("rest operations client getting error, component", componentName, e, options.isFailFast());
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     protected Set<Component> getDependencies(String componentName, Collection<String> rootPackage,
@@ -626,7 +629,7 @@ public class ComponentsExtractor {
                 }
             }
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     protected Stream<Component> getWebsocketComponents(
@@ -648,10 +651,10 @@ public class ComponentsExtractor {
             }
             var webSocketHandlerName = findBeanName(webSocketHandler, WebSocketHandler.class);
             var managed = webSocketHandlerName != null;
-            var cached = managed ? cache.get(webSocketHandlerName) : null;
+            Set<Component> cached = managed ? cache.get(webSocketHandlerName) : null;
             if (cached != null) {
                 cached = cached.stream().map(component -> {
-                    var interfaces = Optional.ofNullable(component.getInterfaces()).orElse(List.of());
+                    var interfaces = ofNullable(component.getInterfaces()).orElse(Collections.emptyList());
                     if (!interfaces.contains(anInterface)) {
                         log.trace("update cached component by interface, component {}, interface {}",
                                 component.getName(), anInterface);
@@ -679,7 +682,7 @@ public class ComponentsExtractor {
                         unmanagedDependencies.stream()).collect(toLinkedHashSet());
                 var webSocketHandlerComponent = webSocketHandlerComponentBuilder
                         .path(getComponentPath(webSocketHandlerClass, rootPackageNames))
-                        .interfaces(List.of(anInterface))
+                        .interfaces(ImmutableList.of(anInterface))
                         .dependencies(unmodifiableSet(dependencies)).build();
                 componentStream = flatDependencies(webSocketHandlerComponent);
             }
@@ -693,7 +696,7 @@ public class ComponentsExtractor {
                                                       Map<Object, Set<Component>> touched) {
         if (isIgnoreUnmanagedTypes(componentType)) {
             log.trace("ignore unmanaged component type {}", componentType);
-            return Set.of();
+            return ImmutableSet.of();
         }
         var dependencies = new LinkedHashSet<Component>();
         var isManaged = unmanagedInstance == null;
@@ -768,90 +771,6 @@ public class ComponentsExtractor {
 
     public interface ComponentProvider extends Function<ComponentKey, Component> {
 
-    }
-
-    @Data
-    @Builder(toBuilder = true)
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class Options {
-        public static final Options DEFAULT = Options.builder().build();
-        public boolean includeUnusedOutInterfaces;
-        BeanFilter exclude;
-        boolean failFast;
-        @Builder.Default
-        boolean ignoreNotFoundDependencies = true;
-        boolean cropRootPackagePath;
-        @Builder.Default
-        StringifyResolver.Level stringifyLevel = varOnly;
-
-        @Data
-        @Builder
-        @FieldDefaults(makeFinal = true, level = PRIVATE)
-        public static class BeanFilter {
-            Set<String> packageName;
-            Set<String> beanName;
-            Set<Class<?>> type;
-        }
-    }
-
-    @Data
-    @Builder
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class FeignClient {
-        Class<?> type;
-        String name;
-        String url;
-        List<HttpMethod> httpMethods;
-    }
-
-    @Data
-    @Builder
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class JmsService {
-        String name;
-        String destination;
-        Direction direction;
-        MethodId methodSource;
-        Result evalSource;
-
-        @Data
-        @Builder
-        @FieldDefaults(makeFinal = true, level = PRIVATE)
-        public static class Destination {
-            String destination;
-            Direction direction;
-
-            @Override
-            public String toString() {
-                return destination + ":" + direction;
-            }
-        }
-    }
-
-    @Data
-    @Builder
-    @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class ScheduledMethod {
-        Method method;
-        String expression;
-        TriggerType triggerType;
-
-        @Override
-        public String toString() {
-            return triggerType + "(" + expression + ")";
-        }
-
-        public enum TriggerType {
-            fixedDelay, fixedRate, cron
-        }
-    }
-
-    @Data
-    @FieldDefaults(makeFinal = true)
-    public static class BeanInfo {
-        String name;
-        Class<?> type;
-        Object bean;
     }
 
 }

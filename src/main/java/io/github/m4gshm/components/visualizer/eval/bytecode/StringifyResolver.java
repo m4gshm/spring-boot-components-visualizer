@@ -6,6 +6,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
@@ -14,6 +15,7 @@ import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.components.visualizer.ClassUtils.getPackageName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.toClass;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.toClasses;
@@ -261,8 +263,8 @@ public class StringifyResolver implements Resolver {
             return null;
         }
         var valueClass = value.getClass();
-        var packageName = valueClass.getPackageName();
-        if (valueClass.isPrimitive() || packageName.startsWith("java")) {
+        var packageName = getPackageName(valueClass);
+        if (valueClass.isPrimitive() || (packageName != null && packageName.startsWith("java"))) {
             return value;
         }
 

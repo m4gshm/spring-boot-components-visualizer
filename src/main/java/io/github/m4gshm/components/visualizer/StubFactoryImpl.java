@@ -1,4 +1,7 @@
 package io.github.m4gshm.components.visualizer;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import lombok.var;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -77,11 +80,11 @@ public class StubFactoryImpl implements StubFactory {
         } else if (LinkedList.class.equals(type)) {
             return new LinkedList<>();
         } else if (Collection.class.equals(type) || List.class.equals(type)) {
-            return List.of();
+            return Collections.emptyList();
         } else if (Set.class.equals(type)) {
-            return Set.of();
+            return ImmutableSet.of();
         } else if (Map.class.equals(type)) {
-            return Map.of();
+            return ImmutableMap.of();
         } else if (type.isInterface()) {
             return Proxy.newProxyInstance(type.getClassLoader(), new Class[]{type}, (proxy, method, args) -> {
                 //log
@@ -90,7 +93,7 @@ public class StubFactoryImpl implements StubFactory {
         } else {
             touched.add(type);
             return stream(type.getConstructors()).filter(constructor -> {
-                var accessible = constructor.trySetAccessible();
+                var accessible = ReflectionUtils.trySetAccessible(constructor);
                 if (!accessible) {
                     log.info("not accessible constructor {} of type {}", constructor, type.getName());
                 }

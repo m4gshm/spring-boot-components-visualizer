@@ -16,6 +16,9 @@ dependencies {
     val springBootVer = "2.7.18"
 
     compileOnly("org.projectlombok:lombok:1.18.34")
+    testCompileOnly("org.projectlombok:lombok:1.18.34")
+    annotationProcessor("org.projectlombok:lombok:1.18.34")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.34")
 
     api(project(":"))
 
@@ -29,8 +32,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa:$springBootVer")
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb:$springBootVer")
     implementation("javax.persistence:javax.persistence-api:2.2")
-    implementation("com.h2database:h2:2.3.230")
-
+    implementation("com.h2database:h2:2.1.214")
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -48,7 +50,7 @@ tasks.test {
 }
 
 java {
-    targetCompatibility = JavaVersion.VERSION_11
-    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_1_8
     modularity.inferModulePath.set(true)
 }

@@ -6,12 +6,14 @@ import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.List;
 
 import static lombok.AccessLevel.PROTECTED;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 
 @Getter
 @FieldDefaults(level = PROTECTED)
@@ -62,13 +64,14 @@ public class Delay extends Result implements ContextAware, RelationsAware {
         }
         return result;
     }
+
     public Delay withEval(Eval eval) {
         return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, relations, null);
     }
 
     @Override
     public String toString() {
-        var txt = description == null || description.isBlank() ? "" : description + ",";
+        var txt = description == null || isBlank(description) ? "" : description + ",";
         return "delay(" + txt + "resolved:" + isResolved() + ")";
     }
 

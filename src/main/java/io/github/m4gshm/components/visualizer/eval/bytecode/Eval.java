@@ -1,5 +1,7 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.github.m4gshm.components.visualizer.eval.result.*;
 import io.github.m4gshm.components.visualizer.model.CallPoint;
 import io.github.m4gshm.components.visualizer.model.Component;
@@ -19,6 +21,9 @@ import java.util.Map.Entry;
 import java.util.function.BiFunction;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
+import static io.github.m4gshm.components.visualizer.MapUtils.entry;
+import static io.github.m4gshm.components.visualizer.ReflectionUtils.trySetAccessible;
+import static io.github.m4gshm.components.visualizer.StreamUtils.ofNullable;
 import static io.github.m4gshm.components.visualizer.Utils.toLinkedHashSet;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.ArithmeticUtils.computeArithmetic;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallContext.newCallContext;
@@ -35,10 +40,10 @@ import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Collections.singletonList;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.IntStream.range;
-import static java.util.stream.Stream.*;
+import static java.util.stream.Stream.concat;
+import static java.util.stream.Stream.of;
 import static lombok.AccessLevel.PRIVATE;
 import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.Const.*;
@@ -159,7 +164,7 @@ public class Eval {
                     .collect(toLinkedHashSet());
             return new ContextHierarchy(callContext, parents);
         }
-        return new ContextHierarchy(callContext, Set.of());
+        return new ContextHierarchy(callContext, ImmutableSet.of());
     }
 
     private static Object convertNumberTo(Number number, Type convertTo) {
@@ -241,7 +246,7 @@ public class Eval {
         return result instanceof Multiple ? ((Multiple) result).getResults()
                 : result instanceof Delay && result.isResolved()
                 ? expand(((Delay) result).getResult())
-                : List.of(result);
+                : ImmutableList.of(result);
     }
 
     public static Result collapse(Collection<? extends Result> values, InstructionHandle instructionHandle,
@@ -258,8 +263,7 @@ public class Eval {
         if (values.size() > 1) {
             return multiple(new ArrayList<>(values), instructionHandle, lastInstruction, component, method);
         }
-        var first = values.iterator().next();
-        return first;
+        return values.iterator().next();
     }
 
     private static Result resolveOrThrow(Result result, Resolver resolver, UnresolvedResultException e) {
@@ -301,9 +305,13 @@ public class Eval {
             return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, component, method);
         } else if (!errors.isEmpty()) {
             var e = errors.get(0);
-            log.trace("call error of {}", invoke, e);
-            return resolver.resolve(invoke, e);
-
+            if (resolver != null) {
+                log.trace("call error of {}", invoke, e);
+                return resolver.resolve(invoke, e);
+            } else if (errors.size() > 1) {
+                errors.subList(1, errors.size()).forEach(e::addSuppressed);
+            }
+            throw e;
         } else {
             //log
             if (unresolvedVars.isEmpty()) {
@@ -394,11 +402,11 @@ public class Eval {
                 withoutCallObject.remove(0);
                 arguments = new EvalArguments(withoutCallObject, arguments.getLastArgInstruction());
             }
-            return List.of(arguments);
+            return ImmutableList.of(arguments);
         } else {
             var argumentTypes = invokeInstruction.getArgumentTypes(eval.getConstantPoolGen());
             var arguments = eval.evalArguments(instructionHandle, argumentTypes.length, null, callCache);
-            return List.of(arguments);
+            return ImmutableList.of(arguments);
         }
     }
 
@@ -532,7 +540,7 @@ public class Eval {
                 var storeInstructions = storeResults.stream()
                         .map(storeResult -> eval(storeResult.getFirstInstruction(), parent, callCache))
                         .collect(toList());
-                var first = List.of(storeInstructions.get(0));
+                var first = ImmutableList.of(storeInstructions.get(0));
                 return delayLoadFromStored(description, instructionHandle, this, parent, first, (thisDelay, resolver) -> {
                     var eval = thisDelay.getEval();
                     var resolved = thisDelay.getStoreInstructions().stream()
@@ -584,7 +592,7 @@ public class Eval {
             var evalFieldOwnedObject = evalPrev(instructionHandle, parent, callCache);
             var fieldName = getField.getFieldName(constantPoolGen);
             var lastInstruction = evalFieldOwnedObject.getLastInstruction();
-            var relations = List.of(evalFieldOwnedObject);
+            var relations = ImmutableList.of(evalFieldOwnedObject);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, unevaluatedHandler) -> {
                 var object = evalFieldOwnedObject.getValue(unevaluatedHandler).get(0);
                 return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName, instructionHandle,
@@ -598,7 +606,7 @@ public class Eval {
             var anewarray = (ANEWARRAY) instruction;
             var size = evalPrev(instructionHandle, parent, callCache);
             var lastInstruction = size.getLastInstruction();
-            var relations = List.of(size);
+            var relations = ImmutableList.of(size);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
                 var eval = thisDelay.getEval();
                 var loadClassType = anewarray.getLoadClassType(eval.getConstantPoolGen());
@@ -616,7 +624,7 @@ public class Eval {
             var index = evalPrev(element, callCache);
             var array = evalPrev(index, callCache);
             var lastInstruction = array.getLastInstruction();
-            var relations = List.of(element, index, array);
+            var relations = ImmutableList.of(element, index, array);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
                 var result = array.getValue();
                 if (result instanceof Object[]) {
@@ -634,7 +642,7 @@ public class Eval {
             var index = evalPrev(element, callCache);
             var array = evalPrev(index, callCache);
             var lastInstruction = array.getLastInstruction();
-            var relations = List.of(element, index, array);
+            var relations = ImmutableList.of(element, index, array);
             //AALOAD
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
                 var result = array.getValue();
@@ -650,14 +658,14 @@ public class Eval {
             });
         } else if (instruction instanceof ARRAYLENGTH) {
             var arrayRef = evalPrev(instructionHandle, parent, callCache);
-            var relations = List.of(arrayRef);
+            var relations = ImmutableList.of(arrayRef);
             return delay(instructionText, instructionHandle, arrayRef.getLastInstruction(), this, parent, relations, (thisDelay, resolver) -> {
                 return thisDelay.getEval().resolve(arrayRef, resolver);
             });
         } else if (instruction instanceof NEW) {
             var newInstance = (NEW) instruction;
             var loadClassType = newInstance.getLoadClassType(constantPoolGen);
-            return delay(instructionText, instructionHandle, instructionHandle, this, parent, List.of(), (thisDelay, resolver) -> {
+            return delay(instructionText, instructionHandle, instructionHandle, this, parent, Collections.emptyList(), (thisDelay, resolver) -> {
                 var type = getClassByName(loadClassType.getClassName());
                 return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay, getComponent(), getMethod());
             });
@@ -700,7 +708,7 @@ public class Eval {
             var convertTo = conv.getType(constantPoolGen);
             var convertedValueResult = evalPrev(instructionHandle, parent, callCache);
             var lastInstruction = convertedValueResult.getLastInstruction();
-            var relations = List.of(convertedValueResult);
+            var relations = ImmutableList.of(convertedValueResult);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
                 var values = convertedValueResult.getValue(resolver);
                 var results = values.stream()
@@ -715,7 +723,7 @@ public class Eval {
             var first = evalPrev(instructionHandle, parent, callCache);
             var second = consumeStack == 2 ? evalPrev(first, callCache) : null;
             var lastInstruction = second != null ? second.getLastInstruction() : first.getLastInstruction();
-            var relations = second != null ? List.of(first, second) : List.of(first);
+            var relations = second != null ? ImmutableList.of(first, second) : ImmutableList.of(first);
             return delay(instructionText, instructionHandle, lastInstruction, this, parent, relations, (thisDelay, resolver) -> {
                 try {
                     var computed = computeArithmetic(arith, first, second);
@@ -1128,7 +1136,7 @@ public class Eval {
             log.info("{}, method not found '{}.{}', instruction {}", msg, type.getName(), methodName,
                     EvalUtils.toString(invokeInstruction, constantPoolGen));
             return notFound(methodName, invokeInstruction, invoke);
-        } else if (!declaredMethod.trySetAccessible()) {
+        } else if (!trySetAccessible(declaredMethod)) {
             log.warn("{}, method is not accessible, method '{}.{}', instruction {}", msg, type.getName(), methodName,
                     EvalUtils.toString(invokeInstruction, constantPoolGen));
             return notAccessible(declaredMethod, invokeInstruction, invoke);

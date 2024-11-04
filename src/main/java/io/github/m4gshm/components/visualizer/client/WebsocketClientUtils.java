@@ -1,4 +1,5 @@
 package io.github.m4gshm.components.visualizer.client;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;

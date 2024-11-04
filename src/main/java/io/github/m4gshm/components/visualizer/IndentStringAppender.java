@@ -1,8 +1,11 @@
 package io.github.m4gshm.components.visualizer;
 
 import lombok.RequiredArgsConstructor;
+import lombok.var;
 
 import java.util.StringTokenizer;
+
+import static org.apache.commons.lang3.StringUtils.repeat;
 
 @RequiredArgsConstructor
 public class IndentStringAppender {
@@ -27,7 +30,7 @@ public class IndentStringAppender {
 
     public IndentStringAppender append(String text, boolean splitLines) {
         if (text != null && !text.isEmpty()) {
-            var intends = intend.repeat(level);
+            var intends = repeat(intend, level);
             if (splitLines) {
                 var tokenizer = new StringTokenizer(text, lineBreak, true);
                 while (tokenizer.hasMoreTokens()) {

@@ -2,9 +2,11 @@ package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import lombok.Data;
 import lombok.NonNull;
+import lombok.SneakyThrows;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEDYNAMIC;
@@ -17,10 +19,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
+import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.MethodInfo.newMethodInfo;
-import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
-import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -141,12 +142,16 @@ public class InvokeDynamicUtils {
         return new MethodHandleAndLookup(methodHandle, privateLookup);
     }
 
+    @SneakyThrows
     static Lookup getPrivateLookup(Class<?> targetClass, Lookup lookup) {
-        try {
-            return privateLookupIn(targetClass, lookup);
-        } catch (IllegalAccessException e) {
-            throw new EvalException(e);
-        }
+//        try {
+        var constructor = Lookup.class.getDeclaredConstructor(Class.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(targetClass).in(targetClass);
+//            return privateLookupIn(targetClass, lookup);
+//        } catch (IllegalAccessException e) {
+//            throw new EvalException(e);
+//        }
     }
 
     private static MethodHandle lookupReference(Lookup lookup, int referenceKind, Class<?> targetClass, String

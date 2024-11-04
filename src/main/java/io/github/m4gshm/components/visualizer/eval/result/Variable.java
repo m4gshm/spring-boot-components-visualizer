@@ -3,24 +3,22 @@ package io.github.m4gshm.components.visualizer.eval.result;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.components.visualizer.model.Component;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.var;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
 import static lombok.AccessLevel.PRIVATE;
 
-@Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Variable extends Result implements ContextAware {
-    VarType varType;
-    Eval evalContext;
-    int index;
-    String name;
-    Type type;
-    Result prev;
+    private final VarType varType;
+    private final Eval evalContext;
+    private final int index;
+    private final String name;
+    private final Type type;
+    private final Result prev;
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
                     Eval evalContext, int index, String name, Type type, Result prev) {
@@ -65,11 +63,38 @@ public class Variable extends Result implements ContextAware {
         return evalContext.getComponent().getType();
     }
 
-    @RequiredArgsConstructor
+    public VarType getVarType() {
+        return this.varType;
+    }
+
+    public Eval getEvalContext() {
+        return this.evalContext;
+    }
+
+    public int getIndex() {
+        return this.index;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    public Type getType() {
+        return this.type;
+    }
+
+    public Result getPrev() {
+        return this.prev;
+    }
+
     public enum VarType {
         MethodArg("methodArg"),
         LocalVar("localVar");
 
         private final String code;
+
+        private VarType(String code) {
+            this.code = code;
+        }
     }
 }

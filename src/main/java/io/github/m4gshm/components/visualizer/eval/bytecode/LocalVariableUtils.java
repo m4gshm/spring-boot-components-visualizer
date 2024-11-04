@@ -1,4 +1,5 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
+import lombok.var;
 
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -6,7 +7,9 @@ import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.groupingBy;
@@ -22,7 +25,7 @@ public class LocalVariableUtils {
     static List<LocalVariable> getLocalVariables(Method method, int index) {
         var localVariableTable = Stream.of(method.getLocalVariableTable().getLocalVariableTable())
                 .collect(groupingBy(LocalVariable::getIndex));
-        return localVariableTable.getOrDefault(index, List.of());
+        return localVariableTable.getOrDefault(index, Collections.emptyList());
     }
 
     static LocalVariable findLocalVariable(Method method, List<LocalVariable> localVariables, InstructionHandle instructionHandle) {

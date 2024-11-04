@@ -1,5 +1,6 @@
 package service1.service.scheduled;
 
+import lombok.var;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;

@@ -1,4 +1,5 @@
 package io.github.m4gshm.components.visualizer.autoconfigure;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.SchemaFactory;
 import io.github.m4gshm.components.visualizer.PlantUmlTextFactory;
@@ -16,7 +17,6 @@ public class PlantUmlTextFactoryAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(SchemaFactory.class)
     PlantUmlTextFactory plantUmlConnectionsVisualizer(Environment environment, ObjectProvider<Options> options) {
-        var opt = options.getIfAvailable();
-        return new PlantUmlTextFactory(getApplicationName(environment),opt);
+        return new PlantUmlTextFactory(getApplicationName(environment), options.getIfAvailable());
     }
 }

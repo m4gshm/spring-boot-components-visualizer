@@ -1,5 +1,7 @@
 package service1.service;
 
+import com.google.common.collect.ImmutableList;
+import lombok.var;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import service1.db.jpa.SimpleEntityRepository;
@@ -55,7 +57,7 @@ public class CoreService {
 
     public String makeAll() {
         var jmsQueue1 = getJmsQueue();
-        List.of(0, 1).forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + i));
+        ImmutableList.of(0, 1).forEach(i -> jmsQueueService.sendMessage(null, null, null, jmsQueue1 + i));
         return null;
     }
 

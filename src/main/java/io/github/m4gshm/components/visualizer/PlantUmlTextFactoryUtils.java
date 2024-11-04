@@ -1,8 +1,10 @@
 package io.github.m4gshm.components.visualizer;
+import com.google.common.collect.ImmutableList;
+import io.github.m4gshm.components.visualizer.model.InterfaceType;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.PlantUmlTextFactory.RowsCols;
 import io.github.m4gshm.components.visualizer.model.HttpMethodsGroup;
-import io.github.m4gshm.components.visualizer.model.Interface;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
@@ -21,7 +23,7 @@ public class PlantUmlTextFactoryUtils {
                 .build();
     }
 
-    public static String renderAs(Interface.Type type) {
+    public static String renderAs(InterfaceType type) {
         if (type != null) switch (type) {
             case storage:
                 return "entity";
@@ -39,7 +41,7 @@ public class PlantUmlTextFactoryUtils {
         var size = elements.size();
         var maxElements = columns * rows;
         if (size <= maxElements) {
-            return List.of(elements);
+            return ImmutableList.of(elements);
         }
         var result = new ArrayList<List<T>>();
         for (int first = 0; ; ) {

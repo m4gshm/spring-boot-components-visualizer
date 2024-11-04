@@ -1,11 +1,9 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.model.Component;
-import lombok.Getter;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
-@Getter
 public class Duplicate extends Result implements ContextAware {
 
     private final Result onDuplicate;
@@ -38,5 +36,9 @@ public class Duplicate extends Result implements ContextAware {
     @Override
     public String toString() {
         return "duplicate(" + onDuplicate + ")";
+    }
+
+    public Result getOnDuplicate() {
+        return this.onDuplicate;
     }
 }

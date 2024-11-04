@@ -1,5 +1,7 @@
 package service1.service.external.ws;
 
+import com.google.common.collect.ImmutableList;
+import lombok.var;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -91,7 +93,7 @@ public class Service2StreamClientImpl implements AutoCloseable {
         var servUrl = "ws://service3";
         var headers = new WebSocketHttpHeaders();
         Supplier<URI> s = () -> currentURI("ws://currentURI-supplier");
-        return List.of(
+        return ImmutableList.of(
                 webSocketClient.doHandshake(webSocketHandler, "ws://service-template"),
                 webSocketClient.doHandshake(webSocketHandler, "ws://service-template/{id}/", "id", "1"),
                 webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),

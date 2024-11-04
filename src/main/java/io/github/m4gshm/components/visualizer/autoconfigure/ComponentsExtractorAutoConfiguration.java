@@ -1,7 +1,7 @@
 package io.github.m4gshm.components.visualizer.autoconfigure;
 
 import io.github.m4gshm.components.visualizer.ComponentsExtractor;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.Options;
+import io.github.m4gshm.components.visualizer.extractor.Options;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;

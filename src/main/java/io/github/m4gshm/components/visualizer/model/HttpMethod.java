@@ -1,4 +1,6 @@
 package io.github.m4gshm.components.visualizer.model;
+import com.google.common.collect.ImmutableMap;
+import lombok.var;
 
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import lombok.Builder;
@@ -56,7 +58,7 @@ public class HttpMethod implements CharSequence, Comparable<HttpMethod> {
     }
 
     private int compareHttpMethodName(String method1, String method2) {
-        var weights = Map.of(
+        var weights = ImmutableMap.of(
                 "", -1,
                 ALL, 0,
                 "GET", 1,

@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.client;
 
+import com.google.common.collect.ImmutableList;
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
@@ -12,6 +13,7 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import lombok.var;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
@@ -42,7 +44,7 @@ public class RestOperationsUtils {
             var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
             return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
-                var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
+                Class<? extends RestOperations> expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match ? extractHttpMethods(component, instructionHandle, constantPoolGen, bootstrapMethods,
@@ -85,27 +87,26 @@ public class RestOperationsUtils {
         }
 
         var methods = variants.stream().map(variant -> {
-            var pathArg = variant.get(1);
-            var httpMethodArg = "exchange".equals(methodName) ? variant.get(2) : null;
+            Result pathArg = variant.get(1);
+            Result httpMethodArg = "exchange".equals(methodName) ? variant.get(2) : null;
             return new ArgVariant(pathArg, httpMethodArg);
         }).distinct().flatMap(variant -> {
-            var pathArg = variant.pathArg;
-            var resolvedHttpMethodArg = "exchange".equals(methodName) ? variant.httpMethodArg : null;
+            Result pathArg = variant.pathArg;
+            Result resolvedHttpMethodArg = "exchange".equals(methodName) ? variant.httpMethodArg : null;
 
             List<String> httpMethods;
             List<String> paths;
             try {
                 httpMethods = resolvedHttpMethodArg != null
                         ? getStrings(resolvedHttpMethodArg.getValue(resolver))
-                        : List.of(getHttpMethod(methodName));
+                        : ImmutableList.of(getHttpMethod(methodName));
                 paths = getStrings(pathArg.getValue(resolver));
             } catch (NotInvokedException e) {
                 //log
-                httpMethods = List.of();
-                paths = List.of();
+                httpMethods = ImmutableList.of();
+                paths = ImmutableList.of();
             }
-            var httpMethods1 = httpMethods;
-
+            List<String> httpMethods1 = httpMethods;
             return paths.stream().flatMap(path -> httpMethods1.stream().map(httpMethod -> new PathVariant(pathArg, httpMethod, path)));
         }).distinct().map(variant -> {
             return HttpMethod.builder().method(variant.httpMethod).path(variant.path).evalSource(variant.pathArg).build();

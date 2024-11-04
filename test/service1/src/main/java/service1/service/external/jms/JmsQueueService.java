@@ -1,5 +1,6 @@
 package service1.service.external.jms;
 
+import lombok.var;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
