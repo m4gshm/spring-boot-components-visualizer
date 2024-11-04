@@ -27,9 +27,9 @@ image::./test/service1/src/schema/components.svg[]
 - @FeignClient
 - Standalone Feign client
 - RestTemplate based clients
+- @Scheduled
 
 === Planned to support
-- @Scheduled
 - TaskScheduler
 - @KafkaListener
 - KafkaTemplate

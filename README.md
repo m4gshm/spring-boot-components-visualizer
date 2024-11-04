@@ -42,9 +42,9 @@ Requires Java 11 or higher.
 
 - RestTemplate based clients
 
-## Planned to support
-
 - @Scheduled
+
+## Planned to support
 
 - TaskScheduler
 
