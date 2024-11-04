@@ -19,6 +19,15 @@ public class PeriodUpdateService {
 
     @Scheduled(cron = "* * 1 * * *")
     public void getEvery5Min() {
+        call();
+    }
+
+    @Scheduled(fixedDelay = 1000*60)
+    public void getEvery1Hour() {
+        call();
+    }
+
+    private void call() {
         for (UserEntity userEntity : userRepository.findAll()) {
             var id = userEntity.getId();
             var someInfo = service2FeignClient.get(Integer.valueOf(id));

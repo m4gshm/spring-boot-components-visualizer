@@ -37,7 +37,9 @@ import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.getMethods;
@@ -262,6 +264,25 @@ public class ComponentsExtractor {
         });
     }
 
+    private static void logInterfaces(Component component) {
+        var interfaces = component.getInterfaces();
+        if (interfaces != null && !interfaces.isEmpty()) {
+            var format = "component interfaces: {} - {}";
+            if (log.isInfoEnabled()) {
+                log.info(format, component.getName(), namesForLog(interfaces));
+            } else if (log.isDebugEnabled()) {
+                log.debug(format, component.getName(), interfaces.stream().map(anInterface -> {
+                    var methodSource = anInterface.getMethodSource();
+                    return anInterface.getDirection() + ":" + anInterface.getName() +
+                            ":source-" + (methodSource != null ? "method" : "eval") + "(" +
+                            (methodSource != null ? methodSource : anInterface.getEvalSource()) + ")";
+                }).collect(toList()));
+            } else if (log.isTraceEnabled()) {
+                log.trace(format, component.getName(), interfaces);
+            }
+        }
+    }
+
     public Components getComponents(Class<?>... rootPackageClasses) {
         var exclude = Optional.ofNullable(this.options).map(Options::getExclude);
         var excludeNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
@@ -325,36 +346,21 @@ public class ComponentsExtractor {
         var componentWithInterfacesMap = componentsWithInterfaces.stream().collect(toMap(ComponentKey::newComponentKey,
                 identity(), warnDuplicated(), LinkedHashMap::new));
 
-        var filteredComponentsWithInterfaces = componentsWithInterfaces.stream().peek(component -> {
-            var interfaces = component.getInterfaces();
-            if (interfaces != null && !interfaces.isEmpty()) {
-                var format = "component interfaces: {} - {}";
-                if (log.isInfoEnabled()) {
-                    log.info(format, component.getName(), namesForLog(interfaces));
-                } else if (log.isDebugEnabled()) {
-                    log.debug(format, component.getName(), interfaces.stream().map(anInterface -> {
-                        var methodSource = anInterface.getMethodSource();
-                        return anInterface.getDirection() + ":" + anInterface.getName() +
-                                ":source-" + (methodSource != null ? "method" : "eval") + "(" +
-                                (methodSource != null ? methodSource : anInterface.getEvalSource()) + ")";
-                    }).collect(toList()));
-                } else if (log.isTraceEnabled()) {
-                    log.trace(format, component.getName(), interfaces);
-                }
-            }
-        }).map(component -> !options.isIncludeUnusedOutInterfaces() ?
+        var filteredComponentsWithInterfaces = componentsWithInterfaces.stream(
+        ).peek(ComponentsExtractor::logInterfaces
+        ).map(component -> !options.isIncludeUnusedOutInterfaces() ?
                 filterUnusedInterfaces(component, componentWithInterfacesMap::get, dependentProvider, callPointsProvider)
                 : component
         ).map(ComponentsExtractor::removeDuplicatedInterfaces).map(component -> options.isIgnoreNotFoundDependencies()
                 ? getComponentWithFilteredDependencies(component, componentsPerName)
                 : component
-        ).collect(toLinkedHashSet());
+        ).map(options.customizer).collect(toLinkedHashSet());
 
         return Components.builder().components(filteredComponentsWithInterfaces).build();
     }
 
     private Component populateInterfaces(Component component, EvalContextFactory evalContextFactory,
-                                         StringifyResolver resolver, HashMap<CallCacheKey, Result> callCache) {
+                                         StringifyResolver resolver, Map<CallCacheKey, Result> callCache) {
         var exists = component.getInterfaces();
         var interfaces = getInterfaces(component, component.getName(), component.getType(),
                 component.getDependencies(), callCache, evalContextFactory, resolver);
@@ -430,7 +436,7 @@ public class ComponentsExtractor {
     private List<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
                                           Set<Component> dependencies, Map<CallCacheKey, Result> callCache,
                                           EvalContextFactory evalContextFactory, Resolver resolver) {
-        var scheduledMethods = extractScheduledMethod(componentType).stream()
+        var scheduledMethods = extractScheduledMethod(componentType, options.timeUnitStringifier).stream()
                 .map(scheduledMethod -> Interface.builder().direction(internal).type(scheduler)
                         .core(scheduledMethod).call(scheduled)
                         .methodSource(newMethodId(scheduledMethod.getMethod()))
@@ -776,6 +782,26 @@ public class ComponentsExtractor {
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
         public boolean includeUnusedOutInterfaces;
+        @Builder.Default
+        public Function<TimeUnit, String> timeUnitStringifier = timeUnit -> {
+            switch (timeUnit) {
+                case MILLISECONDS:
+                    return "milsec";
+                case MICROSECONDS:
+                    return "micsec";
+                case NANOSECONDS:
+                    return "nsec";
+                case SECONDS:
+                    return "sec";
+                case MINUTES:
+                    return "min";
+                case DAYS:
+                    return "d";
+                case HOURS:
+                    return "h";
+            }
+            return "";
+        };
         BeanFilter exclude;
         boolean failFast;
         @Builder.Default
@@ -783,6 +809,8 @@ public class ComponentsExtractor {
         boolean cropRootPackagePath;
         @Builder.Default
         StringifyResolver.Level stringifyLevel = varOnly;
+        @Builder.Default
+        UnaryOperator<Component> customizer = component -> component;
 
         @Data
         @Builder

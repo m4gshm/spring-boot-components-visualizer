@@ -134,8 +134,9 @@ cloud "internal" as internal #line.dotted;line:gray; {
     }
   }
   rectangle "scheduler" as internal.scheduler {
-    control "cron(* * 1 * * *)" as internal.cron...1....
-    internal.cron...1.... .. periodUpdateService
+    collections "<#transparent,transparent>|cron(* * 1 * * *)|\n\
+<#transparent,transparent>|fixedDelay(60000milsec)|" as internal.scheduler.interfaces
+    internal.scheduler.interfaces .. periodUpdateService
   }
 }
 @enduml

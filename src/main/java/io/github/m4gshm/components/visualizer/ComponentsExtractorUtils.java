@@ -33,7 +33,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -181,7 +183,7 @@ public class ComponentsExtractorUtils {
                 .collect(toList());
     }
 
-    public static List<ScheduledMethod> extractScheduledMethod(Class<?> beanType) {
+    public static List<ScheduledMethod> extractScheduledMethod(Class<?> beanType, Function<TimeUnit, String> timeUnitStringifier) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> Scheduled.class);
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
@@ -204,8 +206,8 @@ public class ComponentsExtractorUtils {
                             : null;
 
                     var expression = triggerType == TriggerType.cron ? cron
-                            : triggerType == TriggerType.fixedDelay ? fixedDelay
-                            : triggerType == TriggerType.fixedRate ? fixedRate
+                            : triggerType == TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : triggerType == TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
                             : null;
 
                     return ScheduledMethod.builder()

@@ -136,6 +136,8 @@ cloud "internal" as internal #line.dotted;line:gray; {
   rectangle "scheduler" as internal.scheduler {
     control "cron(* * 1 * * *)" as internal.cron...1....
     internal.cron...1.... .. periodUpdateService
+    control "fixedDelay(60000milsec)" as internal.fixedDelay.60000milsec.
+    internal.fixedDelay.60000milsec. .. periodUpdateService
   }
 }
 @enduml
