@@ -20,12 +20,13 @@ public class Interface {
     String id;
     Direction direction;
     Type type;
-    boolean externalCallable;
+    Call call;
     MethodId methodSource;
     Result evalSource;
 
     public CharSequence getName() {
-        var name = this.name != null ? this.name : core != null ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
+        var name = this.name != null ? this.name : core != null
+                ? core instanceof CharSequence ? (CharSequence) core : core.toString() : null;
         if (name == null) {
             name = "!!NULL!!";
         } else if (name.toString().isBlank()) {
@@ -42,6 +43,10 @@ public class Interface {
         return Key.builder().id(getId()).direction(getDirection()).type(getType()).build();
     }
 
+    public enum Call {
+        external, scheduled;
+    }
+
     @Getter
     @RequiredArgsConstructor
     public enum Direction {
@@ -56,13 +61,17 @@ public class Interface {
     @Getter
     @RequiredArgsConstructor
     public enum Type {
-        http, ws("web socket"), grpc, jms, kafka, storage;
+        http, ws("web socket"), grpc, jms, kafka, storage, scheduler;
 
         public final String fullName;
 
         Type() {
             fullName = this.name();
         }
+    }
+
+    public static class InterfaceBuilder {
+
     }
 
     @Data

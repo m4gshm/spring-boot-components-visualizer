@@ -22,7 +22,13 @@ public class PlantUmlTextFactoryUtils {
     }
 
     public static String renderAs(Interface.Type type) {
-        return type == Interface.Type.storage ? "entity" : "interface";
+        if (type != null) switch (type) {
+            case storage:
+                return "entity";
+            case scheduler:
+                return "control";
+        }
+        return "interface";
     }
 
     public static String regExp(List<String> strings) {

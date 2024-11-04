@@ -34,6 +34,9 @@ package "service1" as service1 #line.dotted;text:gray {
         component service2StreamClientImpl as service2StreamClientImpl
       }
     }
+    package "scheduled" as service1.service.scheduled #line.dotted;text:gray {
+      component periodUpdateService as periodUpdateService
+    }
   }
 }
 coreService ..> documentRepository
@@ -44,6 +47,9 @@ coreService ..> simpleEntityRepository
 coreService ..> standaloneService2Api
 jmsQueueListener ..> coreService
 mainController ..> coreService
+periodUpdateService ..> jmsQueueService
+periodUpdateService ..> service2FeignClient
+periodUpdateService ..> userRepository
 cloud "input" as input #line.dotted;line:gray; {
   rectangle "http" as input.http {
     frame "/api/v1" as input.http..api.v1 #line.dotted;text:gray {
@@ -126,6 +132,12 @@ cloud "internal" as internal #line.dotted;line:gray; {
       internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity..table_name .. internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity.
       internal.mongo.classservice1.db.mongo.model.DocumentEntity..documentEntity. .. documentRepository
     }
+  }
+  rectangle "scheduler" as internal.scheduler {
+    control "cron(* * 1 * * *)" as internal.cron...1....
+    internal.cron...1.... .. periodUpdateService
+    control "fixedDelay(60000milsec)" as internal.fixedDelay.60000milsec.
+    internal.fixedDelay.60000milsec. .. periodUpdateService
   }
 }
 @enduml

@@ -16,7 +16,7 @@ import static lombok.AccessLevel.PRIVATE;
 public class Component implements ComponentDependency {
     String name;
     @NonNull
-    Object object;
+    Object bean;
     @ToString.Include(rank = -1)
     String path;
     Class<?> type;
@@ -31,11 +31,11 @@ public class Component implements ComponentDependency {
 
     @ToString.Include(name = "name")
     public String getName() {
-        return isManaged() ? name : /*todo must be unique, make incremental int sequence*/object.getClass().getSimpleName();
+        return isManaged() ? name : /*todo must be unique, make incremental int sequence*/bean.getClass().getSimpleName();
     }
 
     public Class<?> getType() {
-        return type != null ? type : object.getClass();
+        return type != null ? type : bean.getClass();
     }
 
     @Override
@@ -43,12 +43,12 @@ public class Component implements ComponentDependency {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Component component = (Component) o;
-        return Objects.equals(name, component.name) && Objects.equals(object, component.object);
+        return Objects.equals(name, component.name) && Objects.equals(bean, component.bean);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, object);
+        return Objects.hash(name, bean);
     }
 
     @Data
@@ -58,7 +58,7 @@ public class Component implements ComponentDependency {
         Object unmanagedInstance;
 
         public static ComponentKey newComponentKey(Component component) {
-            return new ComponentKey(component.getName(), component.getObject());
+            return new ComponentKey(component.getName(), component.getBean());
         }
     }
 }

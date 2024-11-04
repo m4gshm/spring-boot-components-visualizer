@@ -4,7 +4,9 @@ import feign.InvocationHandlerFactory;
 import feign.MethodMetadata;
 import feign.Target;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.FeignClient;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsClient;
+import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
+import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
+import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod.TriggerType;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
@@ -21,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -30,7 +33,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -168,12 +173,53 @@ public class ComponentsExtractorUtils {
         return beanType != null && hasAnnotation(beanType, () -> SpringBootApplication.class);//&& hasMainMethod(beanType);
     }
 
-    public static List<JmsClient> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
+
+    public static List<JmsService> extractMethodJmsListeners(Class<?> beanType, ConfigurableBeanFactory beanFactory) {
         var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> JmsListener.class);
         return annotationMap.entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
-                .map(entry -> JmsClient.builder().direction(in).name(entry.getKey().getName())
+                .map(entry -> JmsService.builder().direction(in).name(entry.getKey().getName())
                         .destination(beanFactory.resolveEmbeddedValue(entry.getValue().destination())).build())
+                .collect(toList());
+    }
+
+    public static List<ScheduledMethod> extractScheduledMethod(Class<?> beanType, Function<TimeUnit, String> timeUnitStringifier) {
+        var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> Scheduled.class);
+        return annotationMap.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
+                .map(entry -> {
+                    var scheduled = entry.getValue();
+                    var cron = scheduled.cron();
+                    var fixedDelay = scheduled.fixedDelayString();
+                    var fixedDelayLong = scheduled.fixedDelay();
+                    if (fixedDelayLong > -1) {
+                        fixedDelay = String.valueOf(fixedDelayLong);
+                    }
+                    var fixedRate = scheduled.fixedRateString();
+                    long fixedRateLong = scheduled.fixedRate();
+                    if (fixedRateLong > -1) {
+                        fixedRate = String.valueOf(fixedRateLong);
+                    }
+                    var triggerType = !cron.isEmpty() ? TriggerType.cron
+                            : !fixedDelay.isEmpty() ? TriggerType.fixedDelay
+                            : !fixedRate.isEmpty() ? TriggerType.fixedRate
+                            : null;
+
+                    var expression = triggerType == TriggerType.cron ? cron
+                            : triggerType == TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : triggerType == TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : null;
+
+                    return ScheduledMethod.builder()
+                            .method(entry.getKey())
+                            .triggerType(triggerType)
+                            .expression(expression)
+                            .build();
+                })
+                .filter(scheduledMethod -> {
+                    //log
+                    return scheduledMethod.getTriggerType() != null;
+                })
                 .collect(toList());
     }
 
@@ -294,20 +340,22 @@ public class ComponentsExtractorUtils {
         }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    public static Interface newInterface(JmsClient jmsClient, boolean contextManaged) {
-        var destination = jmsClient.getDestination();
+    public static Interface.InterfaceBuilder newJmsInterfaceBuilder(JmsService jmsService) {
+        var destination = jmsService.getDestination();
         return Interface.builder()
-                .direction(jmsClient.getDirection())
+                .direction(jmsService.getDirection())
                 .type(jms)
                 .name(destination)
-                .core(JmsClient.Destination.builder()
+                .core(JmsService.Destination.builder()
                         .destination(destination)
-                        .direction(jmsClient.getDirection())
+                        .direction(jmsService.getDirection())
                         .build())
-                .externalCallable(contextManaged)
-                .evalSource(jmsClient.getEvalSource())
-                .methodSource(jmsClient.getMethodSource())
-                .build();
+                .evalSource(jmsService.getEvalSource())
+                .methodSource(jmsService.getMethodSource());
+    }
+
+    public static boolean isRootRelatedBean(Class<?> type, Collection<String> rootPackageNames) {
+        return rootPackageNames.stream().anyMatch(rootPackageName -> isRootRelatedBean(type, rootPackageName));
     }
 
     public static boolean isRootRelatedBean(Class<?> type, String rootPackageName) {
@@ -351,10 +399,6 @@ public class ComponentsExtractorUtils {
     @SafeVarargs
     public static List<Interface> mergeInterfaces(Collection<Interface>... interfaces) {
         return of(interfaces).filter(Objects::nonNull).flatMap(Collection::stream).collect(toList());
-    }
-
-    public static boolean isPackageMatchAny(Class<?> type, Set<String> regExps) {
-        return isMatchAny(type.getPackage().getName(), regExps);
     }
 
     public static boolean isMatchAny(String value, Set<String> regExps) {
@@ -402,7 +446,7 @@ public class ComponentsExtractorUtils {
     }
 
     public static Component newManagedDependency(String name, Object object) {
-        return Component.builder().name(name).object(object).build();
+        return Component.builder().name(name).bean(object).build();
     }
 
     public static String getWebsocketInterfaceId(Interface.Direction direction, String uri) {
