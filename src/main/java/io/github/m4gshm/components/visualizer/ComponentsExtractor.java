@@ -15,6 +15,7 @@ import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.generic.InvokeInstruction;
 import org.apache.bcel.generic.Type;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
@@ -25,6 +26,9 @@ import org.springframework.data.mongodb.repository.query.MongoEntityInformation;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.core.support.RepositoryFactoryInformation;
 import org.springframework.jms.core.JmsOperations;
+import org.springframework.scheduling.config.ScheduledTask;
+import org.springframework.scheduling.config.ScheduledTaskHolder;
+import org.springframework.scheduling.support.ScheduledMethodRunnable;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
@@ -34,6 +38,7 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
@@ -51,6 +56,7 @@ import static io.github.m4gshm.components.visualizer.client.JmsOperationsUtils.e
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.components.visualizer.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.lookupClassInheritanceHierarchy;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
@@ -120,6 +126,10 @@ public class ComponentsExtractor {
             javaClasses = List.of();
         }
         return javaClasses;
+    }
+
+    public static Stream<Entry<JavaClass, org.apache.bcel.classfile.Method>> getMethodsStream(Class<?> componentType) {
+        return getClassHierarchy(componentType).stream().flatMap(c -> stream(c.getMethods()).map(m -> Map.entry(c, m)));
     }
 
     public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
@@ -291,7 +301,7 @@ public class ComponentsExtractor {
 
         var beanFactory = context.getBeanFactory();
 
-        var beans = filter(stream(beanFactory.getBeanDefinitionNames()).map(name -> {
+        var beanInfoMap = filter(stream(beanFactory.getBeanDefinitionNames()).map(name -> {
             var bean = beanFactory.getBean(name);
             var type = beanFactory.getType(name);
             if (type == null) {
@@ -306,22 +316,72 @@ public class ComponentsExtractor {
 
         var rootPackageNames = (rootPackageClasses.length > 0
                 ? stream(rootPackageClasses)
-                : ofNullable(findSpringBootAppBean(beans)).map(BeanInfo::getType)
+                : ofNullable(findSpringBootAppBean(beanInfoMap)).map(BeanInfo::getType)
         ).map(Class::getPackageName).collect(toList());
 
-        var rootGroupedBeans = beans.values().stream().collect(partitioningBy(e ->
+        var beanInfos = new LinkedHashSet<>(beanInfoMap.values());
+
+        var backBeanInfoMap = beanInfos.stream().collect(toMap(BeanInfo::getBean, beanInfo -> beanInfo));
+
+        var rootGroupedBeans = beanInfos.stream().collect(partitioningBy(e ->
                 isRootRelatedBean(e.getType(), rootPackageNames)));
 
         var componentCache = new HashMap<String, Set<Component>>();
 
         var rootComponents = rootGroupedBeans.getOrDefault(true, List.of()).stream()
-                .flatMap(beanInfo -> getComponents(beanInfo, rootPackageNames, beans, componentCache))
+                .flatMap(beanInfo -> getComponents(beanInfo, rootPackageNames, beanInfoMap, componentCache))
                 .filter(Objects::nonNull).filter(component -> isIncluded(component.getType())).collect(toList());
 
-        var additionalComponents = rootGroupedBeans.getOrDefault(false, List.of()).stream().flatMap(beanInfo -> {
+        var additionalComponents = beanInfos.stream().flatMap(beanInfo -> {
             var websocketHandlers = extractInWebsocketHandlers(beanInfo.getName(), beanInfo.getType(), rootPackageNames,
-                    beans, componentCache);
-            return websocketHandlers.stream();
+                    beanInfoMap, componentCache);
+            if (!websocketHandlers.isEmpty()) {
+                return websocketHandlers.stream();
+            } else {
+                var bean = beanInfo.getBean();
+                if (bean instanceof ScheduledTaskHolder) {
+                    var scheduledTasks = ((ScheduledTaskHolder) bean).getScheduledTasks();
+                    scheduledTasks.stream().map(ScheduledTask::getTask).forEach(task -> {
+                        var runnable = task.getRunnable();
+                        if (runnable instanceof ScheduledMethodRunnable) {
+                            //todo touched later by @ScheduledAnnotation
+                        } else {
+                            var managed = backBeanInfoMap.containsKey(runnable);
+                            if (managed) {
+                                // create scheduled method
+                                // ScheduledMethod.builder()
+                            } else {
+                                var runnableClass = runnable.getClass();
+                                Field[] declaredFields = runnableClass.getDeclaredFields();
+                                List<JavaClass> classHierarchy = getClassHierarchy(runnableClass);
+
+
+                                runnableClass.getClassLoader();
+
+                                var runMethod = classHierarchy.stream().flatMap(c -> of(c.getMethods())).filter(method -> {
+                                    var methodName = method.getName();
+                                    return "run".equals(methodName) && method.getArgumentTypes().length == 0;
+                                }).findFirst().orElse(null);
+
+                                if (runMethod == null) {
+                                    //log
+                                } else {
+                                    var instructionHandles = instructionHandleStream(runMethod.getCode()).collect(toList());
+                                    for (var instructionHandle : instructionHandles) {
+                                        var instruction = instructionHandle.getInstruction();
+                                        if (instruction instanceof InvokeInstruction) {
+
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    });
+                }
+                return empty();
+            }
+
         }).collect(toList());
 
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
@@ -436,10 +496,11 @@ public class ComponentsExtractor {
     private List<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
                                           Set<Component> dependencies, Map<CallCacheKey, Result> callCache,
                                           EvalContextFactory evalContextFactory, Resolver resolver) {
-        var scheduledMethods = extractScheduledMethod(componentType, options.timeUnitStringifier).stream()
+        var scheduledMethods = extractScheduledMethods(component, componentType, options.timeUnitStringifier,
+                evalContextFactory, callCache, resolver).stream()
                 .map(scheduledMethod -> Interface.builder().direction(internal).type(scheduler)
                         .core(scheduledMethod).call(scheduled)
-                        .methodSource(newMethodId(scheduledMethod.getMethod()))
+                        .methodSource(scheduledMethod.getMethod())
                         .build())
                 .collect(toList());
 
@@ -786,7 +847,7 @@ public class ComponentsExtractor {
         public Function<TimeUnit, String> timeUnitStringifier = timeUnit -> {
             switch (timeUnit) {
                 case MILLISECONDS:
-                    return "milsec";
+                    return "msec";
                 case MICROSECONDS:
                     return "micsec";
                 case NANOSECONDS:
@@ -860,7 +921,7 @@ public class ComponentsExtractor {
     @Builder
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class ScheduledMethod {
-        Method method;
+        MethodId method;
         String expression;
         TriggerType triggerType;
 

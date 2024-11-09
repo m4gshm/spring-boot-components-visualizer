@@ -134,10 +134,12 @@ cloud "internal" as internal #line.dotted;line:gray; {
     }
   }
   rectangle "scheduler" as internal.scheduler {
-    control "cron(* * 1 * * *)" as internal.cron...1....
-    internal.cron...1.... .. periodUpdateService
-    control "fixedDelay(60000milsec)" as internal.fixedDelay.60000milsec.
-    internal.fixedDelay.60000milsec. .. periodUpdateService
+    collections "<#transparent,transparent>|cron(* * * 3 * *)|\n\
+<#transparent,transparent>|cron(* * 1 * * *)|\n\
+<#transparent,transparent>|fixedDelay(1000msec)|\n\
+<#transparent,transparent>|fixedDelay(60000msec)|\n\
+<#transparent,transparent>|fixedRate(12min)|" as internal.scheduler.interfaces
+    internal.scheduler.interfaces .. periodUpdateService
   }
 }
 @enduml

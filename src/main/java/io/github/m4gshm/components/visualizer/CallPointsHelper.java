@@ -50,9 +50,7 @@ public class CallPointsHelper {
             //log
             return null;
         }
-        var code = method.getCode();
-        var instructionHandles = instructionHandleStream(code).collect(toList());
-
+        var instructionHandles = instructionHandleStream(method.getCode()).collect(toList());
         var callPoints = new ArrayList<CallPoint>();
         for (var instructionHandle1 : instructionHandles) {
             var instruction = instructionHandle1.getInstruction();

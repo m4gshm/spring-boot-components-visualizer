@@ -44,6 +44,7 @@ import static java.util.stream.StreamSupport.stream;
 @UtilityClass
 public class EvalUtils {
 
+    public static final String CGLIB_CLASS_SEPARATOR = "$$";
     private static final Class<SpringProxy> springProxyClass = loadedClass(() -> SpringProxy.class);
 
     public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
@@ -71,19 +72,15 @@ public class EvalUtils {
     public static Class<?> unproxy(Class<?> componentType) {
         if (componentType == null) {
             return null;
-        }
-        if (Proxy.isProxyClass(componentType)) {
+        } else if (Proxy.isProxyClass(componentType)) {
             var interfaces = componentType.getInterfaces();
             var firstInterface = Arrays.stream(interfaces).findFirst().orElse(null);
             if (interfaces.length > 1) {
                 log.debug("unproxy {} as first interface {}", componentType, firstInterface);
             }
             return firstInterface;
-        }
-        if (componentType.getName().contains("$$")) {
-            if (springProxyClass == null || !springProxyClass.isAssignableFrom(componentType)) {
-                log.debug("detected CGLIB proxy class that doesn't implements SpringProxy interface, {}", componentType);
-            }
+        } else if (componentType.getName().contains(CGLIB_CLASS_SEPARATOR) && springProxyClass != null
+                && springProxyClass.isAssignableFrom(componentType)) {
             componentType = componentType.getSuperclass();
         }
         return componentType;

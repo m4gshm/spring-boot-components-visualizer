@@ -28,9 +28,9 @@ image::./test/service1/src/schema/components.svg[]
 - Standalone Feign client
 - RestTemplate based clients
 - @Scheduled
+- SchedulingConfigurer based beans
 
 === Planned to support
-- TaskScheduler
 - @KafkaListener
 - KafkaTemplate
 - GRPC
