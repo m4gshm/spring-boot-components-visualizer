@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer;
 
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.springframework.core.env.Environment;
@@ -51,7 +52,7 @@ public class Utils {
         return o1 == null && o2 == null ? 0 : o1 == null ? -1 : o2 == null ? 1 : comparator.compare(o1, o2);
     }
 
-    public static Class<?> classByName(String className) throws ClassNotFoundException {
+    public static Class<?> classByName(@NonNull String className) throws ClassNotFoundException {
         switch (className) {
             case "boolean":
                 return boolean.class;

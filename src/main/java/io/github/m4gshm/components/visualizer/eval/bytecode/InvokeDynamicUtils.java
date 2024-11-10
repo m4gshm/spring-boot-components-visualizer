@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import lombok.Builder;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.experimental.FieldDefaults;
@@ -19,7 +20,6 @@ import java.util.stream.IntStream;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.MethodInfo.newMethodInfo;
-import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static java.lang.invoke.MethodHandles.privateLookupIn;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Objects.requireNonNull;
@@ -41,6 +41,20 @@ public class InvokeDynamicUtils {
         var bootstrapMethod = getBootstrapMethod(instruction, bootstrapMethods, constantPool);
         var bootstrapMethodInfo = getBootstrapMethodInfo(bootstrapMethod, constantPool);
 
+//        var isLambda = LambdaMetafactory.class.getName().equals(bootstrapMethodInfo.getClassName())
+//                && "metafactory".equals(bootstrapMethodInfo.getMethodName());
+//        if (isLambda) {
+//            var methodType = bootstrapMethodInfo.methodType;
+//            var types = new Class[5];
+//            arraycopy(methodType.parameterArray(), 0, types, 0, 4);
+//            types[4] = Class[].class;
+//
+//            bootstrapMethodInfo = bootstrapMethodInfo.toBuilder()
+//                    .methodName("altMetafactory")
+//                    .methodType(MethodType.methodType(methodType.returnType(), types))
+//                    .build();
+//        }
+
         var lookup = MethodHandles.lookup();
         var handler = lookupReference(lookup,
                 bootstrapMethodInfo.referenceKind, getClassByName(bootstrapMethodInfo.className),
@@ -48,7 +62,18 @@ public class InvokeDynamicUtils {
         var invokeDynamicInterfaceInfo = getInvokeDynamicInterfaceInfo(instruction, constantPool);
         var bootstrapMethodArguments = getBootstrapMethodArguments(invokeDynamicInterfaceInfo, bootstrapMethod,
                 lookup, constantPool, bootstrapMethodInfo);
-        return new BootstrapMethodHandlerAndArguments(handler, bootstrapMethodArguments);
+//        if (isLambda) {
+//            var newBootstrapMethodArguments = new ArrayList<Object>(bootstrapMethodArguments.subList(0, 4));
+//            var tail = new Object[bootstrapMethodArguments.size() - 4 + 1];
+//            for (var i = 4; i < bootstrapMethodArguments.size(); i++) {
+//                tail[i - 4] = bootstrapMethodArguments.get(i);
+//            }
+//            tail[tail.length - 1] = FLAG_SERIALIZABLE;
+//            newBootstrapMethodArguments.add(tail);
+//            return new BootstrapMethodHandlerAndArguments(handler, newBootstrapMethodArguments);
+//        } else {
+            return new BootstrapMethodHandlerAndArguments(handler, bootstrapMethodArguments);
+//        }
     }
 
     public static BootstrapMethodInfo getBootstrapMethodInfo(BootstrapMethod bootstrapMethod, ConstantPool constantPool) {
@@ -128,8 +153,8 @@ public class InvokeDynamicUtils {
     }
 
     private static MethodHandleAndLookup newMethodHandleAndLookup(ConstantMethodHandle constant,
-                                                                  Lookup lookup, ConstantPool cp) {
-        var methodInfo = requireNonNull(newMethodInfo(constant, cp), "cannot extract invokedynamic methodInfo");
+                                                                  Lookup lookup, ConstantPool constantPool) {
+        var methodInfo = requireNonNull(newMethodInfo(constant, constantPool), "cannot extract invokedynamic methodInfo");
 
         var methodType = fromMethodDescriptorString(methodInfo.getSignature(), null);
         var targetClass = methodInfo.getObjectType();
@@ -204,9 +229,9 @@ public class InvokeDynamicUtils {
         return fromMethodDescriptorString(cp.getConstantUtf8(constantMethodType.getDescriptorIndex()).getBytes(), null);
     }
 
-    public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, JavaClass javaClass,
-                                                            ConstantPoolGen constantPoolGen) {
-        return getInvokeDynamicUsedMethodInfo(instruction, getBootstrapMethods(javaClass), constantPoolGen);
+    public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, ConstantPoolGen constantPoolGen,
+                                                            BootstrapMethods bootstrapMethods) {
+        return getInvokeDynamicUsedMethodInfo(instruction, bootstrapMethods, constantPoolGen);
     }
 
     public static MethodInfo getInvokeDynamicUsedMethodInfo(INVOKEDYNAMIC instruction, BootstrapMethods bootstrapMethods,
@@ -220,6 +245,7 @@ public class InvokeDynamicUtils {
     }
 
     @Data
+    @Builder(toBuilder = true)
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class BootstrapMethodInfo {
         String className;

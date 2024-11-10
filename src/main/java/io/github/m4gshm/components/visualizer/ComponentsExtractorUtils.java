@@ -6,23 +6,18 @@ import feign.Target;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod.TriggerType;
+import io.github.m4gshm.components.visualizer.client.SchedulingConfigurerUtils;
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
-import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
-import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
 import io.github.m4gshm.components.visualizer.model.HttpMethod;
 import io.github.m4gshm.components.visualizer.model.Interface;
-import io.github.m4gshm.components.visualizer.model.MethodId;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.generic.*;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -33,8 +28,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.scheduling.annotation.SchedulingConfigurer;
-import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -44,15 +37,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getMethodsStream;
 import static io.github.m4gshm.components.visualizer.Utils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
@@ -68,7 +58,6 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
@@ -201,201 +190,10 @@ public class ComponentsExtractorUtils {
                                                                 EvalContextFactory evalContextFactory,
                                                                 Map<CallCacheKey, Result> callCache, Resolver resolver) {
 
-        var scheduledByConfigurerMethods = getScheduledByConfigurerMethods(component, componentType, timeUnitStringifier,
+        var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component, componentType, timeUnitStringifier,
                 evalContextFactory, callCache, resolver);
         var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(componentType, timeUnitStringifier);
         return Stream.concat(scheduledByConfigurerMethods.stream(), scheduledByAnnotationMethods.stream()).collect(toList());
-    }
-
-    private static List<ScheduledMethod> getScheduledByConfigurerMethods(Component component, Class<?> componentType,
-                                                                         Function<TimeUnit, String> timeUnitStringifier, EvalContextFactory evalContextFactory,
-                                                                         Map<CallCacheKey, Result> callCache,
-                                                                         Resolver resolver) {
-        var isSchedulingConfigurer = SchedulingConfigurer.class.isAssignableFrom(componentType);
-        if (isSchedulingConfigurer) {
-            var configureTasksMethodClassPair = getMethodsStream(componentType)
-                    .filter(byNameAndArgs("configureTasks", getType(ScheduledTaskRegistrar.class)))
-                    .findFirst()
-                    .orElse(null);
-            if (configureTasksMethodClassPair != null) {
-                var method = configureTasksMethodClassPair.getValue();
-                var type = configureTasksMethodClassPair.getKey();
-                var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-                var methodCode = method.getCode();
-                var instructionHandles = instructionHandleStream(methodCode).collect(toList());
-                return instructionHandles.stream().flatMap(instructionHandle -> {
-                    var instruction = instructionHandle.getInstruction();
-                    if (instruction instanceof INVOKEVIRTUAL) {
-                        var invokevirtual = (INVOKEVIRTUAL) instruction;
-                        var methodName = invokevirtual.getMethodName(constantPoolGen);
-                        var fixedRate = "addFixedRateTask".equals(methodName);
-                        var fixeDelay = "addFixedDelayTask".equals(methodName);
-                        var cron = "addCronTask".equals(methodName);
-                        var argumentTypes = invokevirtual.getArgumentTypes(constantPoolGen);
-                        var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
-                                ? TriggerType.fixedDelay : cron
-                                ? TriggerType.cron : null;
-                        if (triggerType != null && argumentTypes.length == 2 && getType(Runnable.class).equals(argumentTypes[0])) {
-                            return extractRunnableScheduled(triggerType, component, componentType, type, method,
-                                    constantPoolGen, evalContextFactory, callCache, resolver, instructionHandle,
-                                    timeUnitStringifier).stream();
-                        }
-                    }
-                    return of();
-                }).collect(toList());
-            }
-        }
-        return List.of();
-    }
-
-    private static List<ScheduledMethod> getScheduledByAnnotationMethods(Class<?> componentType,
-                                                                         Function<TimeUnit, String> timeUnitStringifier) {
-        var scheduledAnnotationMethods = getMergedRepeatableAnnotationsMap(asList(componentType.getMethods()), () -> Scheduled.class);
-        return scheduledAnnotationMethods.entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
-                .map(entry -> {
-                    var scheduled = entry.getValue();
-                    var cron = scheduled.cron();
-                    var fixedDelay = scheduled.fixedDelayString();
-                    var fixedDelayLong = scheduled.fixedDelay();
-                    if (fixedDelayLong > -1) {
-                        fixedDelay = String.valueOf(fixedDelayLong);
-                    }
-                    var fixedRate = scheduled.fixedRateString();
-                    long fixedRateLong = scheduled.fixedRate();
-                    if (fixedRateLong > -1) {
-                        fixedRate = String.valueOf(fixedRateLong);
-                    }
-                    var triggerType = !cron.isEmpty() ? TriggerType.cron
-                            : !fixedDelay.isEmpty() ? TriggerType.fixedDelay
-                            : !fixedRate.isEmpty() ? TriggerType.fixedRate
-                            : null;
-
-                    var expression = triggerType == TriggerType.cron ? cron
-                            : triggerType == TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
-                            : triggerType == TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
-                            : null;
-
-                    return ScheduledMethod.builder()
-                            .method(newMethodId(entry.getKey()))
-                            .triggerType(triggerType)
-                            .expression(expression)
-                            .build();
-                })
-                .filter(scheduledMethod -> {
-                    //log
-                    return scheduledMethod.getTriggerType() != null;
-                })
-                .collect(toList());
-    }
-
-    private static List<ScheduledMethod> extractRunnableScheduled(
-            TriggerType triggerType, Component component, Class<?> componentType, JavaClass componentClass,
-            org.apache.bcel.classfile.Method componentMethod, ConstantPoolGen constantPoolGen,
-            EvalContextFactory evalContextFactory, Map<CallCacheKey, Result> callCache,
-            Resolver resolver, InstructionHandle instructionHandle, Function<TimeUnit, String> timeUnitStringifier) {
-        var evalContext = evalContextFactory.getEvalContext(component, componentClass, componentMethod);
-        var evaluated = evalContext.eval(instructionHandle, null, callCache);
-        if (evaluated instanceof DelayInvoke) {
-            var arguments = ((DelayInvoke) evaluated).getArguments();
-            var runnableExpr = arguments.get(0);
-            var triggerExpr = arguments.get(1);
-
-            var instruction1 = runnableExpr.getFirstInstruction().getInstruction();
-            if (instruction1 instanceof INVOKEDYNAMIC) {
-                var invokedynamic = (INVOKEDYNAMIC) instruction1;
-                var methodInfo = getInvokeDynamicUsedMethodInfo((INVOKEDYNAMIC) invokedynamic, componentClass, constantPoolGen);
-                var methodId = newMethodId(methodInfo.getName(), methodInfo.getSignature());
-                var objectType = methodInfo.getObjectType();
-                if (objectType.equals(componentType)) {
-                    var triggerExpressions = resolveTriggerExpression(triggerType, triggerExpr, evalContext, resolver, timeUnitStringifier);
-                    return getScheduledMethodStream(triggerType, methodId, triggerExpressions).collect(toList());
-                } else {
-                    return List.of();
-                }
-            } else {
-                var runnableResolved = evalContext.resolve(runnableExpr, resolver);
-                var runnable = runnableResolved.getValue();
-
-                var runClassMethodPair = getMethodsStream(runnable.getClass()).filter(byNameAndArgs("run")).findFirst().orElse(null);
-                var runMethod = runClassMethodPair.getValue();
-                var runMethodCode = runMethod.getCode();
-
-                var runOps = instructionHandleStream(runMethodCode).collect(toList());
-                var runnableComponent = Component.builder().bean(runnable).build();
-                var evalContext1 = evalContextFactory.getEvalContext(runnableComponent, runClassMethodPair.getKey(), runMethod);
-
-                return runOps.stream().flatMap(handle -> {
-                    var instruction = handle.getInstruction();
-                    if (instruction instanceof InvokeInstruction) {
-                        var invoke = (InvokeInstruction) instruction;
-                        var methodName = invoke.getMethodName(evalContext1.getConstantPoolGen());
-                        var type = invoke.getLoadClassType(evalContext1.getConstantPoolGen());
-                        var componentCall = ObjectType.getType(componentType).equals(type);
-                        if (componentCall) {
-                            //create interface here
-                            var methodId = newMethodId(methodName, invoke.getArgumentTypes(evalContext1.getConstantPoolGen()));
-                            var triggerExpressions = resolveTriggerExpression(triggerType, triggerExpr, evalContext, resolver, timeUnitStringifier);
-                            return getScheduledMethodStream(triggerType, methodId, triggerExpressions);
-                        }
-                    }
-                    return Stream.empty();
-                }).collect(toList());
-            }
-        }
-        return List.of();
-    }
-
-    private static List<String> resolveTriggerExpression(TriggerType triggerType, Result triggerExpr, Eval evalContext,
-                                                         Resolver resolver, Function<TimeUnit, String> timeUnitStringifier) {
-        var triggerResolved = evalContext.resolve(triggerExpr, resolver);
-        var values = triggerResolved.getValue(resolver);
-        switch (triggerType) {
-            case fixedDelay:
-            case fixedRate:
-                var millisecs = values.stream().map(value -> value instanceof Number ? ((Number) value).longValue() : null)
-                        .filter(Objects::nonNull).collect(toList());
-
-                var timeUnits = triggerExpr instanceof DelayInvoke
-                        ? ((DelayInvoke) triggerExpr).getObject().getValue(resolver).stream()
-                        .map(object -> object instanceof TimeUnit ? (TimeUnit) object : null).filter(Objects::nonNull)
-                        .collect(toList())
-                        : List.of(MILLISECONDS);
-
-                var triggerExpressions = millisecs.stream().flatMap(millisec ->
-                        getTimeExpressionStream(millisec, timeUnits, timeUnitStringifier)).collect(toList());
-                return triggerExpressions;
-            default:
-                return values.stream().map(v -> "" + v).collect(toList());
-        }
-    }
-
-    private static Stream<String> getTimeExpressionStream(long millisec, Collection<TimeUnit> timeUnits,
-                                                          Function<TimeUnit, String> timeUnitStringifier) {
-        return timeUnits.stream().map(timeUnit -> getTimeExpression(millisec, timeUnit, timeUnitStringifier));
-    }
-
-    private static String getTimeExpression(long millisec, TimeUnit timeUnit, Function<TimeUnit, String> timeUnitStringifier) {
-        return timeUnit.convert(millisec, MILLISECONDS) + timeUnitStringifier.apply(timeUnit);
-    }
-
-    private static Stream<ScheduledMethod> getScheduledMethodStream(TriggerType triggerType, MethodId methodId,
-                                                                    List<String> triggerExpressions) {
-        return triggerExpressions.stream().map(expression -> ScheduledMethod.builder()
-                .method(methodId)
-                .expression(expression)
-                .triggerType(triggerType)
-                .build());
-    }
-
-    private static Predicate<Entry<JavaClass, org.apache.bcel.classfile.Method>> byNameAndArgs(String methodName, Type... argTypes) {
-        return pair -> {
-            var m = pair.getValue();
-            var name = m.getName();
-            var argsEq = Arrays.equals(m.getArgumentTypes(), argTypes);
-            var nameEq = name.equals(methodName);
-            return nameEq && argsEq;
-        };
     }
 
     public static FeignClient extractFeignClient(String name, Object object) {
@@ -630,5 +428,46 @@ public class ComponentsExtractorUtils {
 
     public static Package getFieldType(Class<?> type) {
         return type.isArray() ? getFieldType(type.getComponentType()) : type.getPackage();
+    }
+
+    public static List<ScheduledMethod> getScheduledByAnnotationMethods(Class<?> componentType,
+                                                                        Function<TimeUnit, String> timeUnitStringifier) {
+        var scheduledAnnotationMethods = getMergedRepeatableAnnotationsMap(asList(componentType.getMethods()), () -> Scheduled.class);
+        return scheduledAnnotationMethods.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
+                .map(entry -> {
+                    var scheduled = entry.getValue();
+                    var cron = scheduled.cron();
+                    var fixedDelay = scheduled.fixedDelayString();
+                    var fixedDelayLong = scheduled.fixedDelay();
+                    if (fixedDelayLong > -1) {
+                        fixedDelay = String.valueOf(fixedDelayLong);
+                    }
+                    var fixedRate = scheduled.fixedRateString();
+                    long fixedRateLong = scheduled.fixedRate();
+                    if (fixedRateLong > -1) {
+                        fixedRate = String.valueOf(fixedRateLong);
+                    }
+                    var triggerType = !cron.isEmpty() ? ScheduledMethod.TriggerType.cron
+                            : !fixedDelay.isEmpty() ? ScheduledMethod.TriggerType.fixedDelay
+                            : !fixedRate.isEmpty() ? ScheduledMethod.TriggerType.fixedRate
+                            : null;
+
+                    var expression = triggerType == ScheduledMethod.TriggerType.cron ? cron
+                            : triggerType == ScheduledMethod.TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : triggerType == ScheduledMethod.TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : null;
+
+                    return ScheduledMethod.builder()
+                            .method(newMethodId(entry.getKey()))
+                            .triggerType(triggerType)
+                            .expression(expression)
+                            .build();
+                })
+                .filter(scheduledMethod -> {
+                    //log
+                    return scheduledMethod.getTriggerType() != null;
+                })
+                .collect(toList());
     }
 }

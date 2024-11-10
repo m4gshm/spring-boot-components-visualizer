@@ -210,7 +210,7 @@ public class EvalUtils {
         return Utility.methodSignatureToString(method.getSignature(), method.getName(), access, true, method.getLocalVariableTable());
     }
 
-    public static Class<?> getClassByName(String className) {
+    public static Class<?> getClassByName(@NonNull String className) {
         try {
             return classByName(className);
         } catch (ClassNotFoundException e) {

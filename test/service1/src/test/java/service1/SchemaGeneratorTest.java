@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -65,5 +67,13 @@ public class SchemaGeneratorTest {
         var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
         writeTextFile(plantUmlOutFile, schema);
         writeSwgFile(getSvgFile(plantUmlOutFile), schema);
+    }
+
+    @Configuration
+    public static class TestConfiguration {
+        @Bean
+        ComponentsExtractor.Options options() {
+            return ComponentsExtractor.Options.builder().includeUnusedOutInterfaces(false).build();
+        }
     }
 }

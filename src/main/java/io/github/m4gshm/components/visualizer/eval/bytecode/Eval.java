@@ -724,6 +724,8 @@ public class Eval {
                     return resolveOrThrow(thisDelay, resolver, e);
                 }
             });
+        } else if (instruction instanceof ARETURN) {
+            return eval(getPrev(instructionHandle), callCache);
         }
         throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
     }

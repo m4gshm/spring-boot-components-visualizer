@@ -18,13 +18,13 @@ public class MethodInfo {
     String signature;
     int referenceKind;
 
-    public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool cp) {
-        var constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
+    public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool constantPool) {
+        var constantCP = constantPool.getConstant(constant.getReferenceIndex(), ConstantCP.class);
         if (constantCP instanceof ConstantMethodref || constantCP instanceof ConstantInterfaceMethodref) {
-            var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
-            var methodName = constantNameAndType.getName(cp);
-            var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = getClassByName(constantCP.getClass(cp));
+            var constantNameAndType = constantPool.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
+            var methodName = constantNameAndType.getName(constantPool);
+            var methodSignature = constantNameAndType.getSignature(constantPool);
+            var targetClass = getClassByName(constantCP.getClass(constantPool));
             var referenceKind = constant.getReferenceKind();
             return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
         } else {

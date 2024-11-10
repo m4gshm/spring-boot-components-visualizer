@@ -39,7 +39,6 @@ import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
@@ -64,7 +63,6 @@ import static io.github.m4gshm.components.visualizer.model.Interface.Call.extern
 import static io.github.m4gshm.components.visualizer.model.Interface.Call.scheduled;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.Interface.Type.*;
-import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static io.github.m4gshm.components.visualizer.model.StorageEntity.Engine.jpa;
 import static io.github.m4gshm.components.visualizer.model.StorageEntity.Engine.mongo;
 import static java.lang.reflect.Modifier.isStatic;
@@ -126,10 +124,6 @@ public class ComponentsExtractor {
             javaClasses = List.of();
         }
         return javaClasses;
-    }
-
-    public static Stream<Entry<JavaClass, org.apache.bcel.classfile.Method>> getMethodsStream(Class<?> componentType) {
-        return getClassHierarchy(componentType).stream().flatMap(c -> stream(c.getMethods()).map(m -> Map.entry(c, m)));
     }
 
     public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
@@ -842,7 +836,8 @@ public class ComponentsExtractor {
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class Options {
         public static final Options DEFAULT = Options.builder().build();
-        public boolean includeUnusedOutInterfaces;
+        @Builder.Default
+        public boolean includeUnusedOutInterfaces = true;
         @Builder.Default
         public Function<TimeUnit, String> timeUnitStringifier = timeUnit -> {
             switch (timeUnit) {

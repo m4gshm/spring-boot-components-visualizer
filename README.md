@@ -44,9 +44,9 @@ Requires Java 11 or higher.
 
 - @Scheduled
 
-## Planned to support
+- SchedulingConfigurer based beans
 
-- TaskScheduler
+## Planned to support
 
 - @KafkaListener
 
@@ -70,7 +70,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("github.m4gshm:spring-connections-visualizer:0.0.1-beta1")
+    testImplementation("github.m4gshm:spring-connections-visualizer:TODO")
     testImplementation("org.apache.commons:commons-lang3:3.14.0")
 }
 
@@ -92,6 +92,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -150,6 +152,14 @@ public class SchemaGeneratorTest {
         var plantUmlOutFile = new File(requireNonNull(System.getenv(envName), envName), "components.puml");
         writeTextFile(plantUmlOutFile, schema);
         writeSwgFile(getSvgFile(plantUmlOutFile), schema);
+    }
+
+    @Configuration
+    public static class TestConfiguration {
+        @Bean
+        ComponentsExtractor.Options options() {
+            return ComponentsExtractor.Options.builder().includeUnusedOutInterfaces(false).build();
+        }
     }
 }
 ```

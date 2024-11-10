@@ -71,15 +71,23 @@ cloud "input" as input #line.dotted;line:gray; {
 <#transparent,transparent>|queue2|" as input.jms.jmsQueueListener.interfaces
       input.jms.jmsQueueListener.interfaces 0)....> jmsQueueListener
     }
+    frame "jmsQueueService" as input.jms.jmsQueueService.jmsQueueService.interfaces #line.dotted;text:gray {
+      interface "jmsTemplate-default" as in.jmsQueueService.jmsTemplate.default.in
+      in.jmsQueueService.jmsTemplate.default.in )....> jmsQueueService
+    }
   }
 }
 cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
-    interface "GET:/standalone-service2/{id}" as out.GET.standalone.service2..id.
-    standaloneService2Api ....( out.GET.standalone.service2..id.
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
-      interface "GET:/{id}" as out.GET.http...service2..id.
-      service2FeignClient ....( out.GET.http...service2..id.
+      collections "<#transparent,transparent>|<r>GET: | |\n\
+<#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|" as output.http.http...service2.interfaces
+      service2LegacyImpl ....(0 output.http.http...service2.interfaces
+      frame "/{id}" as output.http.http...service2...id. #line.dotted;text:gray {
+        collections "<#transparent,transparent>|<r>GET: | |\n\
+<#transparent,transparent>|<r>GET: |/unused|" as output.http.http...service2...id..interfaces
+        service2FeignClient ....(0 output.http.http...service2...id..interfaces
+      }
       frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
         collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
 <#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|" as output.http.http...service2..load.interfaces
@@ -90,6 +98,11 @@ cloud "output" as output #line.dotted;line:gray; {
 <#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}.intValue()}+2)}|" as output.http.http...service2..load2.interfaces
         service2LegacyImpl ....(0 output.http.http...service2..load2.interfaces
       }
+    }
+    frame "/standalone-service2/{id}" as output.http..standalone.service2..id. #line.dotted;text:gray {
+      collections "<#transparent,transparent>|<r>GET: | |\n\
+<#transparent,transparent>|<r>GET: |/unused|" as output.http..standalone.service2..id..interfaces
+      standaloneService2Api ....(0 output.http..standalone.service2..id..interfaces
     }
   }
   rectangle "web socket" as output.websocket {
@@ -134,8 +147,14 @@ cloud "internal" as internal #line.dotted;line:gray; {
     }
   }
   rectangle "scheduler" as internal.scheduler {
-    collections "<#transparent,transparent>|cron(* * 1 * * *)|\n\
-<#transparent,transparent>|fixedDelay(60000milsec)|" as internal.scheduler.interfaces
+    collections "<#transparent,transparent>|cron(* * * 3 * *)|\n\
+<#transparent,transparent>|cron(* * 1 * * *)|\n\
+<#transparent,transparent>|fixedDelay(1000msec)|\n\
+<#transparent,transparent>|fixedDelay(2000msec)|\n\
+<#transparent,transparent>|fixedDelay(3000msec)|\n\
+<#transparent,transparent>|fixedDelay(4000msec)|\n\
+<#transparent,transparent>|fixedDelay(60000msec)|\n\
+<#transparent,transparent>|fixedRate(12min)|" as internal.scheduler.interfaces
     internal.scheduler.interfaces .. periodUpdateService
   }
 }
