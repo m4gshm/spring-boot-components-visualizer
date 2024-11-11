@@ -22,7 +22,7 @@ import java.net.URI;
 import java.util.*;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static java.util.Arrays.stream;
@@ -35,7 +35,7 @@ public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
                                                           Map<CallCacheKey, Result> callCache,
                                                           EvalContextFactory evalContextFactory, Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+        var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();

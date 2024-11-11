@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvider;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.findClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
@@ -174,13 +175,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     static Class<?> getCalledMethodClass(CallPoint calledMethodInsideDependent) {
         var ownerClass = calledMethodInsideDependent.getOwnerClass();
         var ownerClassName = calledMethodInsideDependent.getOwnerClassName();
-        Class<?> calledMethodClass = null;
-        try {
-            calledMethodClass = ownerClass == null ? classByName(ownerClassName) : ownerClass;
-        } catch (ClassNotFoundException e) {
-            log.trace("getCalledMethodClass", e);
-        }
-        return calledMethodClass;
+        return ownerClass == null ? findClassByName(ownerClassName) : ownerClass;
     }
 
     @Override

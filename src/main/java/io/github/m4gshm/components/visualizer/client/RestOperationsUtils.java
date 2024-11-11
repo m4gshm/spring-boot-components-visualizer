@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.stream;
@@ -35,7 +35,7 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 public class RestOperationsUtils {
     public static List<HttpMethod> extractRestOperationsUris(Component component, Map<CallCacheKey, Result> callCache,
                                                              EvalContextFactory evalContextFactory, Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+        var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();

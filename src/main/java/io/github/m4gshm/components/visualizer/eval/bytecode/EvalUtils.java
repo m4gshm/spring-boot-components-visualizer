@@ -47,24 +47,28 @@ public class EvalUtils {
     public static final String CGLIB_CLASS_SEPARATOR = "$$";
     private static final Class<SpringProxy> springProxyClass = loadedClass(() -> SpringProxy.class);
 
-    public static List<JavaClass> lookupClassInheritanceHierarchy(Class<?> componentType) {
-        ArrayList<JavaClass> classes = new ArrayList<>();
-        componentType = unproxy(componentType);
-        JavaClass javaClass;
+    public static List<JavaClass> getClassSources(Class<?> componentType) {
         try {
-            javaClass = Repository.lookupClass(componentType);
+            return lookupClassSources(componentType);
         } catch (ClassNotFoundException e) {
-            throw new EvalException(e);
+            log.debug("getClassInheritanceHierarchy {}", componentType, e);
+           return List.of();
         }
+    }
+
+    public static List<JavaClass> lookupClassSources(Class<?> componentType) throws ClassNotFoundException {
+        var classes = new ArrayList<JavaClass>();
+        var javaClass = Repository.lookupClass(unproxy(componentType));
         classes.add(javaClass);
         try {
             for (javaClass = javaClass.getSuperClass(); javaClass != null; javaClass = javaClass.getSuperClass()) {
                 classes.add(javaClass);
             }
         } catch (ClassNotFoundException e) {
-            if (log.isDebugEnabled()) {
-                log.debug("get superclass error of {}", javaClass.getClassName(), e);
-            }
+//            if (log.isDebugEnabled()) {
+                log.error("get superclass error of {}", javaClass.getClassName(), e);
+//            }
+            throw e;
         }
         return classes;
     }
@@ -215,6 +219,15 @@ public class EvalUtils {
             return classByName(className);
         } catch (ClassNotFoundException e) {
             throw new EvalException(e);
+        }
+    }
+
+    public static Class<?> findClassByName(@NonNull String className) {
+        try {
+            return classByName(className);
+        } catch (ClassNotFoundException e) {
+            //log
+            return null;
         }
     }
 

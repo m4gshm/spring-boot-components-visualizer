@@ -14,8 +14,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.classfile.JavaClass;
-import org.apache.bcel.generic.InvokeInstruction;
 import org.apache.bcel.generic.Type;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
@@ -26,9 +24,6 @@ import org.springframework.data.mongodb.repository.query.MongoEntityInformation;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.core.support.RepositoryFactoryInformation;
 import org.springframework.jms.core.JmsOperations;
-import org.springframework.scheduling.config.ScheduledTask;
-import org.springframework.scheduling.config.ScheduledTaskHolder;
-import org.springframework.scheduling.support.ScheduledMethodRunnable;
 import org.springframework.web.client.RestOperations;
 import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
@@ -38,7 +33,6 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurationSu
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 
-import java.lang.reflect.Field;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
@@ -55,8 +49,7 @@ import static io.github.m4gshm.components.visualizer.client.JmsOperationsUtils.e
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.components.visualizer.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.lookupClassInheritanceHierarchy;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.components.visualizer.model.Interface.Call.external;
@@ -113,17 +106,6 @@ public class ComponentsExtractor {
                             .methodSource(httpMethod.getMethodSource())
                             .build();
                 })).collect(toList());
-    }
-
-    public static List<JavaClass> getClassHierarchy(Class<?> componentType) {
-        List<JavaClass> javaClasses;
-        try {
-            javaClasses = lookupClassInheritanceHierarchy(componentType);
-        } catch (EvalException e) {
-            log.debug("getClassHierarchy {}", componentType, e);
-            javaClasses = List.of();
-        }
-        return javaClasses;
     }
 
     public static Map<Component, List<Component>> getDependencyToDependentMap(Collection<Component> components) {
@@ -222,7 +204,7 @@ public class ComponentsExtractor {
             }
 
             var componentType = c.getType();
-            var javaClasses = getClassHierarchy(componentType);
+            var javaClasses = getClassSources(componentType);
 
             List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
             ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
@@ -314,9 +296,6 @@ public class ComponentsExtractor {
         ).map(Class::getPackageName).collect(toList());
 
         var beanInfos = new LinkedHashSet<>(beanInfoMap.values());
-
-        var backBeanInfoMap = beanInfos.stream().collect(toMap(BeanInfo::getBean, beanInfo -> beanInfo));
-
         var rootGroupedBeans = beanInfos.stream().collect(partitioningBy(e ->
                 isRootRelatedBean(e.getType(), rootPackageNames)));
 
@@ -329,53 +308,7 @@ public class ComponentsExtractor {
         var additionalComponents = beanInfos.stream().flatMap(beanInfo -> {
             var websocketHandlers = extractInWebsocketHandlers(beanInfo.getName(), beanInfo.getType(), rootPackageNames,
                     beanInfoMap, componentCache);
-            if (!websocketHandlers.isEmpty()) {
-                return websocketHandlers.stream();
-            } else {
-                var bean = beanInfo.getBean();
-                if (bean instanceof ScheduledTaskHolder) {
-                    var scheduledTasks = ((ScheduledTaskHolder) bean).getScheduledTasks();
-                    scheduledTasks.stream().map(ScheduledTask::getTask).forEach(task -> {
-                        var runnable = task.getRunnable();
-                        if (runnable instanceof ScheduledMethodRunnable) {
-                            //todo touched later by @ScheduledAnnotation
-                        } else {
-                            var managed = backBeanInfoMap.containsKey(runnable);
-                            if (managed) {
-                                // create scheduled method
-                                // ScheduledMethod.builder()
-                            } else {
-                                var runnableClass = runnable.getClass();
-                                Field[] declaredFields = runnableClass.getDeclaredFields();
-                                List<JavaClass> classHierarchy = getClassHierarchy(runnableClass);
-
-
-                                runnableClass.getClassLoader();
-
-                                var runMethod = classHierarchy.stream().flatMap(c -> of(c.getMethods())).filter(method -> {
-                                    var methodName = method.getName();
-                                    return "run".equals(methodName) && method.getArgumentTypes().length == 0;
-                                }).findFirst().orElse(null);
-
-                                if (runMethod == null) {
-                                    //log
-                                } else {
-                                    var instructionHandles = instructionHandleStream(runMethod.getCode()).collect(toList());
-                                    for (var instructionHandle : instructionHandles) {
-                                        var instruction = instructionHandle.getInstruction();
-                                        if (instruction instanceof InvokeInstruction) {
-
-                                        }
-                                    }
-
-                                }
-                            }
-                        }
-                    });
-                }
-                return empty();
-            }
-
+            return websocketHandlers.stream();
         }).collect(toList());
 
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);

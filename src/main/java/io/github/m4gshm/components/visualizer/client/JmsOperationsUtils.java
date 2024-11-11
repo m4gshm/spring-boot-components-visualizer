@@ -23,7 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
@@ -48,7 +48,7 @@ public class JmsOperationsUtils {
                                                      Map<CallCacheKey, Result> callCache,
                                                      EvalContextFactory evalContextFactory,
                                                      Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+        var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
