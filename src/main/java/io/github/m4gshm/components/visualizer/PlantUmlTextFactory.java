@@ -59,6 +59,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     public static final String MIDDLE_ARROW = "....>";
     public static final String LONG_ARROW = "......>";
     public static final String TABLE_TRANSPARENT = "<#transparent,transparent>";
+    public static final Package NO_PACKAGE = Package.builder().build();
 
     protected final String applicationName;
     @Getter
@@ -86,7 +87,9 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     }
 
     public static <T> int ignoreCaseComparator(T o1, T o2, Function<T, CharSequence> getter) {
-        return compareNullable(o1, o2, getter.andThen(CharSequence::toString), String::compareToIgnoreCase);
+        return compareNullable(o1, o2, getter.andThen(
+                        charSequence -> charSequence != null ? charSequence.toString() : null),
+                (s, str) -> s != null ? s.compareToIgnoreCase(str) : str == null ? 0 : -1);
     }
 
     private static <T, P> int compareNullable(T o1, T o2, Function<T, P> getter, Comparator<P> comparator) {
@@ -952,7 +955,9 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
 
     protected Package getComponentPackage(Component component) {
         var componentPath = component.getPath();
-
+        if (componentPath == null) {
+            return NO_PACKAGE;
+        }
         var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
                 .map(packageName -> Package.builder().name(packageName)).collect(toList());
 

@@ -60,13 +60,22 @@ public class EvalUtils {
         var classes = new ArrayList<JavaClass>();
         var javaClass = Repository.lookupClass(unproxy(aClass));
         classes.add(javaClass);
+        var className = javaClass.getClassName();
+        try {
+            classes.addAll(asList(javaClass.getAllInterfaces()));
+        } catch (ClassNotFoundException e) {
+//            if (log.isDebugEnabled()) {
+            log.error("get interfaces error of {}", className, e);
+//            }
+            throw e;
+        }
         try {
             for (javaClass = javaClass.getSuperClass(); javaClass != null; javaClass = javaClass.getSuperClass()) {
                 classes.add(javaClass);
             }
         } catch (ClassNotFoundException e) {
 //            if (log.isDebugEnabled()) {
-            log.error("get superclass error of {}", javaClass.getClassName(), e);
+            log.error("get superclass error of {}", className, e);
 //            }
             throw e;
         }

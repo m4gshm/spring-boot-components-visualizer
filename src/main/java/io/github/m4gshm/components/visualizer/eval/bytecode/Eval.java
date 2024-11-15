@@ -1087,40 +1087,41 @@ public class Eval {
                     return getResolvedParameters(parameters);
                 }
             }
-            if (noArgumentVariants && resolver != null) {
+            if (noArgumentVariants) {
                 //not callpoints, try to resolve by the resolver
                 //todo experiment
                 var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
                 int dimensions = getDimensions(parameterVariants);
                 return flatResolvedVariants(dimensions, parameterVariants, parameters);
-            }
-            var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
-            var resolvedParamVariants = new ArrayList<List<Result>>();
-            for (var resolvedVariantMap : resolvedAll) {
-                var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
-                int dimensions = getDimensions(parameterVariants);
-                if (dimensions <= 3) {
-                    resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
-                } else {
-                    //todo need to analyze the branch
-                    var callContexts = getCallContexts(parameters, parameterVariants);
-                    var result = getFullDistinctCallContexts(callContexts);
-                    if (result.isEmpty()) {
-//                        var callContexts2 = getCallContexts(parameters, parameterVariants);
-                        //log WARN todo
-                        //no common call contexts ????
-                        resolvedParamVariants.addAll(flatResolvedVariants(1, parameterVariants, parameters));
+            } else {
+                var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
+                var resolvedParamVariants = new ArrayList<List<Result>>();
+                for (var resolvedVariantMap : resolvedAll) {
+                    var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
+                    int dimensions = getDimensions(parameterVariants);
+                    if (dimensions <= 3) {
+                        resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                     } else {
-                        for (var variantOfVariantOfParameters : result) {
-                            resolvedParamVariants.addAll(flatResolvedVariants(
-                                    getDimensions(variantOfVariantOfParameters),
-                                    variantOfVariantOfParameters, parameters)
-                            );
+                        //todo need to analyze the branch
+                        var callContexts = getCallContexts(parameters, parameterVariants);
+                        var result = getFullDistinctCallContexts(callContexts);
+                        if (result.isEmpty()) {
+//                        var callContexts2 = getCallContexts(parameters, parameterVariants);
+                            //log WARN todo
+                            //no common call contexts ????
+                            resolvedParamVariants.addAll(flatResolvedVariants(1, parameterVariants, parameters));
+                        } else {
+                            for (var variantOfVariantOfParameters : result) {
+                                resolvedParamVariants.addAll(flatResolvedVariants(
+                                        getDimensions(variantOfVariantOfParameters),
+                                        variantOfVariantOfParameters, parameters)
+                                );
+                            }
                         }
                     }
                 }
+                return resolvedParamVariants;
             }
-            return resolvedParamVariants;
         }
     }
 

@@ -148,7 +148,6 @@ public class SchedulingConfigurerUtils {
     ) throws ClassNotFoundException {
         var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
         var callCache = new HashMap<CallCacheKey, Result>();
-//        var evalContext = evalContextFactory.getEvalContext(null, javaClass, method).withArguments();
         while (point != null) {
             var instruction = point.getInstruction();
             var intervalTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, IntervalTask.class);
@@ -169,13 +168,15 @@ public class SchedulingConfigurerUtils {
                 var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
 
                 var delayInvokeExpr = (DelayInvoke) evalContext.eval(point, callCache);
-                var argumentsExpr = delayInvokeExpr.getArguments();
 
                 var object = delayInvokeExpr.getObject();
                 var bean = object.getValue();
                 var parentComponent = evalContext.getComponent();
                 var sameBean = parentComponent.getBean() == bean;
-                var component1 = sameBean ? parentComponent : Component.builder().bean(bean).build();
+                var component1 = sameBean ? parentComponent : Component.builder()
+                        .bean(bean)
+                        .path(parentComponent.getPath() + "." + methodName)
+                        .build();
                 final JavaClass javaClass1;
                 final Method method1;
                 if (sameBean) {
@@ -192,7 +193,8 @@ public class SchedulingConfigurerUtils {
                     javaClass1 = classAndMethodSource.getKey();
                     method1 = classAndMethodSource.getValue();
                 }
-                var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1).withArguments2(0, argumentsExpr);
+                var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1)
+                        .withArguments2(0, delayInvokeExpr.getArguments());
 
                 var constructor = findTaskConstructorExpr(javaClass1,
                         method1, evalContextFactory, resolver, arguments, evalContext1);
@@ -270,7 +272,12 @@ public class SchedulingConfigurerUtils {
             methodIdStream = scheduledMethodIds.stream();
         }
 
-        var triggerValues = resolveValues(triggerExpr, evalContext, resolver);
+        List<Object> triggerValues;
+        try {
+            triggerValues = resolveValues(triggerExpr, evalContext, resolver);
+        } catch (Exception e) {
+            throw e;
+        }
         var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
                 resolver, timeUnitStringifier);
 

@@ -51,7 +51,7 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
 
     @Override
     public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
-        taskRegistrar.addFixedRateTask(new IntervalTask(this::call, HOURS.toMillis(20)));
+        taskRegistrar.addFixedRateTask(new IntervalTask(this::call, getHoursMillis()));
         taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
         taskRegistrar.addCronTask(getCronTask());
         taskRegistrar.addCronTask(new Runnable() {
@@ -66,6 +66,10 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
         taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
         taskRegistrar.addFixedDelayTask(this, 4000);
         taskRegistrar.addFixedDelayTask(runnable, 5000);
+    }
+
+    private long getHoursMillis() {
+        return HOURS.toMillis(20);
     }
 
     private CronTask getCronTask() {
