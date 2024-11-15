@@ -64,19 +64,12 @@ public class SchedulingConfigurerUtils {
                         var fixedRate = "addFixedRateTask".equals(methodName);
                         var fixeDelay = "addFixedDelayTask".equals(methodName);
                         var cron = "addCronTask".equals(methodName);
-                        var argumentTypes = invokevirtual.getArgumentTypes(constantPoolGen);
                         var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
                                 ? TriggerType.fixedDelay : cron
                                 ? TriggerType.cron : null;
-                        int argAmount = argumentTypes.length;
                         if (triggerType != null) {
-//                            if (argAmount == 2 && getType(Runnable.class).equals(argumentTypes[0])) {
                             return extractRunnableScheduled(triggerType, instructionHandle, component, componentType,
                                     source, method, evalContextFactory, callCache, resolver, timeUnitStringifier).stream();
-//                            } else if (argAmount == 1) {
-//                                return extractRunnableScheduled(triggerType, instructionHandle, component, componentType,
-//                                        source, method, evalContextFactory, callCache, resolver, timeUnitStringifier).stream();
-//                            }
                         }
                     }
                     return of();
@@ -99,59 +92,22 @@ public class SchedulingConfigurerUtils {
             var arguments = delayInvoke.getArguments();
             var argAmount = arguments.size();
             if (argAmount == 1) {
-//                injectProxyDumperIntoInnerClassLambdaMetafactory(newProxyClassesDumper(getDumpsDir()));
-
                 var taskExpr = arguments.get(0);
-//                var instruction = taskExpr.getFirstInstruction().getInstruction();
-
                 var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory, resolver,
                         taskExpr.getFirstInstruction(), arguments, evalContext);
                 var runnableExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getRunnableExpr() : null;
                 var triggerExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getTriggerExpr() : null;
-                return runnableExpr != null && triggerExpr != null
-                        ? getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
-                        componentType, source, (Runnable) runnableExpr.getValue(), runnableExpr,
-                        evalContext, null)
-                        : List.of();
-
-//
-//
-//                var constantPoolGen = evalContext.getConstantPoolGen();
-//
-//                var intervalTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, IntervalTask.class);
-//                var cronTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, CronTask.class);
-//
-//                if (intervalTaskConstructor || cronTaskConstructor) {
-//                    var delayInvokeTaskExpr = (DelayInvoke) taskExpr;
-//                    var argumentsExpr = delayInvokeTaskExpr.getArguments();
-//                    var invokespecial = (InvokeInstruction) instruction;
-//                    var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
-//                    var runnableAndTriggerExpr = getRunnableAndTriggerExpr(
-//                            argumentTypes, argumentsExpr, evalContext, resolver);
-//                    var runnableExpr = runnableAndTriggerExpr.getRunnableExpr();
-//                    var triggerExpr = runnableAndTriggerExpr.getTriggerExpr();
-//                    return runnableExpr != null && triggerExpr != null
-//                            ? getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
-//                            componentType, source, (Runnable) runnableExpr.getValue(), runnableExpr,
-//                            evalContext, resolver)
-//                            : List.of();
-//                } else if (instruction instanceof InvokeInstruction) {
-//                    var invokeInstruction = (InvokeInstruction) instruction;
-//                    var methodName = invokeInstruction.getMethodName(constantPoolGen);
-//                    var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-//                    var className = invokeInstruction.getClassName(constantPoolGen);
-//
-//                    var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
-//                    var runnableAndTriggerExpr = findConstructor(classAndMethodSource.getKey(), classAndMethodSource.getValue(), evalContextFactory, resolver);
-//
-//                } else {
-//                    var resolvedTask = evalContext.resolve(taskExpr, resolver);
-//                    Task taskValues = (Task) resolvedTask.getValue();
-//                    Runnable runnable = taskValues.getRunnable();
-//                    MethodHandle run = MethodHandles.lookup().findVirtual(runnable.getClass(), "run", MethodType.methodType(void.class));
-//
-//                    throw new UnsupportedOperationException("TODO");
-//                }
+                if (runnableExpr != null && triggerExpr != null) {
+                    var runnable = runnableExpr.getValue();
+                    if (runnable instanceof Runnable) {
+                        return getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
+                                componentType, source, (Runnable) runnable, runnableExpr, evalContext, null);
+                    } else {
+                        //log
+                    }
+                } else {
+                    //log
+                }
             } else if (argAmount == 2) {
                 var runnableExpr = arguments.get(0);
                 var runnableResolved = evalContext.resolve(runnableExpr, resolver);
@@ -160,10 +116,14 @@ public class SchedulingConfigurerUtils {
                     var triggerExpr = arguments.get(1);
                     return getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
                             componentType, source, (Runnable) runnable, runnableExpr, evalContext, null);
+                } else {
+                    //log
                 }
             }
+        } else {
+            //log
         }
-        throw new UnsupportedOperationException("TODO");
+        return List.of();
     }
 
     private static InstructionHandle getLast(Method method) {
@@ -291,24 +251,29 @@ public class SchedulingConfigurerUtils {
                                                              Result triggerExpr, Component component,
                                                              Class<?> componentType, JavaClass source,
                                                              Runnable runnable, Result runnableExpr,
-                                                             Eval evalContext, Resolver resolver) {
-        var triggerValues = resolveValues(triggerExpr, evalContext, resolver);
-        var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
-                resolver, timeUnitStringifier);
-
+                                                             Eval evalContext, Resolver resolver
+    ) {
         final Stream<MethodId> methodIdStream;
         if (component.getBean().equals(runnable)) {
             methodIdStream = of(newMethodId("run"));
         } else {
-            var touched = new HashMap<Class<?>, Set<MethodId>>();
             var runnableClass = runnable.getClass();
-            var scheduledMethodIds = isLambda(runnableClass)
-                    ? getScheduledMethodIdFromRunnableLambda(componentType, runnableExpr,
-                    getBootstrapMethods(source), evalContext.getConstantPoolGen(), touched)
-                    : getScheduledMethodIdsFromMethod(componentType, getClassAndMethodSource(runnableClass, "run"),
-                    touched);
+            var touched = new HashMap<Class<?>, Set<MethodId>>();
+            List<MethodId> scheduledMethodIds;
+            if (isLambda(runnableClass)) {
+                scheduledMethodIds = getMethodIds(componentType, runnableExpr.getFirstInstruction(),
+                        evalContext.getConstantPoolGen(), getBootstrapMethods(source), touched);
+            } else {
+                scheduledMethodIds = getScheduledMethodIdsFromMethod(componentType,
+                        getClassAndMethodSource(runnableClass, "run"), touched);
+            }
             methodIdStream = scheduledMethodIds.stream();
         }
+
+        var triggerValues = resolveValues(triggerExpr, evalContext, resolver);
+        var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
+                resolver, timeUnitStringifier);
+
         return methodIdStream.flatMap(methodId -> getScheduledMethodStream(triggerType, methodId,
                 triggerExpressions)).collect(toList());
     }
@@ -317,26 +282,9 @@ public class SchedulingConfigurerUtils {
         return aClass.isSynthetic() && aClass.getSimpleName().contains("$$Lambda");
     }
 
-    private static List<MethodId> getScheduledMethodIdFromRunnableLambda(
-            Class<?> componentType, Result runnableExpr, BootstrapMethods bootstrapMethods,
-            ConstantPoolGen constantPoolGen, Map<Class<?>, Set<MethodId>> touched) {
-        var instructionHandle = runnableExpr.getFirstInstruction();
-        var instruction = instructionHandle.getInstruction();
-        if (instruction instanceof INVOKEDYNAMIC) {
-            var methodIds = getMethodIds(componentType, (INVOKEDYNAMIC) instruction, constantPoolGen,
-                    bootstrapMethods, touched);
-            return methodIds;
-        } else if (instruction instanceof InvokeInstruction) {
-            var methodIds = getMethodIds(componentType, instructionHandle, constantPoolGen, touched);
-            return methodIds;
-        } else {
-            return List.of();
-        }
-    }
-
     private static List<MethodId> getScheduledMethodIdsFromMethod(
-            Class<?> beanType, Entry<JavaClass, Method> runClassMethodPair,
-            Map<Class<?>, Set<MethodId>> touched) {
+            Class<?> beanType, Entry<JavaClass, Method> runClassMethodPair, Map<Class<?>, Set<MethodId>> touched
+    ) {
         var source = runClassMethodPair.getKey();
         var runMethod = runClassMethodPair.getValue();
 
@@ -344,18 +292,23 @@ public class SchedulingConfigurerUtils {
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
         return instructionHandleStream(runMethod.getCode()).map(instructionHandle -> {
-            var instruction = instructionHandle.getInstruction();
-            if (instruction instanceof INVOKEDYNAMIC) {
-                var methodIds = getMethodIds(beanType, (INVOKEDYNAMIC) instruction, constantPoolGen, bootstrapMethods, touched);
-                return methodIds;
-            } else if (instruction instanceof InvokeInstruction) {
-                var methodIds = getMethodIds(beanType, instructionHandle, constantPoolGen, touched);
-                return methodIds;
-            } else {
-                return List.<MethodId>of();
-            }
+            return getMethodIds(beanType, instructionHandle, constantPoolGen, bootstrapMethods, touched);
         }).flatMap(Collection::stream).collect(toList());
     }
+
+    private static List<MethodId> getMethodIds(Class<?> beanType, InstructionHandle instructionHandle,
+                                               ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
+                                               Map<Class<?>, Set<MethodId>> touched) {
+        var instruction = instructionHandle.getInstruction();
+        if (instruction instanceof INVOKEDYNAMIC) {
+            return getMethodIds(beanType, (INVOKEDYNAMIC) instruction, constantPoolGen, bootstrapMethods, touched);
+        } else if (instruction instanceof InvokeInstruction) {
+            return getMethodIds(beanType, instructionHandle, constantPoolGen, touched);
+        } else {
+            return List.of();
+        }
+    }
+
 
     private static List<MethodId> getMethodIds(Class<?> componentType,
                                                InstructionHandle instructionHandle,
@@ -399,8 +352,8 @@ public class SchedulingConfigurerUtils {
                 //recursion detected
                 return List.of();
             }
-            var sourceAndMethod = getClassAndMethodSource(aClass, methodName, argumentTypes);
-            return getScheduledMethodIdsFromMethod(componentType, sourceAndMethod, touched);
+            var classAndMethodSource = getClassAndMethodSource(aClass, methodName, argumentTypes);
+            return getScheduledMethodIdsFromMethod(componentType, classAndMethodSource, touched);
         }
     }
 
