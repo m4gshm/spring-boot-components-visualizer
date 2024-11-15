@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.Type;
 
 import java.util.List;
 
@@ -15,30 +16,35 @@ import static lombok.AccessLevel.PROTECTED;
 
 @Getter
 @FieldDefaults(level = PROTECTED)
-public class Delay extends Result implements ContextAware, RelationsAware {
+public class Delay extends Result implements ContextAware, RelationsAware, TypeAware {
     final Eval eval;
     final String description;
     final DelayFunction<Delay> evaluator;
     final Result prev;
     final Component component;
     final Method method;
-    final Class<?> componentType;
     final List<Result> relations;
+    final Type type;
     Result result;
 
     public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                  Eval eval, String description, DelayFunction<? extends Delay> evaluator,
-                 Result prev, List<Result> relations, Result result) {
+                 Result prev, List<Result> relations, Type type, Result result) {
         super(firstInstruction, lastInstruction);
         this.eval = eval;
         this.description = description;
         this.evaluator = (DelayFunction<Delay>) evaluator;
         this.prev = prev;
         this.relations = relations;
+        this.type = type;
         this.result = result;
         component = eval.getComponent();
         method = eval.getMethod();
-        componentType = eval.getComponent().getType();
+    }
+
+    @Override
+    public Class<?> getComponentType() {
+        return component != null ? component.getType() : null;
     }
 
     @Override
@@ -62,8 +68,9 @@ public class Delay extends Result implements ContextAware, RelationsAware {
         }
         return result;
     }
+
     public Delay withEval(Eval eval) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, relations, null);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, relations, type, null);
     }
 
     @Override

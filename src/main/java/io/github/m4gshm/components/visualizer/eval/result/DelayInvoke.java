@@ -4,6 +4,7 @@ import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.Type;
 
 import java.util.List;
 import java.util.stream.Stream;
@@ -20,9 +21,9 @@ public class DelayInvoke extends Delay {
 
     public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
                        String description, DelayFunction<DelayInvoke> evaluator, Result prev,
-                       Result object, List<Result> arguments) {
+                       Type type, Result object, List<Result> arguments) {
         super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev,
-                Stream.of(ofNullable(object), arguments.stream()).flatMap(s -> s).collect(toList()), null);
+                Stream.of(ofNullable(object), arguments.stream()).flatMap(s -> s).collect(toList()), type, null);
         this.object = object;
         this.arguments = arguments;
     }
@@ -30,6 +31,6 @@ public class DelayInvoke extends Delay {
     @Override
     public DelayInvoke withEval(Eval eval) {
         return new DelayInvoke(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, object, arguments);
+                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, type, object, arguments);
     }
 }

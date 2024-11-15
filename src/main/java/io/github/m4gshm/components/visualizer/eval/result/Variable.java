@@ -46,7 +46,7 @@ public class Variable extends Result implements ContextAware {
     @Override
     public String toString() {
         var methodName = getMethod().getName();
-        var className = evalContext.getComponent().getType().getName();
+        var className = getComponentType();
         return varType.code + "(" + className + "." + methodName + "(" + getIndex() + " " + getName() + "))";
     }
 
@@ -62,7 +62,8 @@ public class Variable extends Result implements ContextAware {
 
     @Override
     public Class<?> getComponentType() {
-        return evalContext.getComponent().getType();
+        var component = evalContext.getComponent();
+        return component != null ? component.getType() : null;
     }
 
     @RequiredArgsConstructor

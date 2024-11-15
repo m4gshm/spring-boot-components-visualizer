@@ -4,6 +4,7 @@ import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.Type;
 
 import java.util.List;
 
@@ -16,14 +17,14 @@ public class DelayLoadFromStore extends Delay {
 
     public DelayLoadFromStore(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                               Eval evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
-                              Result prev, List<Result> storeInstructions) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, storeInstructions, null);
+                              Result prev, List<Result> storeInstructions, Type type) {
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, storeInstructions, type, null);
         this.storeInstructions = storeInstructions;
     }
 
     @Override
     public Delay withEval(Eval eval) {
         return new DelayLoadFromStore(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, prev, storeInstructions);
+                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, prev, storeInstructions, type);
     }
 }

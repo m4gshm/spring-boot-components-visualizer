@@ -17,7 +17,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvider;
-import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.findClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
@@ -180,10 +179,9 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     @Override
     public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
-        return new Eval(component,
-                new ConstantPoolGen(method.getConstantPool()),
-                bootstrapMethods, method,
-                computeArgumentVariants(component, method, callCache, this, dependentProvider, callPointsProvider));
+        var argumentVariants = component != null ? computeArgumentVariants(component, method, callCache, this,
+                dependentProvider, callPointsProvider) : List.<List<Result>>of();
+        return new Eval(component, new ConstantPoolGen(method.getConstantPool()), bootstrapMethods, method, argumentVariants);
     }
 
     public interface DependentProvider extends Function<Component, List<Component>> {

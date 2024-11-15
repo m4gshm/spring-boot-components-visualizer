@@ -12,6 +12,7 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class MethodId {
     private static final Type[] NO_TYPES = new Type[0];
+
     String name;
     Type[] argumentTypes;
 

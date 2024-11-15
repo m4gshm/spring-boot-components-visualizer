@@ -13,10 +13,7 @@ import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.classfile.Utility;
-import org.apache.bcel.generic.ConstantPoolGen;
-import org.apache.bcel.generic.InstructionHandle;
-import org.apache.bcel.generic.InstructionList;
-import org.apache.bcel.generic.Type;
+import org.apache.bcel.generic.*;
 import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
@@ -27,9 +24,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredField;
@@ -37,6 +34,9 @@ import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.Utils.loadedClass;
 import static io.github.m4gshm.components.visualizer.eval.result.Result.*;
 import static java.util.Arrays.asList;
+import static java.util.Map.entry;
+import static java.util.stream.Collectors.*;
+import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
 
@@ -52,13 +52,13 @@ public class EvalUtils {
             return lookupClassSources(componentType);
         } catch (ClassNotFoundException e) {
             log.debug("getClassInheritanceHierarchy {}", componentType, e);
-           return List.of();
+            return List.of();
         }
     }
 
-    public static List<JavaClass> lookupClassSources(Class<?> componentType) throws ClassNotFoundException {
+    public static List<JavaClass> lookupClassSources(Class<?> aClass) throws ClassNotFoundException {
         var classes = new ArrayList<JavaClass>();
-        var javaClass = Repository.lookupClass(unproxy(componentType));
+        var javaClass = Repository.lookupClass(unproxy(aClass));
         classes.add(javaClass);
         try {
             for (javaClass = javaClass.getSuperClass(); javaClass != null; javaClass = javaClass.getSuperClass()) {
@@ -66,7 +66,7 @@ public class EvalUtils {
             }
         } catch (ClassNotFoundException e) {
 //            if (log.isDebugEnabled()) {
-                log.error("get superclass error of {}", javaClass.getClassName(), e);
+            log.error("get superclass error of {}", javaClass.getClassName(), e);
 //            }
             throw e;
         }
@@ -91,11 +91,11 @@ public class EvalUtils {
     }
 
     static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
-                         InstructionHandle lastArgInstruction,
-                         List<ParameterValue> parameters, Component component, Method method) {
+                         InstructionHandle lastArgInstruction, Type expectedType, List<ParameterValue> parameters,
+                         Component component, Method method) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, firstInstruction, lastArgInstruction, component, method, parameters);
+            return invoked(value, expectedType, firstInstruction, lastArgInstruction, component, method, parameters);
         } catch (Throwable e) {
             throw new EvalException(e);
         }
@@ -122,7 +122,8 @@ public class EvalUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, instructionHandle, instructionHandle, component, method, null, parent.getRelations());
+            return constant(value, ObjectType.getType(type), instructionHandle, instructionHandle, component, method,
+                    null, parent.getRelations());
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(e, constructor, instructionHandle, parent);
@@ -133,12 +134,12 @@ public class EvalUtils {
     }
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
-                                      @NonNull InstructionHandle lastArgInstruction, Eval evalBytecode,
+                                      @NonNull InstructionHandle lastArgInstruction, Type expectedType, Eval evalBytecode,
                                       BootstrapMethodHandlerAndArguments methodAndArguments,
                                       List<ParameterValue> parameters) {
         var callSite = getCallSite(methodAndArguments);
         var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, parameters,
+        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, expectedType, parameters,
                 evalBytecode.getComponent(), evalBytecode.getMethod());
     }
 
@@ -180,14 +181,15 @@ public class EvalUtils {
                                        Result parent, Component component, Method method) {
         var field = getDeclaredField(objectClass, name);
         return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
-                ? getFieldValue(object, field, lastInstruction, parent, component, method)
+                ? getFieldValue(object, field, lastInstruction, component, method)
                 : notAccessible(field, getFieldInstruction, parent);
     }
 
     private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
-                                        Result parent, Component component, Method method) {
+                                        Component component, Method method) {
         try {
-            return constant(field.get(object), lastInstruction, lastInstruction, component, method, asList(parent));
+            return constant(field.get(object), ObjectType.getType(field.getType()), lastInstruction, lastInstruction,
+                    component, method, asList());
         } catch (IllegalAccessException e) {
             throw new EvalException(e);
         }
@@ -195,6 +197,10 @@ public class EvalUtils {
 
     public static String toString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
         return instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
+    }
+
+    public static Stream<InstructionHandle> instructionHandleStream(Method method) {
+        return instructionHandleStream(method.getCode());
     }
 
     public static Stream<InstructionHandle> instructionHandleStream(Code code) {
@@ -233,6 +239,42 @@ public class EvalUtils {
 
     public static String stringForLog(Type[] argumentTypes) {
         return Arrays.stream(argumentTypes).map(t -> t + "").reduce((l, r) -> l + "," + r).orElse("");
+    }
+
+    public static Predicate<Entry<JavaClass, Method>> byArgs(Type... argTypes) {
+        return pair -> Arrays.equals(pair.getValue().getArgumentTypes(), argTypes);
+    }
+
+    public static Predicate<Entry<JavaClass, Method>> byName(String methodName) {
+        return pair -> pair.getValue().getName().equals(methodName);
+    }
+
+    public static Predicate<Entry<JavaClass, Method>> byNameAndArgs(String methodName, Type[] argTypes) {
+        return byName(methodName).and(byArgs(argTypes));
+    }
+
+    public static Entry<JavaClass, Method> getClassAndMethodSource(Class<?> type, String methodName, Type... argTypes) {
+        return getClassAndMethodSourceStream(type, byNameAndArgs(methodName, argTypes)).findFirst().orElse(null);
+    }
+
+    @SafeVarargs
+    public static Map<JavaClass, List<Method>> getClassAndMethodsSource(Class<?> type, Predicate<Entry<JavaClass, Method>>... filters) {
+        var filter = of(filters).reduce(Predicate::and).orElse(o -> true);
+        return getClassAndMethodSourceStream(type, filter).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+    }
+
+    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(
+            Class<?> type, Predicate<Entry<JavaClass, Method>> filter
+    ) {
+        return getClassAndMethodSourceStream(getClassSources(type)).filter(filter);
+    }
+
+    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(Collection<JavaClass> classSources) {
+        return classSources.stream().flatMap(EvalUtils::getMethodsStream);
+    }
+
+    public static Stream<Entry<JavaClass, Method>> getMethodsStream(JavaClass aClass) {
+        return Arrays.stream(aClass.getMethods()).map(m -> entry(aClass, m));
     }
 
     @FunctionalInterface

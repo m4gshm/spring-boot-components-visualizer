@@ -15,6 +15,7 @@ import org.apache.bcel.classfile.LocalVariable;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.Instruction;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.ObjectType;
 import org.apache.bcel.generic.Type;
 
 import java.util.*;
@@ -38,32 +39,44 @@ public abstract class Result implements ContextAware {
     InstructionHandle firstInstruction;
     InstructionHandle lastInstruction;
 
-    public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                   Component component, Method method, List<ParameterValue> parameters) {
+    public static Constant invoked(Object value, Type type, InstructionHandle invokeInstruction,
+                                   InstructionHandle lastInstruction, Component component, Method method,
+                                   List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, invokeInstruction, lastInstruction, component, method, params);
+        return constant(value, type, invokeInstruction, lastInstruction, component, method, null, params);
     }
 
-    public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    Component component, Method method, List<Result> relations) {
-        return constant(value, firstInstruction, lastInstruction, component, method, null, relations);
+    public static Constant constant(Object value, Type type, InstructionHandle firstInstruction,
+                                    InstructionHandle lastInstruction, Component component, Method method,
+                                    List<Result> relations) {
+        return constant(value, type, firstInstruction, lastInstruction, component, method, null, relations);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                                     Component component, Method method, Object resolvedBy, List<Result> relations) {
-        var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method, resolvedBy);
+        return constant(value, getType(value), firstInstruction, lastInstruction, component, method, resolvedBy, relations);
     }
 
+    public static Type getType(Object value) {
+        return value != null ? ObjectType.getType(value.getClass()) : null;
+    }
+
+    public static Constant constant(Object value, Type type, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+                                    Component component, Method method, Object resolvedBy, List<Result> relations) {
+        var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
+        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method, resolvedBy, type);
+    }
+
+
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
-                                                         Eval evalContext, Result parent,
+                                                         Type type, Eval evalContext, Result parent,
                                                          List<Result> storeInstructions,
                                                          DelayFunction<DelayLoadFromStore> delayFunction) {
         if (storeInstructions.isEmpty()) {
             throw new IllegalArgumentException("No store instructions found");
         }
         return new DelayLoadFromStore(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent,
-                storeInstructions);
+                storeInstructions, type);
     }
 
     public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate) {
@@ -71,14 +84,13 @@ public abstract class Result implements ContextAware {
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle,
-                              InstructionHandle lastInstruction, Eval evalContext,
-                              Result parent, List<Result> relations,
-                              DelayFunction<Delay> delayFunction) {
+                              InstructionHandle lastInstruction, Type expectedType, Eval evalContext,
+                              Result parent, List<Result> relations, DelayFunction<Delay> delayFunction) {
         return new Delay(instructionHandle, lastInstruction, evalContext, description, delayFunction, parent,
-                relations, null);
+                relations, expectedType, null);
     }
 
-    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Eval evalContext,
+    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Type expectedType, Eval evalContext,
                                           Result parent, InvokeObject invokeObject, EvalArguments arguments,
                                           DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
@@ -87,7 +99,7 @@ public abstract class Result implements ContextAware {
         var object = invokeObject != null ? invokeObject.getObject() : null;
         var description = getInstructionString(instructionHandle, evalContext.getConstantPoolGen());
         return new DelayInvoke(instructionHandle, lastInstruction, evalContext, description,
-                delayFunction, parent, object, arguments.getArguments());
+                delayFunction, parent, expectedType, object, arguments.getArguments());
     }
 
     public static Variable methodArg(Eval evalContext, LocalVariable localVariable,

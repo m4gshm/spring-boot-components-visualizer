@@ -10,6 +10,9 @@ import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.MethodId;
+import lombok.Data;
+import lombok.SneakyThrows;
+import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
@@ -24,18 +27,18 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
-import static java.util.Arrays.stream;
-import static java.util.Map.entry;
+import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
+import static lombok.AccessLevel.PRIVATE;
 import static org.apache.bcel.generic.Type.getArgumentTypes;
 import static org.apache.bcel.generic.Type.getType;
 
@@ -53,7 +56,7 @@ public class SchedulingConfigurerUtils {
                 var method = configureTasksMethodClassPair.getValue();
                 var source = configureTasksMethodClassPair.getKey();
                 var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-                return instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
+                return instructionHandleStream(method).flatMap(instructionHandle -> {
                     var instruction = instructionHandle.getInstruction();
                     if (instruction instanceof INVOKEVIRTUAL) {
                         var invokevirtual = (INVOKEVIRTUAL) instruction;
@@ -83,74 +86,72 @@ public class SchedulingConfigurerUtils {
         return List.of();
     }
 
-    public static Predicate<Entry<JavaClass, Method>> byArgs(Type... argTypes) {
-        return pair -> Arrays.equals(pair.getValue().getArgumentTypes(), argTypes);
-    }
-
-    public static Predicate<Entry<JavaClass, Method>> byName(String methodName) {
-        return pair -> pair.getValue().getName().equals(methodName);
-    }
-
-    public static Entry<JavaClass, Method> getClassAndMethodSource(Class<?> type, String methodName, Type... argTypes) {
-        return getClassAndMethodSourceStream(type, byName(methodName).and(byArgs(argTypes))).findFirst().orElse(null);
-    }
-
-    @SafeVarargs
-    public static Map<JavaClass, List<Method>> getClassAndMethodsSource(Class<?> type, Predicate<Entry<JavaClass, Method>>... filters) {
-        var filter = of(filters).reduce(Predicate::and).orElse(o -> true);
-        return getClassAndMethodSourceStream(type, filter).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
-    }
-
-    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(
-            Class<?> type, Predicate<Entry<JavaClass, Method>> filter
-    ) {
-        return getClassAndMethodSourceStream(type).filter(filter);
-    }
-
-    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(Class<?> type) {
-        return getClassSources(type).stream().flatMap(aClass -> stream(aClass.getMethods()).map(m -> entry(aClass, m)));
-    }
-
+    @SneakyThrows
     private static List<ScheduledMethod> extractRunnableScheduled(
-            TriggerType triggerType, InstructionHandle runnableInstruction, Component component, Class<?> componentType,
-            JavaClass source, Method componentMethod, EvalContextFactory evalContextFactory,
-            Map<CallCacheKey, Result> callCache, Resolver resolver,
-            Function<TimeUnit, String> timeUnitStringifier) {
-        var evalContext = evalContextFactory.getEvalContext(component, source, componentMethod);
-        var evaluated = evalContext.eval(runnableInstruction, null, callCache);
+            TriggerType triggerType, InstructionHandle runnableInstruction, Component component,
+            Class<?> componentType, JavaClass source, Method method, EvalContextFactory evalContextFactory,
+            Map<CallCacheKey, Result> callCache, Resolver resolver, Function<TimeUnit, String> timeUnitStringifier
+    ) {
+        var evalContext = evalContextFactory.getEvalContext(component, source, method);
+        var evaluated = evalContext.eval(runnableInstruction, callCache);
         if (evaluated instanceof DelayInvoke) {
             var delayInvoke = (DelayInvoke) evaluated;
             var arguments = delayInvoke.getArguments();
             var argAmount = arguments.size();
             if (argAmount == 1) {
-                var taskExpr = arguments.get(0);
-                var instruction = taskExpr.getFirstInstruction().getInstruction();
-                var constantPoolGen = evalContext.getConstantPoolGen();
-                if (instruction instanceof INVOKESPECIAL) {
-                    var delayInvokeTaskExpr = (DelayInvoke) taskExpr;
-                    var argumentsExpr = delayInvokeTaskExpr.getArguments();
-                    var invokespecial = (INVOKESPECIAL) instruction;
-                    var name = invokespecial.getName(constantPoolGen);
-                    if ("<init>".equals(name)) {
-                        var className = invokespecial.getClassName(constantPoolGen);
-                        var aClass = findClassByName(className);
-                        if (aClass != null && (IntervalTask.class.isAssignableFrom(aClass) || CronTask.class.isAssignableFrom(aClass))) {
-                        var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
-                            var result = getResult(resolver, argumentTypes, argumentsExpr, evalContext);
-                            var runnableExpr = result.getKey();
-                            var triggerExpr = result.getValue();
-                            return runnableExpr != null && triggerExpr != null
-                                    ? getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
-                                    componentType, source, (Runnable) runnableExpr.getValue(), runnableExpr,
-                                    evalContext, resolver)
-                                    : List.of();
-                        }
-                    }
-//                } else if (instruction instanceof InvokeInstruction) {
+//                injectProxyDumperIntoInnerClassLambdaMetafactory(newProxyClassesDumper(getDumpsDir()));
 
+                var taskExpr = arguments.get(0);
+//                var instruction = taskExpr.getFirstInstruction().getInstruction();
+
+                var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory, resolver,
+                        taskExpr.getFirstInstruction(), arguments, evalContext);
+                var runnableExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getRunnableExpr() : null;
+                var triggerExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getTriggerExpr() : null;
+                return runnableExpr != null && triggerExpr != null
+                        ? getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
+                        componentType, source, (Runnable) runnableExpr.getValue(), runnableExpr,
+                        evalContext, null)
+                        : List.of();
+
+//
+//
+//                var constantPoolGen = evalContext.getConstantPoolGen();
+//
+//                var intervalTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, IntervalTask.class);
+//                var cronTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, CronTask.class);
+//
+//                if (intervalTaskConstructor || cronTaskConstructor) {
+//                    var delayInvokeTaskExpr = (DelayInvoke) taskExpr;
+//                    var argumentsExpr = delayInvokeTaskExpr.getArguments();
+//                    var invokespecial = (InvokeInstruction) instruction;
+//                    var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
+//                    var runnableAndTriggerExpr = getRunnableAndTriggerExpr(
+//                            argumentTypes, argumentsExpr, evalContext, resolver);
+//                    var runnableExpr = runnableAndTriggerExpr.getRunnableExpr();
+//                    var triggerExpr = runnableAndTriggerExpr.getTriggerExpr();
+//                    return runnableExpr != null && triggerExpr != null
+//                            ? getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
+//                            componentType, source, (Runnable) runnableExpr.getValue(), runnableExpr,
+//                            evalContext, resolver)
+//                            : List.of();
+//                } else if (instruction instanceof InvokeInstruction) {
+//                    var invokeInstruction = (InvokeInstruction) instruction;
+//                    var methodName = invokeInstruction.getMethodName(constantPoolGen);
+//                    var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+//                    var className = invokeInstruction.getClassName(constantPoolGen);
+//
+//                    var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
+//                    var runnableAndTriggerExpr = findConstructor(classAndMethodSource.getKey(), classAndMethodSource.getValue(), evalContextFactory, resolver);
+//
 //                } else {
+//                    var resolvedTask = evalContext.resolve(taskExpr, resolver);
+//                    Task taskValues = (Task) resolvedTask.getValue();
+//                    Runnable runnable = taskValues.getRunnable();
+//                    MethodHandle run = MethodHandles.lookup().findVirtual(runnable.getClass(), "run", MethodType.methodType(void.class));
+//
 //                    throw new UnsupportedOperationException("TODO");
-                }
+//                }
             } else if (argAmount == 2) {
                 var runnableExpr = arguments.get(0);
                 var runnableResolved = evalContext.resolve(runnableExpr, resolver);
@@ -158,14 +159,116 @@ public class SchedulingConfigurerUtils {
                 if (runnable instanceof Runnable) {
                     var triggerExpr = arguments.get(1);
                     return getScheduledMethods(triggerType, timeUnitStringifier, triggerExpr, component,
-                            componentType, source, (Runnable) runnable, runnableExpr, evalContext, resolver);
+                            componentType, source, (Runnable) runnable, runnableExpr, evalContext, null);
                 }
             }
         }
         throw new UnsupportedOperationException("TODO");
     }
 
-    private static Entry<Result, Result> getResult(Resolver resolver, Type[] argumentTypes, List<Result> argumentsExpr, Eval evalContext) {
+    private static InstructionHandle getLast(Method method) {
+        var instructionHandles = instructionHandleStream(method).collect(toList());
+        return !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
+    }
+
+    private static ScheduledRoutineAndTrigger findTaskConstructorExpr(JavaClass javaClass, Method method,
+                                                                      EvalContextFactory evalContextFactory,
+                                                                      Resolver resolver,
+                                                                      List<Result> arguments,
+                                                                      Eval evalContext
+    ) throws ClassNotFoundException {
+        return findTaskConstructorExpr(javaClass, method, evalContextFactory, resolver, getLast(method), arguments, evalContext);
+    }
+
+    //todo need loop control
+    private static ScheduledRoutineAndTrigger findTaskConstructorExpr(JavaClass javaClass, Method method,
+                                                                      EvalContextFactory evalContextFactory,
+                                                                      Resolver resolver, InstructionHandle point,
+                                                                      List<Result> arguments, Eval evalContext
+    ) throws ClassNotFoundException {
+        var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
+        var callCache = new HashMap<CallCacheKey, Result>();
+//        var evalContext = evalContextFactory.getEvalContext(null, javaClass, method).withArguments();
+        while (point != null) {
+            var instruction = point.getInstruction();
+            var intervalTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, IntervalTask.class);
+            var cronTaskConstructor = isConstructorOfClass(instruction, constantPoolGen, CronTask.class);
+            if (intervalTaskConstructor || cronTaskConstructor) {
+                var delayInvokeExpr = (DelayInvoke) evalContext.eval(point, callCache);
+                var argumentsExpr = delayInvokeExpr.getArguments();
+                var invokespecial = (InvokeInstruction) instruction;
+                var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
+                return getRunnableAndTriggerExpr(argumentTypes, argumentsExpr, evalContext, resolver);
+            } else if (instruction instanceof INVOKEDYNAMIC) {
+                throw new UnsupportedOperationException("TODO INVOKEDYNAMIC");
+            } else if (instruction instanceof InvokeInstruction) {
+
+                var invokeInstruction = (InvokeInstruction) instruction;
+                var className = invokeInstruction.getClassName(constantPoolGen);
+                var methodName = invokeInstruction.getMethodName(constantPoolGen);
+                var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+
+                var delayInvokeExpr = (DelayInvoke) evalContext.eval(point, callCache);
+                var argumentsExpr = delayInvokeExpr.getArguments();
+
+                var object = delayInvokeExpr.getObject();
+                var bean = object.getValue();
+                var parentComponent = evalContext.getComponent();
+                var sameBean = parentComponent.getBean() == bean;
+                var component1 = sameBean ? parentComponent : Component.builder().bean(bean).build();
+                final JavaClass javaClass1;
+                final Method method1;
+                if (sameBean) {
+                    javaClass1 = javaClass;
+                    var sameMethod = method.getName().equals(methodName) && Arrays.equals(method.getArgumentTypes(), argumentTypes);
+                    method1 = sameMethod ? method : getMethodsStream(javaClass).filter(byNameAndArgs(methodName, argumentTypes))
+                            .findFirst().orElseThrow(() -> methodNotFoundException(javaClass.getClassName(), methodName,
+                                    argumentTypes)).getValue();
+                } else {
+                    var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
+                    if (classAndMethodSource == null) {
+                        throw methodNotFoundException(className, methodName, argumentTypes);
+                    }
+                    javaClass1 = classAndMethodSource.getKey();
+                    method1 = classAndMethodSource.getValue();
+                }
+                var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1).withArguments2(0, argumentsExpr);
+
+                var constructor = findTaskConstructorExpr(javaClass1,
+                        method1, evalContextFactory, resolver, arguments, evalContext1);
+                if (constructor != null) {
+                    return constructor;
+                }
+            }
+            point = point.getPrev();
+        }
+        return null;
+    }
+
+    private static IllegalStateException methodNotFoundException(String className, String methodName, Type[] argumentTypes) {
+        return new IllegalStateException("no method '" + methodName +
+                "' with args " + asList(argumentTypes) + " in class " +
+                className);
+    }
+
+    public static boolean isConstructorOfClass(Instruction instruction, ConstantPoolGen constantPoolGen,
+                                               Class<?> clazz) throws ClassNotFoundException {
+        if (!(instruction instanceof INVOKESPECIAL)) {
+            return false;
+        }
+        var invokespecial = (INVOKESPECIAL) instruction;
+        var name = invokespecial.getName(constantPoolGen);
+        var isConstructor = "<init>".equals(name);
+        if (!isConstructor) {
+            return false;
+        }
+        var className = invokespecial.getClassName(constantPoolGen);
+        var aClass = classByName(className);
+        return clazz.isAssignableFrom(aClass);
+    }
+
+    private static ScheduledRoutineAndTrigger getRunnableAndTriggerExpr(Type[] argumentTypes, List<Result> argumentsExpr,
+                                                                        Eval evalContext, Resolver resolver) {
         Result runnableExpr = null;
         Result triggerExpr = null;
         for (int i = 0; i < argumentTypes.length; i++) {
@@ -177,12 +280,11 @@ public class SchedulingConfigurerUtils {
                 triggerExpr = argumentsExpr.get(i);
             }
             if (runnableExpr != null && triggerExpr != null) {
-                return Map.entry(runnableExpr, triggerExpr);
+                return new ScheduledRoutineAndTrigger(runnableExpr, triggerExpr);
             }
         }
         return null;
     }
-
 
     private static List<ScheduledMethod> getScheduledMethods(TriggerType triggerType,
                                                              Function<TimeUnit, String> timeUnitStringifier,
@@ -348,5 +450,12 @@ public class SchedulingConfigurerUtils {
                 .expression(expression)
                 .triggerType(triggerType)
                 .build());
+    }
+
+    @Data
+    @FieldDefaults(makeFinal = true, level = PRIVATE)
+    public class ScheduledRoutineAndTrigger {
+        Result runnableExpr;
+        Result triggerExpr;
     }
 }
