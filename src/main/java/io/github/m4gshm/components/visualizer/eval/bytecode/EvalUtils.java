@@ -1,7 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.ParameterValue;
-import io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.BootstrapMethodHandlerAndArguments;
 import io.github.m4gshm.components.visualizer.eval.result.Delay;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
@@ -101,10 +100,11 @@ public class EvalUtils {
 
     static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
                          InstructionHandle lastArgInstruction, Type expectedType, List<ParameterValue> parameters,
-                         Component component, Method method) {
+                         Component component, Method method, EvalVisitor visitor) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, expectedType, firstInstruction, lastArgInstruction, component, method, parameters);
+            return invoked(value, expectedType, firstInstruction, lastArgInstruction, component, method, parameters, visitor
+            );
         } catch (Throwable e) {
             throw new EvalException(e);
         }
@@ -120,9 +120,9 @@ public class EvalUtils {
         return constructor;
     }
 
-    static Result instantiateObject(InstructionHandle instructionHandle,
-                                    Class<?> type, Class<?>[] argumentTypes, Object[] arguments,
-                                    Delay parent, Component component, Method method) {
+    static Result instantiateObject(InstructionHandle instructionHandle, Class<?> type, Class<?>[] argumentTypes,
+                                    Object[] arguments, Delay parent, Component component,
+                                    Method method, EvalVisitor visitor) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -132,7 +132,8 @@ public class EvalUtils {
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
             return constant(value, ObjectType.getType(type), instructionHandle, instructionHandle, component, method,
-                    null, parent.getRelations());
+                    null, parent.getRelations(), visitor
+            );
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
             throw new IllegalInvokeException(e, constructor, instructionHandle, parent);
@@ -144,18 +145,14 @@ public class EvalUtils {
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
                                       @NonNull InstructionHandle lastArgInstruction, Type expectedType, Eval evalBytecode,
-                                      BootstrapMethodHandlerAndArguments methodAndArguments,
-                                      List<ParameterValue> parameters) {
-        var callSite = getCallSite(methodAndArguments);
-        var lambdaInstance = callSite.dynamicInvoker();
-        return invoke(lambdaInstance, arguments, instructionHandle, lastArgInstruction, expectedType, parameters,
-                evalBytecode.getComponent(), evalBytecode.getMethod());
+                                      List<ParameterValue> parameters, CallSite callSite, EvalVisitor visitor) {
+        return invoke(callSite.dynamicInvoker(), arguments, instructionHandle, lastArgInstruction, expectedType,
+                parameters, evalBytecode.getComponent(), evalBytecode.getMethod(), visitor);
     }
 
-    private static CallSite getCallSite(BootstrapMethodHandlerAndArguments methodAndArguments) {
+    public static CallSite getCallSite(MethodHandle handler, List<Object> bootstrapMethodArguments) {
         try {
-            var bootstrapMethodArguments = methodAndArguments.getBootstrapMethodArguments();
-            return (CallSite) methodAndArguments.getHandler().invokeWithArguments(bootstrapMethodArguments);
+            return (CallSite) handler.invokeWithArguments(bootstrapMethodArguments);
         } catch (Throwable e) {
             throw new EvalException(e);
         }
@@ -187,18 +184,19 @@ public class EvalUtils {
 
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
                                        InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
-                                       Result parent, Component component, Method method) {
+                                       Result parent, Component component, Method method, EvalVisitor visitor) {
         var field = getDeclaredField(objectClass, name);
         return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
-                ? getFieldValue(object, field, lastInstruction, component, method)
+                ? getFieldValue(object, field, lastInstruction, component, method, visitor)
                 : notAccessible(field, getFieldInstruction, parent);
     }
 
     private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
-                                        Component component, Method method) {
+                                        Component component, Method method, EvalVisitor visitor) {
         try {
             return constant(field.get(object), ObjectType.getType(field.getType()), lastInstruction, lastInstruction,
-                    component, method, asList());
+                    component, method, asList(), visitor
+            );
         } catch (IllegalAccessException e) {
             throw new EvalException(e);
         }

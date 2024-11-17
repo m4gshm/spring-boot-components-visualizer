@@ -13,6 +13,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.springframework.web.client.RestOperations;
@@ -23,8 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -45,7 +46,7 @@ public class RestOperationsUtils {
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
-                return match ? extractHttpMethods(component, instructionHandle, constantPoolGen, bootstrapMethods,
+                return match ? extractHttpMethods(component, instructionHandle, javaClass, constantPoolGen, bootstrapMethods,
                         method, callCache, evalContextFactory, resolver) : null;
             }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
         }).collect(toList());
@@ -57,15 +58,16 @@ public class RestOperationsUtils {
     }
 
     private static List<HttpMethod> extractHttpMethods(Component component, InstructionHandle instructionHandle,
-                                                       ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-                                                       Method method, Map<CallCacheKey, Result> callCache,
+                                                       JavaClass javaClass, ConstantPoolGen constantPoolGen,
+                                                       BootstrapMethods bootstrapMethods, Method method,
+                                                       Map<CallCacheKey, Result> callCache,
                                                        EvalContextFactory evalContextFactory, Resolver resolver) {
         var instructionText = instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
         log.info("extractHttpMethod component {}, method {}, invoke {}", component.getName(), method.toString(),
                 instructionText);
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
         var methodName = instruction.getMethodName(constantPoolGen);
-        var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
+        var eval = evalContextFactory.getEvalContext(component, javaClass, method, bootstrapMethods);
         var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
         var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 

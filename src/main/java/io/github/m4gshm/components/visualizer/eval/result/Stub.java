@@ -6,12 +6,13 @@ import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.Type;
 
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Stub extends Result implements ContextAware {
+public class Stub extends Result implements ContextAware, TypeAware {
     Method method;
     Component component;
     Variable stubbed;
@@ -46,5 +47,10 @@ public class Stub extends Result implements ContextAware {
     @Override
     public String toString() {
         return "stub(" + stubbed + ")";
+    }
+
+    @Override
+    public Type getType() {
+        return stubbed.getType();
     }
 }

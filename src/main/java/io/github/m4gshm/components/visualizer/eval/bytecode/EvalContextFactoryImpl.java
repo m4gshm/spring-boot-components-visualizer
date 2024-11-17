@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Variable;
 import io.github.m4gshm.components.visualizer.model.CallPoint;
@@ -8,8 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
-import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.Type;
 
 import java.util.*;
@@ -20,6 +21,7 @@ import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPoints
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.findClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalVisitor.NOOP;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -46,7 +48,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         return methodArgumentVariants.values().stream()
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
-                .flatMap(e -> e.getValue().stream()).map(Eval.EvalArguments::getArguments)
+                .flatMap(e -> e.getValue().stream()).map(EvalArguments::getArguments)
                 .distinct().collect(toList());
     }
 
@@ -87,10 +89,12 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     private static String ownerClassName(CallPoint dependentMethod) {
-        return dependentMethod.getOwnerClass() != null ? dependentMethod.getOwnerClass().getName() : dependentMethod.getOwnerClassName();
+        return dependentMethod.getOwnerClass() != null
+                ? dependentMethod.getOwnerClass().getName()
+                : dependentMethod.getOwnerClassName();
     }
 
-    static Map<Component, Map<CallPoint, List<Eval.EvalArguments>>> getEvalCallPointVariants(
+    static Map<Component, Map<CallPoint, List<EvalArguments>>> getEvalCallPointVariants(
             Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
             Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory
     ) {
@@ -111,13 +115,13 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
         }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue, warnDuplicated(), LinkedHashMap::new));
     }
 
-    static Map.Entry<CallPoint, List<Eval.EvalArguments>> evalCallPointArgumentVariants(
+    static Map.Entry<CallPoint, List<EvalArguments>> evalCallPointArgumentVariants(
             CallPoint dependentMethod, List<CallPoint> matchedCallPoints,
             Eval eval, Map<CallCacheKey, Result> callCache
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return Eval.evalArguments(callPoint, eval, callCache);
+                return Eval.evalArguments(callPoint, eval, callCache, NOOP);
             } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
@@ -133,7 +137,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 } else {
                     log.info("{} is aborted by error", "evalCallPointArgumentVariants", e);
                 }
-                return List.<Eval.EvalArguments>of();
+                return List.<EvalArguments>of();
             }
         }).flatMap(Collection::stream).filter(Objects::nonNull).collect(toList());
         return !argVariants.isEmpty() ? entry(dependentMethod, argVariants) : null;
@@ -178,10 +182,10 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     @Override
-    public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
+    public Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
         var argumentVariants = component != null ? computeArgumentVariants(component, method, callCache, this,
                 dependentProvider, callPointsProvider) : List.<List<Result>>of();
-        return new Eval(component, new ConstantPoolGen(method.getConstantPool()), bootstrapMethods, method, argumentVariants);
+        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants);
     }
 
     public interface DependentProvider extends Function<Component, List<Component>> {

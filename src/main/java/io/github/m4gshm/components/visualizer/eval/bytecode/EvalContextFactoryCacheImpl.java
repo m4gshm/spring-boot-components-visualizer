@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 
 import java.util.Map;
@@ -16,10 +17,10 @@ public class EvalContextFactoryCacheImpl implements EvalContextFactory {
     EvalContextFactory evalContextFactory;
 
     @Override
-    public Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods) {
+    public Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
         return cache.computeIfAbsent(
                 new Key(component, method),
-                k -> evalContextFactory.getEvalContext(component, method, bootstrapMethods)
+                k -> evalContextFactory.getEvalContext(component, javaClass, method, bootstrapMethods)
         );
     }
 

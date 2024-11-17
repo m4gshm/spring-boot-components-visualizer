@@ -14,7 +14,7 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Variable extends Result implements ContextAware {
+public class Variable extends Result implements ContextAware, TypeAware {
     VarType varType;
     Eval evalContext;
     int index;

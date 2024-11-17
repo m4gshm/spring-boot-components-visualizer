@@ -82,7 +82,7 @@ public class CallPointsHelper {
             if (methodInfo != null) {
                 var argumentTypes = Type.getArgumentTypes(methodInfo.getSignature());
                 var methodName = methodInfo.getName();
-                var ownerClassName = methodInfo.getObjectType().getName();
+                var ownerClassName = methodInfo.getClassName();
                 var referenceKind = methodInfo.getReferenceKind();
                 return CallPoint.builder()
                         .methodName(methodName)

@@ -103,7 +103,7 @@ import java.io.OutputStreamWriter;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
-@SpringBootTest(classes = {YourSprintBootApplication.class, SchemaGeneratorTest.TestConfiguration.class})
+@SpringBootTest(classes = {YourSprintBootApplication.class})
 @EnableAutoConfiguration
 public class SchemaGeneratorTest {
 

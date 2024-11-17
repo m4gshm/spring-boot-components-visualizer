@@ -10,8 +10,8 @@ import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMe
 @FunctionalInterface
 public interface EvalContextFactory {
     default Eval getEvalContext(Component component, JavaClass javaClass, Method method) {
-        return getEvalContext(component, method, getBootstrapMethods(javaClass));
+        return getEvalContext(component, javaClass, method, getBootstrapMethods(javaClass));
     }
 
-    Eval getEvalContext(Component component, Method method, BootstrapMethods bootstrapMethods);
+    Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods);
 }
