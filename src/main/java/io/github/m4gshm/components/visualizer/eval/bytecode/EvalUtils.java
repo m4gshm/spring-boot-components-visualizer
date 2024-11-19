@@ -100,10 +100,10 @@ public class EvalUtils {
 
     static Result invoke(MethodHandle methodHandle, Object[] arguments, InstructionHandle firstInstruction,
                          InstructionHandle lastArgInstruction, Type expectedType, List<ParameterValue> parameters,
-                         Component component, Method method, EvalVisitor visitor) {
+                         Component component, Method method) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, expectedType, firstInstruction, lastArgInstruction, component, method, parameters, visitor
+            return invoked(value, expectedType, firstInstruction, lastArgInstruction, component, method, parameters
             );
         } catch (Throwable e) {
             throw new EvalException(e);
@@ -122,7 +122,7 @@ public class EvalUtils {
 
     static Result instantiateObject(InstructionHandle instructionHandle, Class<?> type, Class<?>[] argumentTypes,
                                     Object[] arguments, Delay parent, Component component,
-                                    Method method, EvalVisitor visitor) {
+                                    Method method) {
         Constructor<?> constructor;
         try {
             constructor = type.getDeclaredConstructor(argumentTypes);
@@ -132,7 +132,7 @@ public class EvalUtils {
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
             return constant(value, ObjectType.getType(type), instructionHandle, instructionHandle, component, method,
-                    null, parent.getRelations(), visitor
+                    null, parent.getRelations()
             );
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
                  InvocationTargetException e) {
@@ -145,9 +145,9 @@ public class EvalUtils {
 
     static Result callBootstrapMethod(@NonNull Object[] arguments, InstructionHandle instructionHandle,
                                       @NonNull InstructionHandle lastArgInstruction, Type expectedType, Eval evalBytecode,
-                                      List<ParameterValue> parameters, CallSite callSite, EvalVisitor visitor) {
+                                      List<ParameterValue> parameters, CallSite callSite) {
         return invoke(callSite.dynamicInvoker(), arguments, instructionHandle, lastArgInstruction, expectedType,
-                parameters, evalBytecode.getComponent(), evalBytecode.getMethod(), visitor);
+                parameters, evalBytecode.getComponent(), evalBytecode.getMethod());
     }
 
     public static CallSite getCallSite(MethodHandle handler, List<Object> bootstrapMethodArguments) {
@@ -184,18 +184,18 @@ public class EvalUtils {
 
     public static Result getFieldValue(Object object, Class<?> objectClass, String name,
                                        InstructionHandle getFieldInstruction, InstructionHandle lastInstruction,
-                                       Result parent, Component component, Method method, EvalVisitor visitor) {
+                                       Result parent, Component component, Method method) {
         var field = getDeclaredField(objectClass, name);
         return field == null ? Result.notFound(name, getFieldInstruction, parent) : field.trySetAccessible()
-                ? getFieldValue(object, field, lastInstruction, component, method, visitor)
+                ? getFieldValue(object, field, lastInstruction, component, method)
                 : notAccessible(field, getFieldInstruction, parent);
     }
 
     private static Result getFieldValue(Object object, Field field, InstructionHandle lastInstruction,
-                                        Component component, Method method, EvalVisitor visitor) {
+                                        Component component, Method method) {
         try {
             return constant(field.get(object), ObjectType.getType(field.getType()), lastInstruction, lastInstruction,
-                    component, method, asList(), visitor
+                    component, method, asList()
             );
         } catch (IllegalAccessException e) {
             throw new EvalException(e);

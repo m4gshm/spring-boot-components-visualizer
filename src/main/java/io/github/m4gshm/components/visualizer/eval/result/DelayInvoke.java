@@ -17,20 +17,22 @@ import static lombok.AccessLevel.PROTECTED;
 @FieldDefaults(makeFinal = true, level = PROTECTED)
 public class DelayInvoke extends Delay {
     Result object;
+    String methodName;
     List<Result> arguments;
 
     public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
                        String description, DelayFunction<DelayInvoke> evaluator, Result prev,
-                       Type type, Result object, List<Result> arguments) {
+                       Type type, Result object, String methodName, List<Result> arguments) {
         super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev,
                 Stream.of(ofNullable(object), arguments.stream()).flatMap(s -> s).collect(toList()), type, null);
         this.object = object;
+        this.methodName = methodName;
         this.arguments = arguments;
     }
 
     @Override
     public DelayInvoke withEval(Eval eval) {
         return new DelayInvoke(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, type, object, arguments);
+                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, type, object, methodName, arguments);
     }
 }

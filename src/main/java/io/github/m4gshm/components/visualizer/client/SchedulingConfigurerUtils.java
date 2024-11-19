@@ -5,17 +5,15 @@ import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMetho
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
-import io.github.m4gshm.components.visualizer.eval.bytecode.EvalVisitor;
-import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
-import io.github.m4gshm.components.visualizer.eval.result.DelayLoadFromStore;
-import io.github.m4gshm.components.visualizer.eval.result.Resolver;
-import io.github.m4gshm.components.visualizer.eval.result.Result;
+import io.github.m4gshm.components.visualizer.eval.result.*;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.MethodId;
 import lombok.Data;
+import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
@@ -34,7 +32,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalVisitor.NOOP;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
@@ -46,6 +43,7 @@ import static lombok.AccessLevel.PRIVATE;
 import static org.apache.bcel.generic.Type.getArgumentTypes;
 import static org.apache.bcel.generic.Type.getType;
 
+@Slf4j
 @UtilityClass
 public class SchedulingConfigurerUtils {
     public static List<ScheduledMethod> getScheduledByConfigurerMethods(Component component, Class<?> componentType,
@@ -72,7 +70,7 @@ public class SchedulingConfigurerUtils {
                                 ? TriggerType.fixedDelay : cron
                                 ? TriggerType.cron : null;
                         if (triggerType != null) {
-                            return extractRunnableScheduled(triggerType, instructionHandle, component, componentType,
+                            return extractScheduledMethods(triggerType, instructionHandle, component, componentType,
                                     source, method, evalContextFactory, callCache, resolver, timeUnitStringifier).stream();
                         }
                     }
@@ -84,7 +82,7 @@ public class SchedulingConfigurerUtils {
     }
 
     @SneakyThrows
-    private static List<ScheduledMethod> extractRunnableScheduled(
+    private static List<ScheduledMethod> extractScheduledMethods(
             TriggerType triggerType, InstructionHandle runnableInstruction, Component component,
             Class<?> componentType, JavaClass source, Method method, EvalContextFactory evalContextFactory,
             Map<CallCacheKey, Result> callCache, Resolver resolver, Function<TimeUnit, String> timeUnitStringifier
@@ -98,7 +96,7 @@ public class SchedulingConfigurerUtils {
             if (argAmount == 1) {
                 var taskExpr = arguments.get(0);
                 var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory, resolver,
-                        taskExpr.getFirstInstruction(), evalContext, NOOP);
+                        taskExpr.getFirstInstruction(), evalContext);
                 var runnableExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getRunnableExpr() : null;
                 var triggerExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getTriggerExpr() : null;
                 if (runnableExpr != null && triggerExpr != null) {
@@ -134,7 +132,7 @@ public class SchedulingConfigurerUtils {
     private static ScheduledRoutineAndTrigger findTaskConstructorExpr(JavaClass javaClass, Method method,
                                                                       EvalContextFactory evalContextFactory,
                                                                       Resolver resolver, InstructionHandle first,
-                                                                      Eval evalContext, EvalVisitor visitor
+                                                                      Eval evalContext
     ) throws ClassNotFoundException {
         var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
         var callCache = new HashMap<CallCacheKey, Result>();
@@ -224,10 +222,10 @@ public class SchedulingConfigurerUtils {
 
             var last1 = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
 
-            var nextExp = evalContext1.eval(last1, callCache, visitor);
+            var nextExp = evalContext1.eval(last1, callCache);
 
             return findTaskConstructorExpr(javaClass1, method1, evalContextFactory, resolver,
-                    nextExp.getFirstInstruction(), evalContext1, visitor);
+                    nextExp.getFirstInstruction(), evalContext1);
         }
         return null;
     }
@@ -298,12 +296,7 @@ public class SchedulingConfigurerUtils {
             methodIdStream = scheduledMethodIds.stream();
         }
 
-        List<Object> triggerValues;
-        try {
-            triggerValues = resolveValues(triggerExpr, evalContext, resolver);
-        } catch (Exception e) {
-            throw e;
-        }
+        var triggerValues = evalContext.resolve(triggerExpr, resolver).getValue(resolver);
         var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
                 resolver, timeUnitStringifier);
 
@@ -414,11 +407,6 @@ public class SchedulingConfigurerUtils {
         return timeUnits;
     }
 
-    private static List<Object> resolveValues(Result result, Eval evalContext, Resolver resolver) {
-        var triggerResolved = evalContext.resolve(result, resolver);
-        return triggerResolved.getValue(resolver);
-    }
-
     private static Stream<String> getTimeExpressionStream(long millisec, Collection<TimeUnit> timeUnits,
                                                           Function<TimeUnit, String> timeUnitStringifier) {
         return timeUnits.stream().map(timeUnit -> getTimeExpression(millisec, timeUnit, timeUnitStringifier));
@@ -443,4 +431,5 @@ public class SchedulingConfigurerUtils {
         Result runnableExpr;
         Result triggerExpr;
     }
+
 }

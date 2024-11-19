@@ -21,7 +21,6 @@ import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPoints
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.findClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalVisitor.NOOP;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -121,7 +120,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return Eval.evalArguments(callPoint, eval, callCache, NOOP);
+                return Eval.evalArguments(callPoint, eval, callCache);
             } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
