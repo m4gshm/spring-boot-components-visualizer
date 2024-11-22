@@ -38,6 +38,7 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamic
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.asList;
+import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.*;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
@@ -48,6 +49,9 @@ import static org.apache.bcel.generic.Type.getType;
 @Slf4j
 @UtilityClass
 public class SchedulingConfigurerUtils {
+
+    public static final Type[] NO_ARGS = new Type[0];
+
     public static List<ScheduledMethod> getScheduledByConfigurerMethods(Component component, Class<?> componentType,
                                                                         Function<TimeUnit, String> timeUnitStringifier,
                                                                         EvalContextFactory evalContextFactory,
@@ -55,7 +59,7 @@ public class SchedulingConfigurerUtils {
                                                                         Resolver resolver) {
         if (SchedulingConfigurer.class.isAssignableFrom(componentType)) {
             var configureTasksMethodClassPair = getClassAndMethodSource(componentType, "configureTasks",
-                    getType(ScheduledTaskRegistrar.class));
+                    array(getType(ScheduledTaskRegistrar.class)));
             if (configureTasksMethodClassPair != null) {
                 var method = configureTasksMethodClassPair.getValue();
                 var source = configureTasksMethodClassPair.getKey();
@@ -81,6 +85,11 @@ public class SchedulingConfigurerUtils {
             }
         }
         return List.of();
+    }
+
+    @SafeVarargs
+    private static <T> T[] array(T... objs) {
+        return objs;
     }
 
     @SneakyThrows
@@ -206,9 +215,9 @@ public class SchedulingConfigurerUtils {
             if (same) {
                 javaClass1 = javaClass;
                 var sameMethod = method.getName().equals(methodName) && Arrays.equals(method.getArgumentTypes(), argumentTypes);
-                method1 = sameMethod ? method : getMethodsStream(javaClass).filter(byNameAndArgs(methodName, argumentTypes))
+                method1 = sameMethod ? method : getMethodsSource(javaClass, byNameAndArgs(methodName, argumentTypes)).stream()
                         .findFirst().orElseThrow(() -> methodNotFoundException(javaClass.getClassName(), methodName,
-                                argumentTypes)).getValue();
+                                argumentTypes));
             } else {
                 var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
                 if (classAndMethodSource == null) {
@@ -289,25 +298,16 @@ public class SchedulingConfigurerUtils {
             var touched = new HashMap<String, Set<MethodId>>();
             List<MethodId> scheduledMethodIds;
             if (isLambda(runnableClass)) {
-//                JavaClass javaClass;
-//                try {
-//                    String name = runnableClass.getName();
-//                    int split = name.lastIndexOf("/");
-//                    if(split >=0) {
-//                        String tail = name.substring(0);
-////                        tail.matches("/\\d.+");
-//                        name = name.substring(0, split);
-//                    }
-//                    javaClass = LambdaProxyClassesDumper.loadClass(name);
-//                } catch (ClassNotFoundException e) {
-//                    log.error("load lambda bytecode error", e);
-//                    javaClass = null;
-//                }
                 scheduledMethodIds = getMethodIds(componentType, runnableExpr.getFirstInstruction(),
-                        evalContext.getConstantPoolGen(), getBootstrapMethods(source), touched);
+                        evalContext.getConstantPoolGen(), source, getBootstrapMethods(source), touched);
+                if (scheduledMethodIds.isEmpty()) {
+                    //unnamed methods
+                    //log
+                    scheduledMethodIds = singletonList(newMethodId((String) null));
+                }
             } else {
-                scheduledMethodIds = getScheduledMethodIdsFromMethod(componentType,
-                        getClassAndMethodSource(runnableClass, "run"), touched);
+                scheduledMethodIds = getScheduledMethodIdsFromMethodSource(componentType,
+                        getClassAndMethodSource(runnableClass, "run", NO_ARGS), touched);
             }
             methodIdStream = scheduledMethodIds.stream();
         }
@@ -328,28 +328,35 @@ public class SchedulingConfigurerUtils {
         return aClass.isSynthetic() && aClass.getSimpleName().contains("$$Lambda");
     }
 
-    private static List<MethodId> getScheduledMethodIdsFromMethod(
+    private static List<MethodId> getScheduledMethodIdsFromMethodSource(
             Class<?> beanType, Entry<JavaClass, Method> runClassMethodPair, Map<String, Set<MethodId>> touched
     ) {
-        var source = runClassMethodPair.getKey();
-        var runMethod = runClassMethodPair.getValue();
+        return getScheduledMethodIdsFromMethodSource(beanType, runClassMethodPair.getKey(), runClassMethodPair.getValue(), touched);
+    }
 
+    private static List<MethodId> getScheduledMethodIdsFromMethodSource(Class<?> beanType, JavaClass source,
+                                                                        Method method, Map<String, Set<MethodId>> touched) {
         var bootstrapMethods = getBootstrapMethods(source);
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
-        return instructionHandleStream(runMethod.getCode()).map(instructionHandle -> {
-            return getMethodIds(beanType, instructionHandle, constantPoolGen, bootstrapMethods, touched);
+        return instructionHandleStream(method.getCode()).map(instructionHandle -> {
+            return getMethodIds(beanType, instructionHandle, constantPoolGen, source, bootstrapMethods, touched);
         }).flatMap(Collection::stream).collect(toList());
     }
 
     private static List<MethodId> getMethodIds(Class<?> beanType, InstructionHandle instructionHandle,
-                                               ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-                                               Map<String, Set<MethodId>> touched) {
+                                               ConstantPoolGen constantPoolGen, JavaClass source,
+                                               BootstrapMethods bootstrapMethods, Map<String, Set<MethodId>> touched) {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
             return getMethodIds(beanType, (INVOKEDYNAMIC) instruction, constantPoolGen, bootstrapMethods, touched);
         } else if (instruction instanceof InvokeInstruction) {
             return getMethodIds(beanType, instructionHandle, constantPoolGen, touched);
+        } else if (instruction instanceof GETFIELD) {
+            var classAndMethodSource = getMethodsSource(source, byName("<init>"));
+            return classAndMethodSource.stream().flatMap(method -> {
+                return getScheduledMethodIdsFromMethodSource(beanType, source, method, touched).stream();
+            }).collect(toList());
         } else {
             return List.of();
         }
@@ -396,7 +403,7 @@ public class SchedulingConfigurerUtils {
                 return List.of();
             }
             var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
-            return getScheduledMethodIdsFromMethod(componentType, classAndMethodSource, touched);
+            return getScheduledMethodIdsFromMethodSource(componentType, classAndMethodSource, touched);
         }
     }
 
@@ -430,35 +437,33 @@ public class SchedulingConfigurerUtils {
         } else return List.of();
     }
 
-    private static String getTimeExpression(long millisec, TimeUnit timeUnit, Function<TimeUnit, String> timeUnitStringifier) {
+    public static String getTimeExpression(long millisec, TimeUnit timeUnit, Function<TimeUnit, String> timeUnitStringifier) {
         if (timeUnit == null) {
             //todo must be optional
             var sec = millisec / 1000;
+            millisec = millisec % 1000;
             var min = sec / 60;
+            sec = sec % 60;
             var hour = min / 60;
+            min = min % 60;
             var day = hour / 24;
+            hour = hour % 24;
+
             var expr = new StringBuilder();
             if (day > 0) {
                 expr.append(day).append(timeUnitStringifier.apply(DAYS));
-                hour = hour % 24;
             }
             if (hour > 0) {
                 expr.append(hour).append(timeUnitStringifier.apply(HOURS));
-                min = min % 60;
-                sec = sec % 60;
-                millisec = millisec % 1000;
             }
             if (min > 0) {
                 expr.append(min).append(timeUnitStringifier.apply(MINUTES));
-                sec = sec % 60;
-                millisec = millisec % 1000;
             }
             if (sec > 0) {
                 expr.append(sec).append(timeUnitStringifier.apply(SECONDS));
-                millisec = millisec % 1000;
             }
             if (millisec > 0) {
-                expr.append(hour).append(timeUnitStringifier.apply(MILLISECONDS));
+                expr.append(millisec).append(timeUnitStringifier.apply(MILLISECONDS));
             }
             return expr.toString();
         } else {

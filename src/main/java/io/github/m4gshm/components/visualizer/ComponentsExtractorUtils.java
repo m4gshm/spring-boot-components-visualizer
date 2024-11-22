@@ -44,6 +44,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.Utils.*;
+import static io.github.m4gshm.components.visualizer.client.SchedulingConfigurerUtils.getTimeExpression;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
@@ -58,6 +59,7 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
@@ -438,24 +440,28 @@ public class ComponentsExtractorUtils {
                 .map(entry -> {
                     var scheduled = entry.getValue();
                     var cron = scheduled.cron();
-                    var fixedDelay = scheduled.fixedDelayString();
                     var fixedDelayLong = scheduled.fixedDelay();
-                    if (fixedDelayLong > -1) {
-                        fixedDelay = String.valueOf(fixedDelayLong);
+                    if (fixedDelayLong <= -1) {
+                        var fixedDelay = scheduled.fixedDelayString();
+                        if (!fixedDelay.isEmpty()) {
+                            fixedDelayLong = Long.parseLong(fixedDelay);
+                        }
                     }
-                    var fixedRate = scheduled.fixedRateString();
                     long fixedRateLong = scheduled.fixedRate();
-                    if (fixedRateLong > -1) {
-                        fixedRate = String.valueOf(fixedRateLong);
+                    if (fixedRateLong <= -1) {
+                        var fixedRate = scheduled.fixedRateString();
+                        if (!fixedRate.isEmpty()) {
+                            fixedRateLong = Long.parseLong(fixedRate);
+                        }
                     }
                     var triggerType = !cron.isEmpty() ? ScheduledMethod.TriggerType.cron
-                            : !fixedDelay.isEmpty() ? ScheduledMethod.TriggerType.fixedDelay
-                            : !fixedRate.isEmpty() ? ScheduledMethod.TriggerType.fixedRate
+                            : fixedDelayLong > -1 ? ScheduledMethod.TriggerType.fixedDelay
+                            : fixedRateLong > -1 ? ScheduledMethod.TriggerType.fixedRate
                             : null;
-
+                    var timeUnit = scheduled.timeUnit();
                     var expression = triggerType == ScheduledMethod.TriggerType.cron ? cron
-                            : triggerType == ScheduledMethod.TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
-                            : triggerType == ScheduledMethod.TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
+                            : triggerType == ScheduledMethod.TriggerType.fixedDelay ? getTimeExpression(timeUnitStringifier, fixedDelayLong, timeUnit)
+                            : triggerType == ScheduledMethod.TriggerType.fixedRate ? getTimeExpression(timeUnitStringifier, fixedRateLong, timeUnit)
                             : null;
 
                     return ScheduledMethod.builder()
@@ -469,5 +475,12 @@ public class ComponentsExtractorUtils {
                     return scheduledMethod.getTriggerType() != null;
                 })
                 .collect(toList());
+    }
+
+    private static String getTimeExpression(Function<TimeUnit, String> timeUnitStringifier, long fixedDelayLong,
+                                            TimeUnit timeUnit) {
+        return SchedulingConfigurerUtils.getTimeExpression(fixedDelayLong,
+                MILLISECONDS.equals(timeUnit) ? null : timeUnit,
+                timeUnitStringifier);
     }
 }

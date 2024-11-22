@@ -248,40 +248,34 @@ public class EvalUtils {
         return Arrays.stream(argumentTypes).map(t -> t + "").reduce((l, r) -> l + "," + r).orElse("");
     }
 
-    public static Predicate<Entry<JavaClass, Method>> byArgs(Type... argTypes) {
-        return pair -> Arrays.equals(pair.getValue().getArgumentTypes(), argTypes);
+    public static Predicate<Method> byArgs(Type... argTypes) {
+        return method -> Arrays.equals(method.getArgumentTypes(), argTypes);
     }
 
-    public static Predicate<Entry<JavaClass, Method>> byName(String methodName) {
-        return pair -> pair.getValue().getName().equals(methodName);
+    public static Predicate<Method> byName(String methodName) {
+        return method -> method.getName().equals(methodName);
     }
 
-    public static Predicate<Entry<JavaClass, Method>> byNameAndArgs(String methodName, Type[] argTypes) {
+    public static Predicate<Method> byNameAndArgs(String methodName, Type[] argTypes) {
         return byName(methodName).and(byArgs(argTypes));
     }
 
-    public static Entry<JavaClass, Method> getClassAndMethodSource(Class<?> type, String methodName, Type... argTypes) {
-        return getClassAndMethodSourceStream(type, byNameAndArgs(methodName, argTypes)).findFirst().orElse(null);
+    public static Entry<JavaClass, Method> getClassAndMethodSource(Class<?> type, String methodName, Type[] argTypes) {
+        var javaClasses = getClassSources(type);
+        var filter = byNameAndArgs(methodName, argTypes);
+        return javaClasses.stream().map(javaClass -> {
+            var filteredMethods = getMethodStream(javaClass, filter);
+            var method = filteredMethods.findFirst().orElse(null);
+            return method != null ? entry(javaClass, method) : null;
+        }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    @SafeVarargs
-    public static Map<JavaClass, List<Method>> getClassAndMethodsSource(Class<?> type, Predicate<Entry<JavaClass, Method>>... filters) {
-        var filter = of(filters).reduce(Predicate::and).orElse(o -> true);
-        return getClassAndMethodSourceStream(type, filter).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+    public static List<Method> getMethodsSource(JavaClass javaClass, Predicate<Method> filter) {
+        return getMethodStream(javaClass, filter).collect(toList());
     }
 
-    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(
-            Class<?> type, Predicate<Entry<JavaClass, Method>> filter
-    ) {
-        return getClassAndMethodSourceStream(getClassSources(type)).filter(filter);
-    }
-
-    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSourceStream(Collection<JavaClass> classSources) {
-        return classSources.stream().flatMap(EvalUtils::getMethodsStream);
-    }
-
-    public static Stream<Entry<JavaClass, Method>> getMethodsStream(JavaClass aClass) {
-        return Arrays.stream(aClass.getMethods()).map(m -> entry(aClass, m));
+    private static Stream<Method> getMethodStream(JavaClass javaClass, Predicate<Method> filter) {
+        return of(javaClass.getMethods()).filter(filter);
     }
 
     @FunctionalInterface

@@ -21,6 +21,9 @@ import static service1.service.scheduled.PeriodUpdateService.Utils.getCall2;
 @Service
 @RequiredArgsConstructor
 public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
+    public static final int _1_MIN = 60 * 1000;
+    public static final int _1_HOUR = 1000 * 60 * 60;
+    public static final int _1_SEC = 1000;
     private final Service2FeignClient service2FeignClient;
     private final JmsQueueService jmsQueueService;
     private final UserRepository userRepository;
@@ -32,7 +35,7 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
         call();
     }
 
-    @Scheduled(fixedDelay = 1000 * 60)
+    @Scheduled(fixedDelay = _1_HOUR + _1_MIN + _1_SEC + 500)
     public void getEvery1Hour() {
         call();
     }
@@ -57,26 +60,27 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
         BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
         taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
         taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
-//        taskRegistrar.addCronTask(getCronTask());
-//        taskRegistrar.addCronTask(new Runnable() {
-//            @Override
-//            public void run() {
-//                getCall2(PeriodUpdateService.this).run();
-//            }
-//        }, "* * * 3 * *");
-//
-//        taskRegistrar.addCronTask(new Runnable() {
-//            @Override
-//            public void run() {
-//                getCall3(PeriodUpdateService.this::run).run();
-//            }
-//        }, "* * * 4 * *");
-//
-//        taskRegistrar.addFixedDelayTask(getCall(), 1000);
-//        taskRegistrar.addFixedDelayTask(this::call, 2000);
-//        taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
-//        taskRegistrar.addFixedDelayTask(this, 4000);
-//        taskRegistrar.addFixedDelayTask(runnable, 5000);
+
+        taskRegistrar.addCronTask(getCronTask());
+        taskRegistrar.addCronTask(new Runnable() {
+            @Override
+            public void run() {
+                getCall2(PeriodUpdateService.this).run();
+            }
+        }, "* * * 3 * *");
+
+        taskRegistrar.addCronTask(new Runnable() {
+            @Override
+            public void run() {
+                getCall3(PeriodUpdateService.this::run).run();
+            }
+        }, "* * * 4 * *");
+
+        taskRegistrar.addFixedDelayTask(getCall(), 1000);
+        taskRegistrar.addFixedDelayTask(this::call, 2000);
+        taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
+        taskRegistrar.addFixedDelayTask(this, 4000);
+        taskRegistrar.addFixedDelayTask(runnable, 5000);
     }
 
     private Runnable getCall3(Runnable runnable) {
