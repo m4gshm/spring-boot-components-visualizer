@@ -106,7 +106,7 @@ public class SchedulingConfigurerUtils {
             var argAmount = arguments.size();
             if (argAmount == 1) {
                 var taskExpr = arguments.get(0);
-                var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory, resolver,
+                var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory,
                         taskExpr.getFirstInstruction(), evalContext);
                 var runnableExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getRunnableExpr() : null;
                 var triggerExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getTriggerExpr() : null;
@@ -142,7 +142,7 @@ public class SchedulingConfigurerUtils {
     //todo need loop control
     private static ScheduledRoutineAndTrigger findTaskConstructorExpr(JavaClass javaClass, Method method,
                                                                       EvalContextFactory evalContextFactory,
-                                                                      Resolver resolver, InstructionHandle first,
+                                                                      InstructionHandle first,
                                                                       Eval evalContext
     ) throws ClassNotFoundException {
         var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
@@ -155,7 +155,7 @@ public class SchedulingConfigurerUtils {
             var argumentsExpr = delayInvokeExpr.getArguments();
             var invokespecial = (InvokeInstruction) instruction;
             var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
-            return getRunnableAndTriggerExpr(argumentTypes, argumentsExpr, evalContext, resolver);
+            return getRunnableAndTriggerExpr(argumentTypes, argumentsExpr);
         } else if (instruction instanceof INVOKEDYNAMIC) {
             throw new UnsupportedOperationException("TODO INVOKEDYNAMIC");
         } else if (instruction instanceof InvokeInstruction) {
@@ -189,7 +189,7 @@ public class SchedulingConfigurerUtils {
                         var cronTaskConstructor1 = isConstructorOfClass(methodName1, className1, CronTask.class);
                         if (intervalTaskConstructor1 || cronTaskConstructor1) {
                             var argumentsExpr1 = delayInvokeExpr.getArguments();
-                            return getRunnableAndTriggerExpr(argumentTypes1, argumentsExpr1, evalContext, resolver);
+                            return getRunnableAndTriggerExpr(argumentTypes1, argumentsExpr1);
                         }
                     }
                 } else {
@@ -235,7 +235,7 @@ public class SchedulingConfigurerUtils {
 
             var nextExp = evalContext1.eval(last1, callCache);
 
-            return findTaskConstructorExpr(javaClass1, method1, evalContextFactory, resolver,
+            return findTaskConstructorExpr(javaClass1, method1, evalContextFactory,
                     nextExp.getFirstInstruction(), evalContext1);
         }
         return null;
@@ -264,15 +264,14 @@ public class SchedulingConfigurerUtils {
         return clazz.isAssignableFrom(aClass);
     }
 
-    private static ScheduledRoutineAndTrigger getRunnableAndTriggerExpr(Type[] argumentTypes, List<Result> argumentsExpr,
-                                                                        Eval evalContext, Resolver resolver) {
+    private static ScheduledRoutineAndTrigger getRunnableAndTriggerExpr(Type[] argumentTypes, List<Result> argumentsExpr) {
         Result runnableExpr = null;
         Result triggerExpr = null;
         for (int i = 0; i < argumentTypes.length; i++) {
             var argumentType = argumentTypes[i];
             var argClass = findClassByName(argumentType.getClassName());
             if (argClass != null && Runnable.class.isAssignableFrom(argClass)) {
-                runnableExpr = argumentsExpr.get(i);// evalContext.resolve(argumentsExpr.get(i), resolver);
+                runnableExpr = argumentsExpr.get(i);
             } else {
                 triggerExpr = argumentsExpr.get(i);
             }
