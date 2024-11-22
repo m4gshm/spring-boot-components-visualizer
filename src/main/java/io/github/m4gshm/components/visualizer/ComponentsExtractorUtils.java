@@ -190,8 +190,8 @@ public class ComponentsExtractorUtils {
                                                                 EvalContextFactory evalContextFactory,
                                                                 Map<CallCacheKey, Result> callCache, Resolver resolver) {
 
-        var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component, componentType, timeUnitStringifier,
-                evalContextFactory, callCache, resolver);
+        var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component,
+                componentType, timeUnitStringifier, evalContextFactory, callCache, resolver);
         var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(componentType, timeUnitStringifier);
         return Stream.concat(scheduledByConfigurerMethods.stream(), scheduledByAnnotationMethods.stream()).collect(toList());
     }

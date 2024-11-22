@@ -38,7 +38,7 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamic
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.asList;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.*;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
 import static lombok.AccessLevel.PRIVATE;
@@ -402,38 +402,68 @@ public class SchedulingConfigurerUtils {
 
     private static List<String> resolveTriggerExpression(TriggerType triggerType, List<Object> triggerValues,
                                                          Result triggerExpr, Resolver resolver,
-                                                         Function<TimeUnit, String> timeUnitStringifier) {
+                                                         Function<TimeUnit, String> timeUnitStringifier
+    ) {
         switch (triggerType) {
             case fixedDelay:
             case fixedRate:
-                var millisecs = triggerValues.stream().map(value -> value instanceof Number ? ((Number) value).longValue() : null)
+                var millisecs = triggerValues.stream().map(value -> value instanceof Number
+                                ? ((Number) value).longValue() : null)
                         .filter(Objects::nonNull).collect(toList());
                 var timeUnits = getTimeUnits(triggerExpr, resolver);
-                return millisecs.stream().flatMap(millisec ->
-                        getTimeExpressionStream(millisec, timeUnits, timeUnitStringifier)).collect(toList());
+                return millisecs.stream().flatMap(millisec -> timeUnits.isEmpty()
+                        ? of(getTimeExpression(millisec, null, timeUnitStringifier))
+                        : timeUnits.stream().map(timeUnit -> getTimeExpression(millisec, timeUnit,
+                        timeUnitStringifier))).collect(toList());
             default:
                 return triggerValues.stream().map(v -> "" + v).collect(toList());
         }
     }
 
     private static List<TimeUnit> getTimeUnits(Result triggerExpr, Resolver resolver) {
-        List<TimeUnit> timeUnits;
         if (triggerExpr instanceof DelayInvoke) {
+            //todo need deep visitor
             var object1 = ((DelayInvoke) triggerExpr).getObject();
-            timeUnits = object1 != null ? object1.getValue(resolver).stream()
+            return object1 != null ? object1.getValue(resolver).stream()
                     .map(object -> object instanceof TimeUnit ? (TimeUnit) object : null).filter(Objects::nonNull)
-                    .collect(toList()) : List.of(MILLISECONDS);
-        } else timeUnits = List.of(MILLISECONDS);
-        return timeUnits;
-    }
-
-    private static Stream<String> getTimeExpressionStream(long millisec, Collection<TimeUnit> timeUnits,
-                                                          Function<TimeUnit, String> timeUnitStringifier) {
-        return timeUnits.stream().map(timeUnit -> getTimeExpression(millisec, timeUnit, timeUnitStringifier));
+                    .collect(toList()) : List.of();
+        } else return List.of();
     }
 
     private static String getTimeExpression(long millisec, TimeUnit timeUnit, Function<TimeUnit, String> timeUnitStringifier) {
-        return timeUnit.convert(millisec, MILLISECONDS) + timeUnitStringifier.apply(timeUnit);
+        if (timeUnit == null) {
+            //todo must be optional
+            var sec = millisec / 1000;
+            var min = sec / 60;
+            var hour = min / 60;
+            var day = hour / 24;
+            var expr = new StringBuilder();
+            if (day > 0) {
+                expr.append(day).append(timeUnitStringifier.apply(DAYS));
+                hour = hour % 24;
+            }
+            if (hour > 0) {
+                expr.append(hour).append(timeUnitStringifier.apply(HOURS));
+                min = min % 60;
+                sec = sec % 60;
+                millisec = millisec % 1000;
+            }
+            if (min > 0) {
+                expr.append(min).append(timeUnitStringifier.apply(MINUTES));
+                sec = sec % 60;
+                millisec = millisec % 1000;
+            }
+            if (sec > 0) {
+                expr.append(sec).append(timeUnitStringifier.apply(SECONDS));
+                millisec = millisec % 1000;
+            }
+            if (millisec > 0) {
+                expr.append(hour).append(timeUnitStringifier.apply(MILLISECONDS));
+            }
+            return expr.toString();
+        } else {
+            return timeUnit.convert(millisec, MILLISECONDS) + timeUnitStringifier.apply(timeUnit);
+        }
     }
 
     private static Stream<ScheduledMethod> getScheduledMethodStream(TriggerType triggerType, MethodId methodId,

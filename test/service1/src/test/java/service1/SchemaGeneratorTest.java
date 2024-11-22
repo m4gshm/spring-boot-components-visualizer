@@ -23,10 +23,6 @@ import static java.util.Objects.requireNonNull;
 @EnableAutoConfiguration
 public class SchemaGeneratorTest {
 
-    static {
-        LambdaProxyClassesDumper.isDumperInitialized();
-    }
-
     @Autowired
     ComponentsExtractor extractor;
     @Autowired

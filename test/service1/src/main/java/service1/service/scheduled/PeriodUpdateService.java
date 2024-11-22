@@ -53,10 +53,10 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
 
     @Override
     public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
-        taskRegistrar.addFixedRateTask(new IntervalTask(this::call, getHoursMillis(20)));
-//        BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
-//        taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
-//        taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
+        taskRegistrar.addFixedRateTask(new IntervalTask(this::call, getHoursMillis(25)));
+        BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
+        taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
+        taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
 //        taskRegistrar.addCronTask(getCronTask());
 //        taskRegistrar.addCronTask(new Runnable() {
 //            @Override
