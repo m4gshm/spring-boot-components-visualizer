@@ -5,11 +5,13 @@ import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMetho
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
-import io.github.m4gshm.components.visualizer.eval.result.*;
+import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
+import io.github.m4gshm.components.visualizer.eval.result.DelayLoadFromStore;
+import io.github.m4gshm.components.visualizer.eval.result.Resolver;
+import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.MethodId;
 import lombok.Data;
-import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.UtilityClass;
@@ -261,7 +263,7 @@ public class SchedulingConfigurerUtils {
             var argumentType = argumentTypes[i];
             var argClass = findClassByName(argumentType.getClassName());
             if (argClass != null && Runnable.class.isAssignableFrom(argClass)) {
-                runnableExpr = evalContext.resolve(argumentsExpr.get(i), resolver);
+                runnableExpr = argumentsExpr.get(i);// evalContext.resolve(argumentsExpr.get(i), resolver);
             } else {
                 triggerExpr = argumentsExpr.get(i);
             }
@@ -287,6 +289,20 @@ public class SchedulingConfigurerUtils {
             var touched = new HashMap<String, Set<MethodId>>();
             List<MethodId> scheduledMethodIds;
             if (isLambda(runnableClass)) {
+//                JavaClass javaClass;
+//                try {
+//                    String name = runnableClass.getName();
+//                    int split = name.lastIndexOf("/");
+//                    if(split >=0) {
+//                        String tail = name.substring(0);
+////                        tail.matches("/\\d.+");
+//                        name = name.substring(0, split);
+//                    }
+//                    javaClass = LambdaProxyClassesDumper.loadClass(name);
+//                } catch (ClassNotFoundException e) {
+//                    log.error("load lambda bytecode error", e);
+//                    javaClass = null;
+//                }
                 scheduledMethodIds = getMethodIds(componentType, runnableExpr.getFirstInstruction(),
                         evalContext.getConstantPoolGen(), getBootstrapMethods(source), touched);
             } else {
@@ -299,6 +315,10 @@ public class SchedulingConfigurerUtils {
         var triggerValues = evalContext.resolve(triggerExpr, resolver).getValue(resolver);
         var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
                 resolver, timeUnitStringifier);
+
+        if (!triggerValues.isEmpty() && triggerExpressions.isEmpty()) {
+            throw new IllegalStateException("trigger expression is empty for trigger values " + triggerValues);
+        }
 
         return methodIdStream.flatMap(methodId -> getScheduledMethodStream(triggerType, methodId,
                 triggerExpressions)).collect(toList());

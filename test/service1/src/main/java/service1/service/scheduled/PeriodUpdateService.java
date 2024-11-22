@@ -54,29 +54,29 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
     @Override
     public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
         taskRegistrar.addFixedRateTask(new IntervalTask(this::call, getHoursMillis(20)));
-        BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
-        taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
-        taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
-        taskRegistrar.addCronTask(getCronTask());
-        taskRegistrar.addCronTask(new Runnable() {
-            @Override
-            public void run() {
-                getCall2(PeriodUpdateService.this).run();
-            }
-        }, "* * * 3 * *");
-
-        taskRegistrar.addCronTask(new Runnable() {
-            @Override
-            public void run() {
-                getCall3(PeriodUpdateService.this::run).run();
-            }
-        }, "* * * 4 * *");
-
-        taskRegistrar.addFixedDelayTask(getCall(), 1000);
-        taskRegistrar.addFixedDelayTask(this::call, 2000);
-        taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
-        taskRegistrar.addFixedDelayTask(this, 4000);
-        taskRegistrar.addFixedDelayTask(runnable, 5000);
+//        BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
+//        taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
+//        taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
+//        taskRegistrar.addCronTask(getCronTask());
+//        taskRegistrar.addCronTask(new Runnable() {
+//            @Override
+//            public void run() {
+//                getCall2(PeriodUpdateService.this).run();
+//            }
+//        }, "* * * 3 * *");
+//
+//        taskRegistrar.addCronTask(new Runnable() {
+//            @Override
+//            public void run() {
+//                getCall3(PeriodUpdateService.this::run).run();
+//            }
+//        }, "* * * 4 * *");
+//
+//        taskRegistrar.addFixedDelayTask(getCall(), 1000);
+//        taskRegistrar.addFixedDelayTask(this::call, 2000);
+//        taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
+//        taskRegistrar.addFixedDelayTask(this, 4000);
+//        taskRegistrar.addFixedDelayTask(runnable, 5000);
     }
 
     private Runnable getCall3(Runnable runnable) {

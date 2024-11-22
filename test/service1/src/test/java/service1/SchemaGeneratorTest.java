@@ -2,6 +2,7 @@ package service1;
 
 import com.plantuml.api.cheerpj.v1.Svg;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor;
+import io.github.m4gshm.components.visualizer.LambdaProxyClassesDumper;
 import io.github.m4gshm.components.visualizer.PlantUmlTextFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,10 @@ import static java.util.Objects.requireNonNull;
 @SpringBootTest(classes = {YourSprintBootApplication.class, SchemaGeneratorTest.TestConfiguration.class})
 @EnableAutoConfiguration
 public class SchemaGeneratorTest {
+
+    static {
+        LambdaProxyClassesDumper.isDumperInitialized();
+    }
 
     @Autowired
     ComponentsExtractor extractor;
