@@ -5,6 +5,7 @@ import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMetho
 import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
+import io.github.m4gshm.components.visualizer.eval.bytecode.InvokeVisitor;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.DelayLoadFromStore;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
@@ -24,11 +25,13 @@ import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.config.CronTask;
 import org.springframework.scheduling.config.IntervalTask;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
+import org.springframework.scheduling.support.CronTrigger;
 
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
@@ -36,6 +39,7 @@ import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMe
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeVisitor.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -106,7 +110,18 @@ public class SchedulingConfigurerUtils {
             var argAmount = arguments.size();
             if (argAmount == 1) {
                 var taskExpr = arguments.get(0);
+
+                var cpg = evalContext.getConstantPoolGen();
+
+                var intervalTaskMatcher = getIntervalTaskMatcher(cpg);
+
+                var cronTaskMatcher = getCronTaskMatcher(cpg);
+
                 var taskExprHandle = taskExpr.getFirstInstruction();
+                var object = component.getBean();
+                var visitor = new InvokeVisitor(object, source, method);
+                var visitResult = visitor.findBackTrace(taskExprHandle, constructorFinder(intervalTaskMatcher.or(cronTaskMatcher)));
+
                 var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory,
                         taskExprHandle, evalContext);
 
@@ -139,6 +154,32 @@ public class SchedulingConfigurerUtils {
             //log
         }
         return List.of();
+    }
+
+    private static Predicate<InvokeInstruction> getCronTaskMatcher(ConstantPoolGen cpg) {
+        var cronTaskType = getType(CronTask.class);
+        Type[] twoArgs = typeArgs(Runnable.class, String.class);
+        Type[] twoArgs2 = typeArgs(Runnable.class, CronTrigger.class);
+        var factoryMethod = methodAnyNameMatcher(cronTaskType, twoArgs, cpg)
+                .or(methodAnyNameMatcher(cronTaskType, twoArgs2, cpg));
+        var constructor = constructorMatcher(cronTaskType, twoArgs, cpg)
+                .or(constructorMatcher(cronTaskType, twoArgs2, cpg));
+        return constructor.or(factoryMethod);
+    }
+
+    private static Predicate<InvokeInstruction> getIntervalTaskMatcher(ConstantPoolGen cpg) {
+        var intervalTaskType = getType(IntervalTask.class);
+        var threeArgs = typeArgs(Runnable.class, long.class, long.class);
+        var twoArgs = typeArgs(Runnable.class, long.class);
+        var factoryMethod = methodAnyNameMatcher(intervalTaskType, twoArgs, cpg)
+                .or(methodAnyNameMatcher(intervalTaskType, threeArgs, cpg));
+        var constructor = constructorMatcher(intervalTaskType, twoArgs, cpg)
+                .or(constructorMatcher(intervalTaskType, threeArgs, cpg));
+        return constructor.or(factoryMethod);
+    }
+
+    private static Type[] typeArgs(Class<?>... classes) {
+        return Stream.of(classes).map(ObjectType::getType).toArray(Type[]::new);
     }
 
     //todo need loop control
