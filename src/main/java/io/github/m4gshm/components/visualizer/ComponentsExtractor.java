@@ -14,7 +14,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bcel.generic.Type;
+import org.apache.bcel.classfile.Method;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -48,7 +48,6 @@ import static io.github.m4gshm.components.visualizer.Utils.*;
 import static io.github.m4gshm.components.visualizer.client.JmsOperationsUtils.extractJmsClients;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.components.visualizer.client.WebsocketClientUtils.extractWebsocketClientUris;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
@@ -139,11 +138,12 @@ public class ComponentsExtractor {
         var methodSource = iface.getMethodSource();
         if (result != null) {
             var relations = RelationsAware.getTopRelations(result);
-
             var callGroups = relations.stream().collect(partitioningBy(relation -> {
-                var method = relation.getMethod();
-                return isUncalled(iface, component, relation.getComponent(), method.getName(), method.getArgumentTypes(),
-                        dependentProvider, callPointsProvider);
+                var relationComponent = relation.getComponent();
+                var relationMethod = relation.getMethod();
+                var callPoints = getCallPoints(relationComponent, dependentProvider,
+                        callPointsProvider, relationMethod);
+                return isUncalled(iface, component, callPoints);
             }));
             var unused = callGroups.get(true);
 
@@ -167,10 +167,26 @@ public class ComponentsExtractor {
                 return externalRelationsResolved;
             }
         } else if (methodSource != null) {
-            return !isUncalled(iface, component, component, methodSource.getName(), methodSource.getArgumentTypes(),
-                    dependentProvider, callPointsProvider);
+            var callPoints = getCallPoints(component, dependentProvider, callPointsProvider, methodSource);
+            return !isUncalled(iface, component, callPoints);
         }
         return true;
+    }
+
+    private static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
+            Component component, DependentProvider dependentProvider, CallPointsProvider callPointsProvider, MethodId methodSource
+    ) {
+        var methodName = methodSource.getName();
+        var argumentTypes = methodSource.getArgumentTypes();
+        return EvalContextFactoryImpl.getCallPoints(component, methodName, argumentTypes, dependentProvider, callPointsProvider);
+    }
+
+    private static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
+            Component component, DependentProvider dependentProvider, CallPointsProvider callPointsProvider, Method method
+    ) {
+        var methodName = method.getName();
+        var argumentTypes = method.getArgumentTypes();
+        return EvalContextFactoryImpl.getCallPoints(component, methodName, argumentTypes, dependentProvider, callPointsProvider);
     }
 
     private static boolean isExternalCalled(Interface iface) {
@@ -179,10 +195,8 @@ public class ComponentsExtractor {
     }
 
     private static boolean isUncalled(Interface iface, Component component,
-                                      Component relatedComponent, String methodName, Type[] methodArgumentTypes,
-                                      DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
-        var methodCallPoints = EvalContextFactoryImpl.getCallPoints(relatedComponent, methodName, methodArgumentTypes, dependentProvider,
-                callPointsProvider);
+                                      Map<Component, Map<CallPoint, List<CallPoint>>> methodCallPoints
+    ) {
         var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
         var uncalled = anotherDependent.isEmpty();
         if (uncalled) {
@@ -199,6 +213,10 @@ public class ComponentsExtractor {
         if (callPointsCache.containsKey(componentType)) {
             return callPointsCache.get(componentType);
         }
+        return getCallPoint(componentType, callPointsCache);
+    }
+
+    private static List<CallPoint> getCallPoint(Class<?> componentType, Map<Class<?>, List<CallPoint>> callPointsCache) {
         var javaClasses = getClassSources(componentType);
         List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
         ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
