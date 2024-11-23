@@ -32,7 +32,7 @@ public class InvokeVisitor extends EmptyVisitor {
         this.matcher = matcher;
     }
 
-    public VisitResult visit(InstructionHandle handle) {
+    public VisitResult findForward(InstructionHandle handle) {
         if (handle == null) {
             return null;
         }
@@ -56,9 +56,10 @@ public class InvokeVisitor extends EmptyVisitor {
                 var argumentTypes = getArgumentTypes(sourceMethodInfo.getSignature());
 
                 var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
-
                 if (classAndMethodSource != null) {
-                    return visit(classAndMethodSource.getKey(), classAndMethodSource.getValue());
+                    JavaClass javaClass1 = classAndMethodSource.getKey();
+                    Method method1 = classAndMethodSource.getValue();
+                    return findForward(javaClass1, method1);
                 } else {
                     //log
                 }
@@ -66,17 +67,36 @@ public class InvokeVisitor extends EmptyVisitor {
                 //log
             }
         } else if (instruction instanceof InvokeInstruction) {
-
-
+            var invokeInstruction = (InvokeInstruction) instruction;
+            var className = invokeInstruction.getClassName(cpg);
+            var methodName = invokeInstruction.getMethodName(cpg);
+            var argumentTypes = invokeInstruction.getArgumentTypes(cpg);
+            var classAndMethodSource = getClassAndMethodSource(getClassByName(className), methodName, argumentTypes);
+            if (classAndMethodSource != null) {
+                JavaClass javaClass1 = classAndMethodSource.getKey();
+                Method method1 = classAndMethodSource.getValue();
+                return findForward(javaClass1, method1);
+            } else {
+                //log
+            }
         }
+        return findForward(handle.getNext());
+    }
+
+    private VisitResult findInCallTree(InstructionHandle handle) {
+        handle.get
         return null;
     }
 
-    private VisitResult visit(JavaClass javaClass, Method method) {
-        var instructionHandles = instructionHandleStream(method).collect(toList());
+    private VisitResult findForward(JavaClass javaClass, Method method) {
+        var first = instructionHandleStream(method).findFirst().orElse(null);
+        return new InvokeVisitor(javaClass, method, matcher).findForward(first);
+    }
 
+    private VisitResult findFromReturn(JavaClass javaClass, Method method) {
+        var instructionHandles = instructionHandleStream(method).collect(toList());
         var last = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
-        return new InvokeVisitor(javaClass, method, matcher).visit(last);
+        return new InvokeVisitor(javaClass, method, matcher).findInCallTree(last);
     }
 
     @Override
