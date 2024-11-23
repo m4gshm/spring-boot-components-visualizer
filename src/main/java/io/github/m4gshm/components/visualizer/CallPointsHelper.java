@@ -109,7 +109,7 @@ public class CallPointsHelper {
                 .build();
     }
 
-    public interface CallPointsProvider extends Function<Component, List<CallPoint>> {
+    public interface CallPointsProvider extends Function<Class<?>, List<CallPoint>> {
 
     }
 

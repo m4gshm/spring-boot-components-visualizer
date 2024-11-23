@@ -106,8 +106,10 @@ public class SchedulingConfigurerUtils {
             var argAmount = arguments.size();
             if (argAmount == 1) {
                 var taskExpr = arguments.get(0);
+                var taskExprHandle = taskExpr.getFirstInstruction();
                 var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory,
-                        taskExpr.getFirstInstruction(), evalContext);
+                        taskExprHandle, evalContext);
+
                 var runnableExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getRunnableExpr() : null;
                 var triggerExpr = runnableAndTriggerExpr != null ? runnableAndTriggerExpr.getTriggerExpr() : null;
                 if (runnableExpr != null && triggerExpr != null) {
@@ -156,8 +158,6 @@ public class SchedulingConfigurerUtils {
             var invokespecial = (InvokeInstruction) instruction;
             var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
             return getRunnableAndTriggerExpr(argumentTypes, argumentsExpr);
-        } else if (instruction instanceof INVOKEDYNAMIC) {
-            throw new UnsupportedOperationException("TODO INVOKEDYNAMIC");
         } else if (instruction instanceof InvokeInstruction) {
             var invokeInstruction = (InvokeInstruction) instruction;
             var className = invokeInstruction.getClassName(constantPoolGen);

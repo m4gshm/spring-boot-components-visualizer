@@ -60,16 +60,16 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             var depend = dependentOnThisComponent.stream().map(Component::getName).collect(toList());
             log.trace("dependent on component {}: {}", component.getName(), depend);
         }
-        var callPoints = getCallPoints(declaringClass, methodName, argumentTypes, dependentOnThisComponent, callPointsProvider);
-        return callPoints;
+        return getCallPoints(declaringClass, methodName, argumentTypes, dependentOnThisComponent, callPointsProvider);
     }
 
     public static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
-            Class<?> declaringClass, String methodName, Type[] argumentTypes, List<Component> dependentOnThisComponent,
-            CallPointsProvider callPointsProvider) {
-
+            Class<?> declaringClass, String methodName, Type[] argumentTypes,
+            List<Component> dependentOnThisComponent, CallPointsProvider callPointsProvider
+    ) {
         return dependentOnThisComponent.stream().map(dependentComponent -> {
-            var callPoints = callPointsProvider.apply(dependentComponent);
+            var dependentComponentType = dependentComponent.getType();
+            var callPoints = callPointsProvider.apply(dependentComponentType);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
                 var matchedCallPoints = getMatchedCallPoints(dependentMethod, methodName, argumentTypes, declaringClass);
                 if (!matchedCallPoints.isEmpty() && log.isDebugEnabled()) {
@@ -145,21 +145,13 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     static List<CallPoint> getMatchedCallPoints(CallPoint dependentMethod, String methodName,
                                                 Type[] argumentTypes, Class<?> declaringClass) {
         var callPoints = dependentMethod.getCallPoints();
-        try {
-            return callPoints.stream().filter(calledMethodInsideDependent -> {
-                try {
-                    var match = isMatch(methodName, argumentTypes, declaringClass, calledMethodInsideDependent);
-                    var cycled = isMatch(dependentMethod.getMethodName(), dependentMethod.getArgumentTypes(),
-                            dependentMethod.getOwnerClass(), calledMethodInsideDependent);
-                    //exclude cycling
-                    return match && !cycled;
-                } catch (Exception e) {
-                    throw e;
-                }
-            }).collect(toList());
-        } catch (Exception e) {
-            throw e;
-        }
+        return callPoints.stream().filter(calledMethodInsideDependent -> {
+            var match = isMatch(methodName, argumentTypes, declaringClass, calledMethodInsideDependent);
+            var cycled = isMatch(dependentMethod.getMethodName(), dependentMethod.getArgumentTypes(),
+                    dependentMethod.getOwnerClass(), calledMethodInsideDependent);
+            //exclude cycling
+            return match && !cycled;
+        }).collect(toList());
     }
 
     static boolean isMatch(String expectedMethodName, Type[] expectedArguments, Class<?> declaringClass,

@@ -181,7 +181,7 @@ public class ComponentsExtractor {
     private static boolean isUncalled(Interface iface, Component component,
                                       Component relatedComponent, String methodName, Type[] methodArgumentTypes,
                                       DependentProvider dependentProvider, CallPointsProvider callPointsProvider) {
-        var methodCallPoints = getCallPoints(relatedComponent, methodName, methodArgumentTypes, dependentProvider,
+        var methodCallPoints = EvalContextFactoryImpl.getCallPoints(relatedComponent, methodName, methodArgumentTypes, dependentProvider,
                 callPointsProvider);
         var anotherDependent = methodCallPoints.keySet().stream().filter(c -> !c.equals(component)).collect(toList());
         var uncalled = anotherDependent.isEmpty();
@@ -195,22 +195,15 @@ public class ComponentsExtractor {
         return c -> dependencyToDependentWitInterfacesMap.getOrDefault(c, List.of());
     }
 
-    private static CallPointsProvider newCallPointsProvider(HashMap<Component, List<CallPoint>> callPointsCache) {
-        return c -> {
-            if (callPointsCache.containsKey(c)) {
-                return callPointsCache.get(c);
-            } else {
-                callPointsCache.put(c, List.of());
-            }
-
-            var componentType = c.getType();
-            var javaClasses = getClassSources(componentType);
-
-            List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
-            ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
-            callPointsCache.put(c, points);
-            return points;
-        };
+    private static List<CallPoint> getCallPoints(Class<?> componentType, Map<Class<?>, List<CallPoint>> callPointsCache) {
+        if (callPointsCache.containsKey(componentType)) {
+            return callPointsCache.get(componentType);
+        }
+        var javaClasses = getClassSources(componentType);
+        List<CallPoint> points = javaClasses.stream().filter(javaClass -> !isObject(javaClass)
+        ).flatMap(javaClass -> getMethods(javaClass, componentType)).filter(Objects::nonNull).collect(toList());
+        callPointsCache.put(componentType, points);
+        return points;
     }
 
     private static LinkedHashSet<CharSequence> namesForLog(Collection<Interface> interfaces) {
@@ -320,7 +313,8 @@ public class ComponentsExtractor {
         var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast(), callCache);
 
         var dependentProvider = newDependentProvider(getDependencyToDependentMap(components));
-        var callPointsProvider = newCallPointsProvider(new HashMap<>());
+        var callPointsCache = new HashMap<Class<?>, List<CallPoint>>();
+        var callPointsProvider = (CallPointsProvider) componentType -> getCallPoints(componentType, callPointsCache);
 
         var evalContextFactory = new EvalContextFactoryCacheImpl(evalCache,
                 new EvalContextFactoryImpl(callCache, dependentProvider, callPointsProvider)
