@@ -7,11 +7,9 @@ import io.github.m4gshm.components.visualizer.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
 import io.github.m4gshm.components.visualizer.client.SchedulingConfigurerUtils;
-import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
-import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
 import io.github.m4gshm.components.visualizer.model.HttpMethod;
@@ -44,7 +42,6 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.Utils.*;
-import static io.github.m4gshm.components.visualizer.client.SchedulingConfigurerUtils.getTimeExpression;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
@@ -190,10 +187,10 @@ public class ComponentsExtractorUtils {
     public static List<ScheduledMethod> extractScheduledMethods(Component component, Class<?> componentType,
                                                                 Function<TimeUnit, String> timeUnitStringifier,
                                                                 EvalContextFactory evalContextFactory,
-                                                                Map<CallCacheKey, Result> callCache, Resolver resolver) {
+                                                                Resolver resolver) {
 
         var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component,
-                componentType, timeUnitStringifier, evalContextFactory, callCache, resolver);
+                componentType, timeUnitStringifier, evalContextFactory, resolver);
         var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(componentType, timeUnitStringifier);
         return Stream.concat(scheduledByConfigurerMethods.stream(), scheduledByAnnotationMethods.stream()).collect(toList());
     }

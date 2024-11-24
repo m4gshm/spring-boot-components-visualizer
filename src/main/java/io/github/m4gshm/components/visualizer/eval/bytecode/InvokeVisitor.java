@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
@@ -24,12 +25,14 @@ import static org.apache.bcel.generic.Type.getArgumentTypes;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class InvokeVisitor {
 
+    EvalContextFactory evalContextFactory;
     Object object;
     JavaClass javaClass;
     ConstantPoolGen cpg;
     Method method;
 
-    public InvokeVisitor(Object object, JavaClass javaClass, Method method) {
+    public InvokeVisitor(EvalContextFactory evalContextFactory, Object object, JavaClass javaClass, Method method) {
+        this.evalContextFactory = evalContextFactory;
         this.object = object;
         this.javaClass = javaClass;
         this.cpg = new ConstantPoolGen(javaClass.getConstantPool());
@@ -98,7 +101,8 @@ public class InvokeVisitor {
         return invokeMatcher(InvokeInstruction.class, null, returnType, null, arguments, cpg);
     }
 
-    public static <T extends InvokeInstruction> Predicate<T> invokeMatcher(Class<? extends T> instruction, Type objectType, Type returnType,
+    public static <T extends InvokeInstruction> Predicate<T> invokeMatcher(Class<? extends T> instruction,
+                                                                           Type objectType, Type returnType,
                                                                            String methodName, Type[] arguments,
                                                                            ConstantPoolGen cpg) {
         return invokeInstruction ->
@@ -109,6 +113,10 @@ public class InvokeVisitor {
                         (arguments == null || Arrays.equals(arguments, invokeInstruction.getArgumentTypes(cpg)));
     }
 
+    private static Component component(Object object) {
+        return Component.builder().bean(object).build();
+    }
+
     public VisitResult findForwardSequentially(JavaClass javaClass, Method method, Visitor visitor) {
         return newInvokeVisitor(javaClass, method).findForwardSequentially(getFirst(method), visitor);
     }
@@ -117,6 +125,7 @@ public class InvokeVisitor {
         if (handle == null) {
             return null;
         }
+
         var instruction = handle.getInstruction();
         try {
             instruction.accept(visitor);
@@ -133,6 +142,18 @@ public class InvokeVisitor {
                 return null;
             }
         } else if (instruction instanceof InvokeInstruction) {
+            var eval = evalContextFactory.getEvalContext(component(object), javaClass, method);
+            var result = eval.evalInvoke(handle, (InvokeInstruction) instruction, null);
+            var callObject = result.getObject();
+            var instruction1 = callObject.getFirstInstruction().getInstruction();
+            var isInvDynamicCall = instruction1 instanceof INVOKEDYNAMIC;
+
+            if (isInvDynamicCall) {
+
+                var id = (INVOKEDYNAMIC) instruction1;
+                id.getClassName(cpg);
+            }
+
             var classAndMethodSource = getJavaClassMethodEntry((InvokeInstruction) instruction, cpg);
             if (classAndMethodSource != null) {
                 return findForwardSequentially(classAndMethodSource.getKey(), classAndMethodSource.getValue(), visitor);
@@ -157,7 +178,7 @@ public class InvokeVisitor {
     }
 
     private InvokeVisitor newInvokeVisitor(JavaClass javaClass, Method method) {
-        return new InvokeVisitor(getNextObject(javaClass), javaClass, method);
+        return new InvokeVisitor(evalContextFactory, getNextObject(javaClass), javaClass, method);
     }
 
     @Deprecated
@@ -185,6 +206,18 @@ public class InvokeVisitor {
                 //log
             }
         } else if (instruction instanceof InvokeInstruction) {
+            var eval = evalContextFactory.getEvalContext(component(object), javaClass, method);
+            var result = eval.evalInvoke(handle, (InvokeInstruction) instruction, null);
+            var callObject = result.getObject();
+            var instruction1 = callObject.getFirstInstruction().getInstruction();
+            var isInvDynamicCall = instruction1 instanceof INVOKEDYNAMIC;
+
+            if (isInvDynamicCall) {
+
+                var id = (INVOKEDYNAMIC) instruction1;
+                id.getClassName(cpg);
+            }
+
             var classAndMethodSource = getJavaClassMethodEntry((InvokeInstruction) instruction, cpg);
             if (classAndMethodSource != null) {
                 return findBackTrace(classAndMethodSource.getKey(), classAndMethodSource.getValue(), visitor);

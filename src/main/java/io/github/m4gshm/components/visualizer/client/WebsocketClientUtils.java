@@ -1,6 +1,5 @@
 package io.github.m4gshm.components.visualizer.client;
 
-import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
@@ -34,7 +33,6 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
-                                                          Map<CallCacheKey, Result> callCache,
                                                           EvalContextFactory evalContextFactory, Resolver resolver) {
         var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
@@ -52,7 +50,7 @@ public class WebsocketClientUtils {
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
                         var uri = getDoHandshakeUri(component, instructionHandle, javaClass, constantPoolGen,
-                                bootstrapMethods, method, callCache, evalContextFactory, resolver);
+                                bootstrapMethods, method, evalContextFactory, resolver);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -71,8 +69,8 @@ public class WebsocketClientUtils {
     private static List<String> getDoHandshakeUri(Component component, InstructionHandle instructionHandle,
                                                   JavaClass javaClass, ConstantPoolGen constantPoolGen,
                                                   BootstrapMethods bootstrapMethods, Method method,
-                                                  Map<CallCacheKey, Result> callCache,
-                                                  EvalContextFactory evalContextFactory, Resolver resolver
+                                                  EvalContextFactory evalContextFactory,
+                                                  Resolver resolver
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var methodName = method.getName();
@@ -82,7 +80,7 @@ public class WebsocketClientUtils {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
         var eval = evalContextFactory.getEvalContext(component, javaClass, method, bootstrapMethods);
-        var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
+        var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {

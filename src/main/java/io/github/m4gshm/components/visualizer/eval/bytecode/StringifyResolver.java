@@ -32,11 +32,10 @@ public class StringifyResolver implements Resolver {
 
     public static final String THIS = "this";
     Level level;
-    Map<CallCacheKey, Result> callCache;
     boolean failFast;
 
-    public static StringifyResolver newStringify(Level level, boolean failFast, Map<CallCacheKey, Result> callCache) {
-        return new StringifyResolver(level, callCache, failFast);
+    public static StringifyResolver newStringify(Level level, boolean failFast) {
+        return new StringifyResolver(level, failFast);
     }
 
     private static List<ParameterValue> concatCallParameters(ParameterValue object, List<ParameterValue> arguments) {
@@ -91,7 +90,7 @@ public class StringifyResolver implements Resolver {
             var argumentClasses = toClasses(invokedynamic.getArgumentTypes(constantPoolGen));
             if (stringConcatenation) {
                 var invokeResultType = invokedynamic.getType(constantPoolGen);
-                var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, true, this::stringifyUnresolved, callCache,
+                var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, true, this::stringifyUnresolved,
                         (parameters, lastInstruction) -> {
                             var handler = bootstrapMethodAndArguments.getHandler();
                             var methodArguments = bootstrapMethodAndArguments.getBootstrapMethodArguments();
@@ -105,7 +104,7 @@ public class StringifyResolver implements Resolver {
                 return result;
             } else {
                 var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, true,
-                        this::stringifyUnresolved, callCache, (parameters, parent) -> {
+                        this::stringifyUnresolved, (parameters, parent) -> {
                             var values = getParameterValues(parameters, this::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
@@ -123,7 +122,7 @@ public class StringifyResolver implements Resolver {
                 var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
 
                 return callInvokeVirtual((DelayInvoke) delay, argumentClasses, eval, false,
-                        this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
+                        this::stringifyUnresolved, (parameters, lastInstruction) -> {
                             var object = parameters.get(0);
                             var args = parameters.subList(1, parameters.size());
                             return stringifyInvokeResult(delay, objectClass, methodName, object, args, eval);
@@ -138,7 +137,7 @@ public class StringifyResolver implements Resolver {
 
                 try {
                     return callInvokeStatic((DelayInvoke) delay, argumentClasses, eval, false,
-                            this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
+                            this::stringifyUnresolved, (parameters, lastInstruction) -> {
                                 try {
                                     return stringifyInvokeResult(delay, objectClass, methodName, null, parameters, eval);
                                 } catch (EvalException e) {
@@ -156,7 +155,7 @@ public class StringifyResolver implements Resolver {
 
                 var objectClass = toClass(invokeInstruction.getClassName(constantPoolGen));
                 return callInvokeSpecial((DelayInvoke) delay, argumentClasses, eval, false,
-                        this::stringifyUnresolved, callCache, (parameters, lastInstruction) -> {
+                        this::stringifyUnresolved, (parameters, lastInstruction) -> {
                             if ("<init>".equals(methodName)) {
                                 return stringifyInvokeNew(delay, objectClass, parameters, component, method);
                             } else {
@@ -167,9 +166,9 @@ public class StringifyResolver implements Resolver {
                         });
             } else {
                 if (instruction instanceof ArithmeticInstruction) {
-                    var first = resolve(eval.evalPrev(instructionHandle, delay, callCache), ex);
+                    var first = resolve(eval.evalPrev(instructionHandle, delay), ex);
                     var second = instruction.consumeStack(constantPoolGen) == 2
-                            ? resolve(eval.evalPrev(first, callCache), ex) : null;
+                            ? resolve(eval.evalPrev(first), ex) : null;
 
                     List<String> arithmeticString;
                     try {
@@ -184,9 +183,9 @@ public class StringifyResolver implements Resolver {
                             .collect(toList());
                     return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), component, method);
                 } else if (instruction instanceof ArrayInstruction) {
-                    var element = eval.evalPrev(instructionHandle, delay, callCache);
-                    var index = eval.evalPrev(element, callCache);
-                    var array = eval.evalPrev(index, callCache);
+                    var element = eval.evalPrev(instructionHandle, delay);
+                    var index = eval.evalPrev(element);
+                    var array = eval.evalPrev(index);
                     var result = stringifyValue(array);
                     var lastInstruction = array.getLastInstruction();
                     return constant(result, lastInstruction, lastInstruction, component, method, this, asList(delay, element, index, array));
@@ -202,7 +201,7 @@ public class StringifyResolver implements Resolver {
                         return constant(value, instructionHandle, instructionHandle, component, method, this, asList(delay));
                     }
 
-                    var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay, callCache);
+                    var storeResults = eval.findStoreInstructionResults(instructionHandle, localVariables, aloadIndex, delay);
 
                     var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult).stream()
                                     .map(String::valueOf)

@@ -2,7 +2,6 @@ package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod.TriggerType;
-import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.InvokeVisitor;
@@ -59,7 +58,6 @@ public class SchedulingConfigurerUtils {
     public static List<ScheduledMethod> getScheduledByConfigurerMethods(Component component, Class<?> componentType,
                                                                         Function<TimeUnit, String> timeUnitStringifier,
                                                                         EvalContextFactory evalContextFactory,
-                                                                        Map<CallCacheKey, Result> callCache,
                                                                         Resolver resolver) {
         if (SchedulingConfigurer.class.isAssignableFrom(componentType)) {
             var configureTasksMethodClassPair = getClassAndMethodSource(componentType, "configureTasks",
@@ -81,7 +79,7 @@ public class SchedulingConfigurerUtils {
                                 ? TriggerType.cron : null;
                         if (triggerType != null) {
                             return extractScheduledMethods(triggerType, instructionHandle, component, componentType,
-                                    source, method, evalContextFactory, callCache, resolver, timeUnitStringifier).stream();
+                                    source, method, evalContextFactory, resolver, timeUnitStringifier).stream();
                         }
                     }
                     return of();
@@ -100,10 +98,10 @@ public class SchedulingConfigurerUtils {
     private static List<ScheduledMethod> extractScheduledMethods(
             TriggerType triggerType, InstructionHandle runnableInstruction, Component component,
             Class<?> componentType, JavaClass source, Method method, EvalContextFactory evalContextFactory,
-            Map<CallCacheKey, Result> callCache, Resolver resolver, Function<TimeUnit, String> timeUnitStringifier
+            Resolver resolver, Function<TimeUnit, String> timeUnitStringifier
     ) {
         var evalContext = evalContextFactory.getEvalContext(component, source, method);
-        var evaluated = evalContext.eval(runnableInstruction, callCache);
+        var evaluated = evalContext.eval(runnableInstruction);
         if (evaluated instanceof DelayInvoke) {
             var delayInvoke = (DelayInvoke) evaluated;
             var arguments = delayInvoke.getArguments();
@@ -119,7 +117,7 @@ public class SchedulingConfigurerUtils {
 
                 var taskExprHandle = taskExpr.getFirstInstruction();
                 var object = component.getBean();
-                var visitor = new InvokeVisitor(object, source, method);
+                var visitor = new InvokeVisitor(evalContextFactory, object, source, method);
                 var visitResult = visitor.findBackTrace(taskExprHandle, constructorFinder(intervalTaskMatcher.or(cronTaskMatcher)));
 
                 var runnableAndTriggerExpr = findTaskConstructorExpr(source, method, evalContextFactory,
@@ -189,12 +187,12 @@ public class SchedulingConfigurerUtils {
                                                                       Eval evalContext
     ) throws ClassNotFoundException {
         var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-        var callCache = new HashMap<CallCacheKey, Result>();
+
         var instruction = first.getInstruction();
         var intervalTaskConstructor = isConstructorOfClass(instruction, IntervalTask.class, constantPoolGen);
         var cronTaskConstructor = isConstructorOfClass(instruction, CronTask.class, constantPoolGen);
         if (intervalTaskConstructor || cronTaskConstructor) {
-            var delayInvokeExpr = (DelayInvoke) evalContext.eval(first, callCache);
+            var delayInvokeExpr = (DelayInvoke) evalContext.eval(first);
             var argumentsExpr = delayInvokeExpr.getArguments();
             var invokespecial = (InvokeInstruction) instruction;
             var argumentTypes = invokespecial.getArgumentTypes(constantPoolGen);
@@ -205,7 +203,7 @@ public class SchedulingConfigurerUtils {
             var methodName = invokeInstruction.getMethodName(constantPoolGen);
             var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
 
-            var delayInvokeExpr = (DelayInvoke) evalContext.eval(first, callCache);
+            var delayInvokeExpr = (DelayInvoke) evalContext.eval(first);
 
             var object = delayInvokeExpr.getObject();
             if (object instanceof DelayLoadFromStore) {
@@ -274,7 +272,7 @@ public class SchedulingConfigurerUtils {
 
             var last1 = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
 
-            var nextExp = evalContext1.eval(last1, callCache);
+            var nextExp = evalContext1.eval(last1);
 
             return findTaskConstructorExpr(javaClass1, method1, evalContextFactory,
                     nextExp.getFirstInstruction(), evalContext1);
