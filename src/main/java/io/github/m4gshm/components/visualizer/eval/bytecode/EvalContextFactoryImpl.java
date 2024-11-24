@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCache;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Variable;
@@ -32,18 +33,17 @@ import static lombok.AccessLevel.PROTECTED;
 @FieldDefaults(makeFinal = true, level = PROTECTED)
 public class EvalContextFactoryImpl implements EvalContextFactory {
 
-    Map<CallCacheKey, Result> callCache;
+    CallCache callCache;
     DependentProvider dependentProvider;
     CallPointsProvider callPointsProvider;
 
     public static List<List<Result>> computeArgumentVariants(Component component, Method method,
-                                                             Map<CallCacheKey, Result> callCache,
                                                              EvalContextFactory evalContextFactory,
                                                              DependentProvider dependentProvider,
                                                              CallPointsProvider callPointsProvider) {
         var methodCallPoints = getCallPoints(component, method.getName(), method.getArgumentTypes(),
                 dependentProvider, callPointsProvider);
-        var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, callCache, evalContextFactory);
+        var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, evalContextFactory);
         return methodArgumentVariants.values().stream()
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
@@ -95,7 +95,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     static Map<Component, Map<CallPoint, List<EvalArguments>>> getEvalCallPointVariants(
             Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
-            Map<CallCacheKey, Result> callCache, EvalContextFactory evalContextFactory
+            EvalContextFactory evalContextFactory
     ) {
         return callPoints.entrySet().stream().map(e -> {
             var dependentComponent = e.getKey();
@@ -106,7 +106,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 var javaClass = callPoint.getJavaClass();
                 var method = callPoint.getMethod();
                 var eval = evalContextFactory.getEvalContext(dependentComponent, javaClass, method);
-                var argumentVariants = evalCallPointArgumentVariants(callPoint, matchedCallPoints, eval, callCache);
+                var argumentVariants = evalCallPointArgumentVariants(callPoint, matchedCallPoints, eval);
                 return argumentVariants;
             }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
                     warnDuplicated(), LinkedHashMap::new));
@@ -116,11 +116,11 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     static Map.Entry<CallPoint, List<EvalArguments>> evalCallPointArgumentVariants(
             CallPoint dependentMethod, List<CallPoint> matchedCallPoints,
-            Eval eval, Map<CallCacheKey, Result> callCache
+            Eval eval
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return Eval.evalArguments(callPoint, eval, callCache);
+                return Eval.evalArguments(callPoint, eval);
             } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
@@ -174,9 +174,9 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     @Override
     public Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
-        var argumentVariants = component != null ? computeArgumentVariants(component, method, callCache, this,
+        var argumentVariants = component != null ? computeArgumentVariants(component, method, this,
                 dependentProvider, callPointsProvider) : List.<List<Result>>of();
-        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants);
+        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants, callCache);
     }
 
     public interface DependentProvider extends Function<Component, List<Component>> {
