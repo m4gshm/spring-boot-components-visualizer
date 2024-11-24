@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
@@ -13,15 +14,16 @@ import static lombok.AccessLevel.PRIVATE;
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Stub extends Result implements ContextAware, TypeAware {
-    Method method;
-    Component component;
     Variable stubbed;
 
-    public Stub(Method method, Component component, Variable stubbed) {
+    public Stub(Variable stubbed) {
         super(stubbed.getFirstInstruction(), stubbed.getLastInstruction());
-        this.method = method;
-        this.component = component;
         this.stubbed = stubbed;
+    }
+
+    @Override
+    public Eval getEval() {
+        return getStubbed().getEval();
     }
 
     @Override

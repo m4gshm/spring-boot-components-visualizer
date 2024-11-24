@@ -7,12 +7,10 @@ import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.Delay.DelayFunction;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.LocalVariable;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.Instruction;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.ObjectType;
@@ -38,20 +36,20 @@ public abstract class Result implements ContextAware {
     InstructionHandle firstInstruction;
     InstructionHandle lastInstruction;
 
-    public static Constant invoked(Object value, Type type, InstructionHandle invokeInstruction, InstructionHandle lastInstruction, Component component, Method method, List<ParameterValue> parameters) {
+    public static Constant invoked(Object value, Type type, InstructionHandle invokeInstruction,
+                                   InstructionHandle lastInstruction, Eval eval, List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, type, invokeInstruction, lastInstruction, component, method, null, params);
+        return constant(value, type, invokeInstruction, lastInstruction, null, eval, params);
     }
 
     public static Constant constant(Object value, Type type, InstructionHandle firstInstruction,
-                                    InstructionHandle lastInstruction, Component component, Method method,
-                                    List<Result> relations) {
-        return constant(value, type, firstInstruction, lastInstruction, component, method, null, relations);
+                                    InstructionHandle lastInstruction, Eval eval, List<Result> relations) {
+        return constant(value, type, firstInstruction, lastInstruction, null, eval, relations);
     }
 
     public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    Component component, Method method, Object resolvedBy, List<Result> relations) {
-        return constant(value, getType(value), firstInstruction, lastInstruction, component, method, resolvedBy, relations);
+                                    Eval eval, Object resolvedBy, List<Result> relations) {
+        return constant(value, getType(value), firstInstruction, lastInstruction, resolvedBy, eval, relations);
     }
 
     public static Type getType(Object value) {
@@ -59,11 +57,9 @@ public abstract class Result implements ContextAware {
     }
 
     public static Constant constant(Object value, Type type, InstructionHandle firstInstruction,
-                                    InstructionHandle lastInstruction, Component component, Method method,
-                                    Object resolvedBy, List<Result> relations) {
+                                    InstructionHandle lastInstruction, Object resolvedBy, Eval eval, List<Result> relations) {
         var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component,
-                method, resolvedBy, type);
+        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, eval, resolvedBy, type);
     }
 
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
@@ -78,8 +74,8 @@ public abstract class Result implements ContextAware {
                 delayFunction, parent, storeInstructions, type);
     }
 
-    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate) {
-        return new Duplicate(instructionHandle, lastInstruction, onDuplicate);
+    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate, Eval eval) {
+        return new Duplicate(instructionHandle, lastInstruction, onDuplicate, eval);
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle,
@@ -136,16 +132,16 @@ public abstract class Result implements ContextAware {
         return new Variable(lastInstruction, lastInstruction, LocalVar, evalContext, index, name, type, parent);
     }
 
-    public static Illegal notAccessible(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notAccessible), element, source);
+    public static Illegal notAccessible(Object element, InstructionHandle callInstruction, Result source, Eval eval) {
+        return new Illegal(callInstruction, callInstruction, Set.of(notAccessible), element, source, eval);
     }
 
-    public static Illegal notFound(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notFound), element, source);
+    public static Illegal notFound(Object element, InstructionHandle callInstruction, Result source, Eval eval) {
+        return new Illegal(callInstruction, callInstruction, Set.of(notFound), element, source, eval);
     }
 
     public static Result multiple(List<? extends Result> values, InstructionHandle firstInstruction,
-                                  InstructionHandle lastInstruction, Component component, Method method) {
+                                  InstructionHandle lastInstruction, Eval eval) {
         var flatValues = values.stream().flatMap(v -> v instanceof Multiple
                 ? ((Multiple) v).getResults().stream()
                 : Stream.of(v)).distinct().collect(toList());
@@ -159,16 +155,16 @@ public abstract class Result implements ContextAware {
                     .flatMap(Collection::stream)
                     .distinct()
                     .collect(toLinkedHashSet());
-            return new Multiple(firstInstruction, lastInstruction, flatValues, component, method, new ArrayList<>(relations));
+            return new Multiple(firstInstruction, lastInstruction, flatValues, eval, new ArrayList<>(relations));
         }
     }
 
-    public static Result stub(Variable value, Component component, Method method, Resolver resolver) {
+    public static Result stub(Variable value, Resolver resolver) {
         if (resolver != null) {
             //log
             return resolver.resolve(value, null);
         }
-        return new Stub(method, component, value);
+        return new Stub(value);
     }
 
     public static Result getWrapped(Result result) {

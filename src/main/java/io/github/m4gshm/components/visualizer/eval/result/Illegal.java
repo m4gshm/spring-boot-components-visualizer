@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.IllegalInvokeException;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
@@ -17,13 +18,15 @@ public class Illegal extends Result {
     Set<Status> status;
     Object target;
     Result prev;
+    Eval eval;
 
     public Illegal(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                   Set<Status> status, Object target, Result prev) {
+                   Set<Status> status, Object target, Result prev, Eval eval) {
         super(firstInstruction, lastInstruction);
         this.status = status;
         this.target = target;
         this.prev = prev;
+        this.eval = eval;
     }
 
     @Override
@@ -34,16 +37,6 @@ public class Illegal extends Result {
     @Override
     public boolean isResolved() {
         return false;
-    }
-
-    @Override
-    public Method getMethod() {
-        return prev.getMethod();
-    }
-
-    @Override
-    public Component getComponent() {
-        return prev.getComponent();
     }
 
     public enum Status {

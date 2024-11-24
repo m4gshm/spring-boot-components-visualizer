@@ -16,17 +16,17 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Variable extends Result implements ContextAware, TypeAware {
     VarType varType;
-    Eval evalContext;
+    Eval eval;
     int index;
     String name;
     Type type;
     Result prev;
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
-                    Eval evalContext, int index, String name, Type type, Result prev) {
+                    Eval eval, int index, String name, Type type, Result prev) {
         super(firstInstruction, lastInstruction);
         this.varType = varType;
-        this.evalContext = evalContext;
+        this.eval = eval;
         this.index = index;
         this.name = name;
         this.type = type;
@@ -48,22 +48,6 @@ public class Variable extends Result implements ContextAware, TypeAware {
         var methodName = getMethod().getName();
         var className = getComponentType();
         return varType.code + "(" + className + "." + methodName + "(" + getIndex() + " " + getName() + "))";
-    }
-
-    @Override
-    public Method getMethod() {
-        return evalContext.getMethod();
-    }
-
-    @Override
-    public Component getComponent() {
-        return evalContext.getComponent();
-    }
-
-    @Override
-    public Class<?> getComponentType() {
-        var component = evalContext.getComponent();
-        return component != null ? component.getType() : null;
     }
 
     @RequiredArgsConstructor

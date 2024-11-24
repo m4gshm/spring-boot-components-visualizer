@@ -1,5 +1,6 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.IllegalMultipleResultsInvocationException;
 import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
 import io.github.m4gshm.components.visualizer.model.Component;
@@ -16,16 +17,15 @@ import static lombok.AccessLevel.PRIVATE;
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class Multiple extends Result implements RelationsAware {
     List<Result> results;
-    Method method;
-    Component component;
+    Eval eval;
     List<Result> relations;
 
     public Multiple(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                    List<Result> results, Component component, Method method, List<Result> relations) {
+                    List<Result> results, Eval eval, List<Result> relations) {
         super(firstInstruction, lastInstruction);
         this.results = results;
-        this.component = component;
-        this.method = method;
+        this.eval = eval;
+
         this.relations = relations;
     }
 

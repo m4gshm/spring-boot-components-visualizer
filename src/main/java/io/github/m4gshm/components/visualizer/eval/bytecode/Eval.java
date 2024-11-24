@@ -16,6 +16,8 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.Utils.toLinkedHashSet;
@@ -24,7 +26,7 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCont
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalException.newInvalidEvalException;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalException.newUnsupportedEvalException;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionHandleUtils.getJumpTo;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeBranch.newTree;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.LocalVariableUtils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException.Reason.*;
@@ -69,7 +71,8 @@ public class Eval {
     ConstantPoolGen constantPoolGen;
     @Getter
     BootstrapMethods bootstrapMethods;
-    Map<Integer, List<InstructionHandle>> jumpTo;
+    @Getter
+    InvokeBranch tree;
 
     CallCache callCache;
 
@@ -84,7 +87,7 @@ public class Eval {
         this.callCache = callCache;
         var methodCode = method.getCode();
         this.methodCode = methodCode;
-        this.jumpTo = getJumpTo(methodCode);
+        this.tree = newTree(methodCode);
         this.arguments = null;
         this.argumentVariants = argumentVariants;
     }
@@ -245,18 +248,17 @@ public class Eval {
     }
 
     public static Result collapse(Collection<? extends Result> values, InstructionHandle instructionHandle,
-                                  InstructionHandle lastInstruction, ConstantPoolGen constantPool,
-                                  Component component, Method method) {
-        return collapse(values, instructionHandle, lastInstruction, constantPool.getConstantPool(), component, method);
+                                  InstructionHandle lastInstruction, ConstantPoolGen constantPool, Eval eval) {
+        return collapse(values, instructionHandle, lastInstruction, constantPool.getConstantPool(), eval);
     }
 
     public static Result collapse(Collection<? extends Result> values, InstructionHandle instructionHandle,
-                                  InstructionHandle lastInstruction, ConstantPool constantPool, Component component, Method method) {
+                                  InstructionHandle lastInstruction, ConstantPool constantPool, Eval eval) {
         if (values.isEmpty()) {
             throw newInvalidEvalException("empty results", instructionHandle.getInstruction(), constantPool);
         }
         if (values.size() > 1) {
-            return multiple(new ArrayList<>(values), instructionHandle, lastInstruction, component, method);
+            return multiple(new ArrayList<>(values), instructionHandle, lastInstruction, eval);
         }
         var first = values.iterator().next();
         return first;
@@ -280,7 +282,7 @@ public class Eval {
 
     private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
                                List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                               ConstantPoolGen constantPoolGen, Component component, Method method) throws NotInvokedException {
+                               ConstantPoolGen constantPoolGen, Eval eval) throws NotInvokedException {
 
         var values = new ArrayList<Result>();
         var unresolvedVars = new ArrayList<UnresolvedVariableException>();
@@ -298,7 +300,7 @@ public class Eval {
         }
 
         if (!values.isEmpty()) {
-            return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, component, method);
+            return collapse(values, invoke.getFirstInstruction(), lastInstruction, constantPoolGen, eval);
         } else if (!errors.isEmpty() && resolver != null) {
             var e = errors.get(0);
             log.trace("call error of {}", invoke, e);
@@ -387,8 +389,7 @@ public class Eval {
             var removeCallObjectArg = referenceKind == REF_invokeSpecial
                     || referenceKind == REF_invokeVirtual
                     || referenceKind == REF_invokeInterface;
-            var arguments = eval.evalArguments(instructionHandle, invokeDynamicArgumentTypes.length, null
-            );
+            var arguments = eval.evalArguments(instructionHandle, invokeDynamicArgumentTypes.length);
             if (removeCallObjectArg) {
                 var withoutCallObject = new ArrayList<>(arguments.getArguments());
                 withoutCallObject.remove(0);
@@ -397,7 +398,7 @@ public class Eval {
             return List.of(arguments);
         } else {
             var argumentTypes = invokeInstruction.getArgumentTypes(eval.getConstantPoolGen());
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes.length, null);
+            var arguments = eval.evalArguments(instructionHandle, argumentTypes.length);
             return List.of(arguments);
         }
     }
@@ -459,6 +460,24 @@ public class Eval {
         return flatResolvedVariants(dimensions, parameterVariants, parameters);
     }
 
+    private static List<InstructionHandle> getStoreInstructions(
+            InvokeBranch invokeBranch, int variableIndex, int loadInstructionPosition
+    ) {
+        var instructions = invokeBranch.findInstructions(StoreInstruction.class);
+        var storeInstructions = instructions.stream()
+                .collect(groupingBy(i -> ((StoreInstruction) i.getInstruction()).getIndex()));
+        var storeInstructionsIntoVar = storeInstructions.getOrDefault(variableIndex, List.of());
+        return storeInstructionsIntoVar.stream().filter(si -> si.getPosition() < loadInstructionPosition)
+                .collect(toList());
+    }
+
+    private static List<InvokeBranch> getBranches(Result p) {
+        var eval = p.getEval();
+        var firstInstruction = p.getFirstInstruction();
+        var branches = eval.getTree().findBranches(firstInstruction);
+        return branches;
+    }
+
     public ComponentKey getComponentKey() {
         return newComponentKey(getComponent());
     }
@@ -507,26 +526,22 @@ public class Eval {
 
         var consumeStack = instruction.consumeStack(constantPoolGen);
         var instructionText = getInstructionString(instructionHandle, constantPoolGen);
-        var component = getComponent();
-        var method = getMethod();
         if (instruction instanceof LDC) {
             var ldc = (LDC) instruction;
             var value = ldc.getValue(constantPoolGen);
             if (value instanceof Type) {
                 value = getClassByName(((Type) value).getClassName());
             }
-            return constant(value, ldc.getType(constantPoolGen), instructionHandle, instructionHandle, component, method, List.of()
-            );
+            return constant(value, ldc.getType(constantPoolGen), instructionHandle, instructionHandle, this, List.of());
         } else if (instruction instanceof LDC2_W) {
             var ldc = (LDC2_W) instruction;
             var value = ldc.getValue(constantPoolGen);
-            return constant(value, ldc.getType(constantPoolGen), instructionHandle, instructionHandle, component, method, List.of()
-            );
+            return constant(value, ldc.getType(constantPoolGen), instructionHandle, instructionHandle, this, List.of());
         } else if (instruction instanceof LoadInstruction) {
             var loadInstruction = (LoadInstruction) instruction;
             var loadIndex = loadInstruction.getIndex();
-            var localVariables = getLocalVariables(method, loadIndex);
-            var localVariable = findLocalVariable(method, localVariables, instructionHandle);
+            var localVariables = getLocalVariables(getMethod(), loadIndex);
+            var localVariable = findLocalVariable(getMethod(), localVariables, instructionHandle);
 
             var name = localVariable != null ? localVariable.getName() : null;
             //check static method
@@ -534,10 +549,9 @@ public class Eval {
                 //todo value == null for static methods
                 var value = getObject();
                 return constant(value, loadInstruction.getType(constantPoolGen), instructionHandle,
-                        instructionHandle, component, method, List.of());
+                        instructionHandle, this, List.of());
             }
-
-            var storeResults = findStoreInstructionResults(instructionHandle, localVariables, loadIndex, parent);
+            var storeResults = getStoreInstructionResults(instructionHandle, loadIndex, parent);
             if (!storeResults.isEmpty()) {
                 var description = instructionText + " from stored invocation";
                 var storeInstructions = storeResults.stream()
@@ -545,20 +559,19 @@ public class Eval {
                         .collect(toList());
                 var loadInstructionType = loadInstruction.getType(constantPoolGen);
                 var first = storeInstructions.get(0);
-                var expectedType = first instanceof TypeAware ? ((TypeAware) first).getType() : loadInstructionType;
+                var expectedType = Optional.ofNullable(TypeAware.getType(first)).orElse(loadInstructionType);
                 return delayLoadFromStored(description, instructionHandle, expectedType, this, parent,
-                        List.of(first), (thisDelay, resolver) -> {
-                            var eval = thisDelay.getEval();
-                            var resolved = thisDelay.getStoreInstructions().stream()
-                                    .flatMap(storeResult -> expand(eval.resolve(storeResult, resolver)).stream())
+                        storeInstructions, (thisDelay, resolver) -> {
+                            var thisDelayStoreInstructions = thisDelay.getStoreInstructions();
+                            var resolved = thisDelayStoreInstructions.stream()
+                                    .flatMap(storeResult -> expand(this.resolve(storeResult, resolver)).stream())
                                     .collect(toList());
-                            return collapse(resolved, instructionHandle, instructionHandle, constantPoolGen,
-                                    component, method);
+                            return collapse(resolved, instructionHandle, instructionHandle, constantPoolGen, this);
                         });
             }
             if (log.isTraceEnabled()) {
                 log.trace("not found store for {} inside of {}.{}({})", name != null ? "'" + name + "' variable" : instructionText,
-                        getTargetClass(getComponent()).getName(), method.getName(), stringForLog(method.getArgumentTypes()));
+                        getTargetClass(getComponent()).getName(), getMethod().getName(), stringForLog(getMethod().getArgumentTypes()));
             }
             if (localVariable == null) {
                 var argumentType = this.method.getArgumentTypes()[loadIndex - 1];
@@ -590,11 +603,9 @@ public class Eval {
             var fieldName = getStatic.getFieldName(constantPoolGen);
             var loadClassType = getStatic.getLoadClassType(constantPoolGen);
             var loadClass = getClassByName(loadClassType.getClassName());
-            return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, parent,
-                    component, method);
+            return getFieldValue(null, loadClass, fieldName, instructionHandle, instructionHandle, parent, this);
         } else if (instruction instanceof GETFIELD) {
             var getField = (GETFIELD) instruction;
-
             var evalFieldOwnedObject = evalPrev(instructionHandle, parent);
             var fieldName = getField.getFieldName(constantPoolGen);
             var lastInstruction = evalFieldOwnedObject.getLastInstruction();
@@ -604,8 +615,7 @@ public class Eval {
                     (thisDelay, unevaluatedHandler) -> {
                         var object = evalFieldOwnedObject.getValue(unevaluatedHandler).get(0);
                         return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName,
-                                instructionHandle, lastInstruction, thisDelay, thisDelay.getComponent(),
-                                thisDelay.getMethod());
+                                instructionHandle, lastInstruction, thisDelay, this);
                     });
         } else if (instruction instanceof CHECKCAST) {
             return evalPrev(instructionHandle, parent);
@@ -619,18 +629,16 @@ public class Eval {
             var arrayType = anewarray.getType(constantPoolGen);
             return delay(instructionText, instructionHandle, lastInstruction, arrayType, this, parent, relations,
                     (thisDelay, resolver) -> {
-                        var eval = thisDelay.getEval();
-                        var loadClassType = anewarray.getLoadClassType(eval.getConstantPoolGen());
+                        var loadClassType = anewarray.getLoadClassType(this.getConstantPoolGen());
                         var arrayElementType = getClassByName(loadClassType.getClassName());
                         Object value = Array.newInstance(arrayElementType, (int) size.getValue());
-                        return constant(value, loadClassType, instructionHandle, lastInstruction, component,
-                                getMethod(), asList(thisDelay, size));
+                        return constant(value, loadClassType, instructionHandle, lastInstruction, this, asList(thisDelay, size));
                     });
         } else if (instruction instanceof ConstantPushInstruction) {
             var cpi = (ConstantPushInstruction) instruction;
             var value = cpi.getValue();
-            return constant(value, cpi.getType(constantPoolGen), instructionHandle, instructionHandle, component,
-                    method, asList());
+            return constant(value, cpi.getType(constantPoolGen), instructionHandle, instructionHandle,
+                    this, List.of());
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackConsumer) {
             //AASTORE
             var element = evalPrev(instructionHandle, parent);
@@ -650,8 +658,7 @@ public class Eval {
                             throw newInvalidEvalException("expectedResultClass array but was " + result.getClass(),
                                     instruction, constantPoolGen.getConstantPool());
                         }
-                        return constant(result, arrayType, instructionHandle, lastInstruction, component,
-                                getMethod(), asList(element, index, array)
+                        return constant(result, arrayType, instructionHandle, lastInstruction, this, asList(element, index, array)
                         );
                     });
         } else if (instruction instanceof ArrayInstruction && instruction instanceof StackProducer) {
@@ -669,7 +676,7 @@ public class Eval {
                             var a = (Object[]) result;
                             var i = (int) index.getValue();
                             var e = a[i];
-                            return constant(e, arrayType, lastInstruction, lastInstruction, component, getMethod(),
+                            return constant(e, arrayType, lastInstruction, lastInstruction, this,
                                     asList(element, index, array)
                             );
                         } else {
@@ -682,7 +689,7 @@ public class Eval {
             var relations = List.of(arrayRef);
             return delay(instructionText, instructionHandle, arrayRef.getLastInstruction(), Type.INT, this,
                     parent, relations, (thisDelay, resolver) -> {
-                        return thisDelay.getEval().resolve(arrayRef, resolver);
+                        return this.resolve(arrayRef, resolver);
                     });
         } else if (instruction instanceof NEW) {
             var newInstance = (NEW) instruction;
@@ -691,13 +698,11 @@ public class Eval {
             return delay(instructionText, instructionHandle, instructionHandle, newInstanceType, this, parent,
                     List.of(), (thisDelay, resolver) -> {
                         var type = getClassByName(loadClassType.getClassName());
-                        return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay,
-                                getComponent(), getMethod()
-                        );
+                        return instantiateObject(instructionHandle, type, new Class[0], new Object[0], thisDelay, this);
                     });
         } else if (instruction instanceof DUP) {
             var dup = evalPrev(instructionHandle, null);
-            return duplicate(instructionHandle, dup.getLastInstruction(), dup);
+            return duplicate(instructionHandle, dup.getLastInstruction(), dup, this);
         } else if (instruction instanceof DUP2) {
 //            return evalPrev(instructionHandle, resolver);
         } else if (instruction instanceof POP) {
@@ -717,7 +722,7 @@ public class Eval {
 //            return evalPrev(instructionHandle, resolver);
         } else if (instruction instanceof ACONST_NULL) {
             return constant(null, ((ACONST_NULL) instruction).getType(constantPoolGen), instructionHandle,
-                    instructionHandle, component, method, asList(parent)
+                    instructionHandle, this, asList(parent)
             );
         } else if (instruction instanceof IfInstruction) {
             var args = new Result[consumeStack];
@@ -726,8 +731,7 @@ public class Eval {
                 current = getPrev(instructionHandle);
                 args[i] = eval(current, parent);
             }
-            var prev = args.length > 0 ? evalPrev(args[0]) : evalPrev(instructionHandle,
-                    parent);
+            var prev = args.length > 0 ? evalPrev(args[0]) : evalPrev(instructionHandle, parent);
             //now only positive scenario
             //todo need evaluate negative branch
             return prev;
@@ -745,11 +749,11 @@ public class Eval {
                                 .map(value -> (Number) value)
                                 .map(number -> convertNumberTo(number, convertTo))
                                 .map(converted -> constant(converted, convertTo, instructionHandle,
-                                        lastInstruction, getComponent(), getMethod(), singletonList(thisDelay)
+                                        lastInstruction, this, singletonList(thisDelay)
                                 ))
                                 .collect(toList());
                         return collapse(results, instructionHandle, lastInstruction, getConstantPoolGen(),
-                                getComponent(), getMethod());
+                                this);
                     });
         } else if (instruction instanceof ArithmeticInstruction) {
             var arith = (ArithmeticInstruction) instruction;
@@ -762,8 +766,7 @@ public class Eval {
                     (thisDelay, resolver) -> {
                         try {
                             var computed = computeArithmetic(arith, first, second);
-                            return constant(computed, arithType, instructionHandle, lastInstruction, component,
-                                    getMethod(), asList(first, second)
+                            return constant(computed, arithType, instructionHandle, lastInstruction, this, asList(first, second)
                             );
                         } catch (UnresolvedResultException e) {
                             return resolveOrThrow(thisDelay, resolver, e);
@@ -775,35 +778,22 @@ public class Eval {
         throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
     }
 
-    public List<Result> findStoreInstructionResults(InstructionHandle instructionHandle,
-                                                    List<LocalVariable> localVariables,
-                                                    int index, Result parent) {
-        var prev = getPrev(instructionHandle);
-        var aStoreResults = new ArrayList<Result>(localVariables.size());
-        var cycleCheck = new IdentityHashMap<InstructionHandle, InstructionHandle>();
-        while (prev != null) {
-            var existed = cycleCheck.put(prev, prev);
-            if (existed != null) {
-                var instText = getInstructionString(instructionHandle, constantPoolGen);
-                throw new IllegalStateException("cycle detected, " + instText);
+    public List<Result> getStoreInstructionResults(InstructionHandle instructionHandle, int index, Result parent) {
+        var branches = tree.findBranches(instructionHandle);
+        var storeInstructions = branches.stream().flatMap(b ->
+                getStoreInstructions(b, index, instructionHandle.getPosition()).stream()).collect(toLinkedHashSet());
+        for (var invokeBranch : branches) {
+            var branchPrev = invokeBranch.getPrev();
+            while (branchPrev != null) {
+                var storeInstructions1 = getStoreInstructions(branchPrev, index, instructionHandle.getPosition());
+                storeInstructions.addAll(storeInstructions1);
+                branchPrev = branchPrev.getPrev();
             }
-            var instruction = prev.getInstruction();
-            if (instruction instanceof StoreInstruction) {
-                var store = (StoreInstruction) instruction;
-                if (store.getIndex() == index) {
-                    var onStore = getPrev(prev);
-                    var storedInLocal = eval(onStore, parent);
-                    aStoreResults.add(storedInLocal);
-                    prev = getPrev(storedInLocal.getLastInstruction());
-                } else {
-                    prev = getPrev(prev);
-                }
-            } else {
-                prev = getPrev(prev);
-            }
-
         }
-        return aStoreResults;
+        var results = storeInstructions.stream()
+                .map(storeInstrHandle -> eval(getPrev(storeInstrHandle), parent))
+                .collect(toList());
+        return results;
     }
 
     public DelayInvoke evalInvoke(InstructionHandle instructionHandle, InvokeInstruction instruction, Result parent) {
@@ -827,8 +817,8 @@ public class Eval {
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
 
-        var arguments = evalArguments(instructionHandle, argumentTypes.length, null);
-        var invokeObject = evalInvokeObject(instruction, arguments, null);
+        var arguments = evalArguments(instructionHandle, argumentTypes.length);
+        var invokeObject = evalInvokeObject(instruction, arguments);
         var invokeSpec = (INVOKESPECIAL) instruction;
         var loadClassType = invokeSpec.getLoadClassType(constantPoolGen);
         return delayInvoke(instructionHandle, loadClassType, this, parent, invokeObject, methodName,
@@ -845,49 +835,46 @@ public class Eval {
                                 var method = getMethod();
                                 if ("<init>".equals(methodName)) {
                                     return instantiateObject(lastInstruction, objectClass, argumentClasses, paramValues,
-                                            thisDelay, component, method
-                                    );
+                                            thisDelay, this);
                                 } else {
                                     var privateLookup = InvokeDynamicUtils.getPrivateLookup(objectClass, lookup);
                                     var methodHandle = getMethodHandle(() -> privateLookup.findSpecial(objectClass,
                                             methodName, methodType, objectClass));
                                     return invoke(methodHandle, paramValues, instructionHandle, lastInstruction,
-                                            loadClassType, parameters, component, method);
+                                            loadClassType, this, parameters);
                                 }
                             });
                 });
     }
 
-    private DelayInvoke evalInvokeStatic(InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                         Result parent) {
+    private DelayInvoke evalInvokeStatic(InstructionHandle instructionHandle,
+                                         InvokeInstruction instruction, Result parent) {
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var invokeResultType = instruction.getType(constantPoolGen);
         var invokeObjectClassName = instruction.getClassName(constantPoolGen);
-        var arguments = evalArguments(instructionHandle, argumentTypes.length, null);
+        var arguments = evalArguments(instructionHandle, argumentTypes.length);
         return delayInvoke(instructionHandle, invokeResultType, this, parent, null, methodName,
                 arguments, (thisDelay, resolver) -> {
                     var argumentClasses = toClasses(argumentTypes);
-                    return callInvokeStatic(thisDelay, argumentClasses, thisDelay.getEval(), true,
+                    return callInvokeStatic(thisDelay, argumentClasses, this, true,
                             resolver, (parameters, lastInstruction) -> {
                                 var objectClass = toClass(invokeObjectClassName);
                                 return callMethod(null, objectClass, methodName, argumentClasses,
                                         getValues(parameters), instructionHandle, lastInstruction,
-                                        invokeResultType, constantPoolGen, thisDelay, parameters);
+                                        invokeResultType, constantPoolGen, thisDelay, parameters, this);
                             });
                 });
     }
 
-    private DelayInvoke evalInvokeDynamic(InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                          Result parent) {
+    private DelayInvoke evalInvokeDynamic(InstructionHandle instructionHandle, InvokeInstruction instruction, Result parent) {
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var invokeResultType = instruction.getType(constantPoolGen);
-        var arguments = evalArguments(instructionHandle, argumentTypes.length, null);
+        var arguments = evalArguments(instructionHandle, argumentTypes.length);
         return delayInvoke(instructionHandle, invokeResultType, this, parent, null, null,
                 arguments, (thisDelay, resolver) -> {
-                    var eval = thisDelay.getEval();
                     var argumentClasses = toClasses(argumentTypes);
-                    return callInvokeDynamic(thisDelay, argumentClasses, eval, true, resolver,
+                    return callInvokeDynamic(thisDelay, argumentClasses, this, true, resolver,
                             (parameters, lastInstruction) -> {
                                 var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments(
                                         (INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
@@ -895,7 +882,7 @@ public class Eval {
                                 var methodArguments = bootstrapMethodAndArguments.getBootstrapMethodArguments();
                                 var callSite = getCallSite(handler, methodArguments);
                                 return callBootstrapMethod(getValues(parameters), instructionHandle, lastInstruction,
-                                        invokeResultType, eval, parameters, callSite);
+                                        invokeResultType, this, parameters, callSite);
                             });
                 });
     }
@@ -904,20 +891,20 @@ public class Eval {
         var methodName = instruction.getMethodName(constantPoolGen);
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var invokeResultType = instruction.getType(constantPoolGen);
-        var arguments = evalArguments(instructionHandle, argumentTypes.length, null);
-        var invokeObject = evalInvokeObject(instruction, arguments, null);
+        var arguments = evalArguments(instructionHandle, argumentTypes.length);
+        var invokeObject = evalInvokeObject(instruction, arguments);
         return delayInvoke(instructionHandle, invokeResultType, this, parent, invokeObject, methodName,
                 arguments, (thisDelay, resolver) -> {
                     var argumentClasses = toClasses(argumentTypes);
-                    return callInvokeVirtual(thisDelay, argumentClasses, thisDelay.getEval(),
-                            true, resolver, (parameters, lastInstruction) -> {
+                    return callInvokeVirtual(thisDelay, argumentClasses, this, true, resolver,
+                            (parameters, lastInstruction) -> {
                                 var paramValues = getValues(parameters);
                                 var object = paramValues[0];
                                 var argValues = copyOfRange(paramValues, 1, paramValues.length);
                                 var objectClass = toClass(instruction.getClassName(constantPoolGen));
                                 return callMethod(object, objectClass, instruction.getMethodName(constantPoolGen),
                                         argumentClasses, argValues, instructionHandle, lastInstruction,
-                                        invokeResultType, constantPoolGen, thisDelay, parameters);
+                                        invokeResultType, constantPoolGen, thisDelay, parameters, this);
                             });
                 });
     }
@@ -946,14 +933,13 @@ public class Eval {
                 return resolveAndInvoke(invoke, parameters, parameterClasses, lastInstruction, resolver, call);
             }
         }
-        return collapse(resolved, invoke.getFirstInstruction(), lastInstruction, getConstantPoolGen(), getComponent(), getMethod());
+        return collapse(resolved, invoke.getFirstInstruction(), lastInstruction, getConstantPoolGen(), this);
     }
 
     private Map<Boolean, List<InvokedResult>> callWithParameterVariants(
             DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
             BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-            List<List<Result>> parameterVariants,
-            InstructionHandle lastInstruction) {
+            List<List<Result>> parameterVariants, InstructionHandle lastInstruction) {
         return parameterVariants.stream().map(parameterVariant -> {
             try {
                 var result = resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
@@ -979,7 +965,7 @@ public class Eval {
             }
         }
 
-        var callResult = call(current, lastInstruction, resolver, callParameters, call, getConstantPoolGen(), getComponent(), getMethod());
+        var callResult = call(current, lastInstruction, resolver, callParameters, call, getConstantPoolGen(), this);
         if (callCache != null) {
             log.trace("no cached call result, call '{}', result '{}'", key, callResult);
             callCache.put(key, callResult);
@@ -1049,13 +1035,12 @@ public class Eval {
     }
 
     //todo need to migrates on evalPrev in place of getPrev
-    public InvokeObject evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments,
-                                         Result parent) {
+    public InvokeObject evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments) {
         final InstructionHandle firstInstruction, lastInstruction;
         final Result objectCallResult;
         var lastArgInstruction = evalArguments.getLastArgInstruction();
         var methodName = invokeInstruction.getMethodName(constantPoolGen);
-        if (invokeInstruction instanceof INVOKESPECIAL && methodName.equals("<init>")) {
+        if (invokeInstruction instanceof INVOKESPECIAL && "<init>".equals(methodName)) {
             var prev = getPrev(lastArgInstruction);
             if (prev.getInstruction() instanceof DUP) {
                 prev = getPrev(prev);
@@ -1069,9 +1054,11 @@ public class Eval {
                 lastInstruction = lastArgInstruction;
             }
             objectCallResult = null;
-        } else if (invokeInstruction instanceof INVOKESPECIAL || invokeInstruction instanceof INVOKEVIRTUAL
-                || invokeInstruction instanceof INVOKEINTERFACE) {
-            objectCallResult = evalPrev(lastArgInstruction, parent);
+        } else if (invokeInstruction instanceof INVOKESPECIAL
+                || invokeInstruction instanceof INVOKEVIRTUAL
+                || invokeInstruction instanceof INVOKEINTERFACE
+        ) {
+            objectCallResult = evalPrev(lastArgInstruction, null);
             firstInstruction = objectCallResult.getFirstInstruction();
             lastInstruction = objectCallResult.getLastInstruction();
         } else {
@@ -1111,7 +1098,7 @@ public class Eval {
                 //not callpoints, try to resolve by the resolver
                 //todo experiment
                 var parameterVariants = parameters.stream().map(parameter -> resolveExpand(parameter, resolver)).collect(toList());
-                int dimensions = getDimensions(parameterVariants);
+                var dimensions = getDimensions(parameterVariants);
                 return flatResolvedVariants(dimensions, parameterVariants, parameters);
             } else {
                 var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
@@ -1122,6 +1109,31 @@ public class Eval {
                     if (dimensions <= 3) {
                         resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                     } else {
+
+                        var collected = parameterVariants.stream().flatMap(parameterVariant -> parameterVariant.stream().flatMap(p -> {
+                            var branches = getBranches(p);
+                            return branches.stream().map(b -> Map.entry(b, p));
+                        })).collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, toList())));
+
+                        //group by branches
+                        for (var parameterVariant : parameterVariants) {
+                            var collect1 = parameterVariant.stream().flatMap(p -> {
+                                var branches = getBranches(p);
+                                return branches.stream().map(b -> Map.entry(b, p));
+                            }).collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, toList())));
+
+                            var collect = parameterVariant.stream().collect(toMap(p -> p, p -> {
+                                return getBranches(p);
+                            }));
+                            for (var parameter : parameterVariant) {
+                                var firstInstruction = parameter.getFirstInstruction();
+
+                                var eval = parameter.getEval();
+                                var branches = eval.getTree().findBranches(firstInstruction);
+                                System.out.println(branches);
+                            }
+                        }
+
                         //todo need to analyze the branch
                         var callContexts = getCallContexts(parameters, parameterVariants);
                         var result = getFullDistinctCallContexts(callContexts);
@@ -1199,7 +1211,8 @@ public class Eval {
     protected Result callMethod(Object object, Class<?> objectClass, String methodName,
                                 Class<?>[] argTypes, Object[] args,
                                 InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                Type expectedType, ConstantPoolGen constantPoolGen, Delay invoke, List<ParameterValue> parameters) {
+                                Type expectedType, ConstantPoolGen constantPoolGen, Delay invoke,
+                                List<ParameterValue> parameters, Eval eval) {
         var msg = "callMethod";
         if (object != null && !objectClass.isAssignableFrom(object.getClass())) {
             log.debug("unexpected callable object objectClass {}, expected {}, object '{}', method {}",
@@ -1209,11 +1222,11 @@ public class Eval {
         if (declaredMethod == null) {
             log.info("{}, method not found '{}.{}', instruction {}", msg, objectClass.getName(), methodName,
                     EvalUtils.toString(invokeInstruction, constantPoolGen));
-            return notFound(methodName, invokeInstruction, invoke);
+            return notFound(methodName, invokeInstruction, invoke, eval);
         } else if (!declaredMethod.trySetAccessible()) {
             log.warn("{}, method is not accessible, method '{}.{}', instruction {}", msg, objectClass.getName(), methodName,
                     EvalUtils.toString(invokeInstruction, constantPoolGen));
-            return notAccessible(declaredMethod, invokeInstruction, invoke);
+            return notAccessible(declaredMethod, invokeInstruction, invoke, eval);
         }
         Object result;
         try {
@@ -1226,7 +1239,7 @@ public class Eval {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, objectClass.getName(), methodName,
                     result, EvalUtils.toString(invokeInstruction, constantPoolGen));
         }
-        return invoked(result, expectedType, invokeInstruction, lastInstruction, this.getComponent(), this.getMethod(), parameters);
+        return invoked(result, expectedType, invokeInstruction, lastInstruction, this, parameters);
     }
 
     public List<Result> resolveExpand(Result value, Resolver resolver) {
@@ -1246,17 +1259,14 @@ public class Eval {
                 return argResult;
             }
 
-            var eval = variable.getEvalContext();
-            var component = eval.getComponent();
-            var method = eval.getMethod();
-
+            var eval = variable.getEval();
             var argumentVariants = eval.getArgumentVariants();
 
             var valueVariants = argumentVariants.stream().map(variant -> {
                 var i = index - 1;
                 if (i >= variant.size()) {
                     //logs
-                    return stub(variable, component, method, resolver);
+                    return stub(variable, resolver);
                 } else {
                     return variant.get(i);
                 }
@@ -1273,8 +1283,7 @@ public class Eval {
                         return resolveOrThrow(value, resolver, e);
                     }
                 }).collect(toList());
-                result = collapse(resolvedVariants, variable.getFirstInstruction(), variable.getLastInstruction(),
-                        constantPoolGen, component, method);
+                result = collapse(resolvedVariants, variable.getFirstInstruction(), variable.getLastInstruction(), constantPoolGen, eval);
             } else {
                 if (resolver != null) {
                     result = resolver.resolve(value, null);
@@ -1303,11 +1312,11 @@ public class Eval {
         return result;
     }
 
-    public EvalArguments evalArguments(InstructionHandle instructionHandle, int argumentsAmount, Result parent) {
+    public EvalArguments evalArguments(InstructionHandle instructionHandle, int argumentsAmount) {
         var values = new Result[argumentsAmount];
         var current = instructionHandle;
         for (int i = argumentsAmount; i > 0; i--) {
-            var eval = evalPrev(current, parent);
+            var eval = evalPrev(current, null);
             var valIndex = i - 1;
             values[valIndex] = eval;
             current = eval.getLastInstruction();
@@ -1316,7 +1325,15 @@ public class Eval {
     }
 
     public InstructionHandle getPrev(InstructionHandle instructionHandle) {
-        return InstructionHandleUtils.getPrev(instructionHandle, this.jumpTo);
+        var prevs = getPrevs(instructionHandle);
+        return !prevs.isEmpty() ? prevs.get(0) : null;
+    }
+
+    public List<InstructionHandle> getPrevs(InstructionHandle instructionHandle) {
+        return tree.findBranches(instructionHandle).stream().map(b -> b.getPrevInstruction(instructionHandle))
+                .filter(Objects::nonNull).map(prev -> {
+                    return prev.getInstruction() instanceof BranchInstruction ? prev.getPrev() : prev;
+                }).distinct().collect(toList());
     }
 
     @Deprecated

@@ -125,7 +125,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
                     var variable = (Variable) result;
-                    var evalContext = variable.getEvalContext();
+                    var evalContext = variable.getEval();
                     var variableMethod = evalContext.getMethod();
                     log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", "evalCallPointArgumentVariants",
                             variable.getName(), variableMethod.getName(),

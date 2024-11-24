@@ -21,8 +21,6 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
     final String description;
     final DelayFunction<Delay> evaluator;
     final Result prev;
-    final Component component;
-    final Method method;
     final List<Result> relations;
     final Type type;
     Result result;
@@ -38,13 +36,6 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
         this.relations = relations;
         this.type = type;
         this.result = result;
-        component = eval.getComponent();
-        method = eval.getMethod();
-    }
-
-    @Override
-    public Class<?> getComponentType() {
-        return component != null ? component.getType() : null;
     }
 
     @Override
