@@ -15,9 +15,8 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.Utils.toLinkedHashSet;
@@ -37,6 +36,7 @@ import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Collections.singletonList;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.IntStream.range;
 import static java.util.stream.Stream.*;
@@ -471,11 +471,17 @@ public class Eval {
                 .collect(toList());
     }
 
-    private static List<InvokeBranch> getBranches(Result p) {
-        var eval = p.getEval();
-        var firstInstruction = p.getFirstInstruction();
-        var branches = eval.getTree().findBranches(firstInstruction);
-        return branches;
+    private static List<InvokeBranch> getBranches(Eval eval, InstructionHandle handle) {
+        return eval.getTree().findBranches(handle);
+    }
+
+    private static List<InstructionHandle> getStoreInstructions(List<InvokeBranch> branches,
+                                                                int variableIndex, int loadInstructionPosition) {
+        return branches.stream().map(branchPrev -> {
+            var storeInstructions = getStoreInstructions(branchPrev, variableIndex, loadInstructionPosition);
+            return !storeInstructions.isEmpty() ? storeInstructions : getStoreInstructions(branchPrev.getPrev(),
+                    variableIndex, loadInstructionPosition);
+        }).flatMap(Collection::stream).collect(toList());
     }
 
     public ComponentKey getComponentKey() {
@@ -780,16 +786,7 @@ public class Eval {
 
     public List<Result> getStoreInstructionResults(InstructionHandle instructionHandle, int index, Result parent) {
         var branches = tree.findBranches(instructionHandle);
-        var storeInstructions = branches.stream().flatMap(b ->
-                getStoreInstructions(b, index, instructionHandle.getPosition()).stream()).collect(toLinkedHashSet());
-        for (var invokeBranch : branches) {
-            var branchPrev = invokeBranch.getPrev();
-            while (branchPrev != null) {
-                var storeInstructions1 = getStoreInstructions(branchPrev, index, instructionHandle.getPosition());
-                storeInstructions.addAll(storeInstructions1);
-                branchPrev = branchPrev.getPrev();
-            }
-        }
+        var storeInstructions = getStoreInstructions(branches, index, instructionHandle.getPosition());
         var results = storeInstructions.stream()
                 .map(storeInstrHandle -> eval(getPrev(storeInstrHandle), parent))
                 .collect(toList());
@@ -1110,26 +1107,64 @@ public class Eval {
                         resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                     } else {
 
+                        var grouped = new HashMap<InvokeBranch, Map<Integer, Collection<Result>>>();
+                        for (int j = 0; j < parameterVariants.size(); j++) {
+                            var parameterVariant = parameterVariants.get(j);
+                            for (var parameter : parameterVariant) {
+                                var branches = getBranches(parameter.getEval(), parameter.getFirstInstruction());
+                                for (var branch : branches) {
+                                    grouped.computeIfAbsent(branch, k -> new HashMap<>()).computeIfAbsent(j, k -> new LinkedHashSet<>()).add(parameter);
+                                }
+                            }
+                        }
+
+                        for (var branch : grouped.keySet()) {
+                            var params = grouped.get(branch);
+                            for (var index : new ArrayList<>(params.keySet())) {
+                                var variants = params.get(index);
+                                if (variants.size() > 1) {
+                                    for (var variant : variants) {
+                                        if (variant instanceof RelationsAware) {
+                                            var relAware = (RelationsAware) variant;
+                                            var relations = relAware.getRelations();
+                                            var collected = relations.stream().flatMap(r -> {
+                                                var branches = getBranches(r.getEval(), r.getFirstInstruction());
+                                                return branches.stream().filter(b -> !b.equals(branch)).map(b -> entry(b, r));
+                                            }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+                                            if (!collected.isEmpty()) {
+                                                params.remove(index);
+                                                for (var invokeBranch : collected.keySet()) {
+                                                    grouped.computeIfAbsent(invokeBranch, k -> new LinkedHashMap<>()).put(index, List.of(variant));
+                                                }
+                                            }
+                                        } else {
+                                            throw new UnsupportedOperationException("TODO");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         var collected = parameterVariants.stream().flatMap(parameterVariant -> parameterVariant.stream().flatMap(p -> {
-                            var branches = getBranches(p);
-                            return branches.stream().map(b -> Map.entry(b, p));
-                        })).collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, toList())));
+                            var branches = getBranches(p.getEval(), p.getFirstInstruction());
+                            return branches.stream().map(b -> entry(b, p));
+                        })).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
 
                         //group by branches
                         for (var parameterVariant : parameterVariants) {
                             var collect1 = parameterVariant.stream().flatMap(p -> {
-                                var branches = getBranches(p);
-                                return branches.stream().map(b -> Map.entry(b, p));
-                            }).collect(groupingBy(Map.Entry::getKey, mapping(Map.Entry::getValue, toList())));
+                                var branches = getBranches(p.getEval(), p.getFirstInstruction());
+                                return branches.stream().map(b -> entry(b, p));
+                            }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
 
                             var collect = parameterVariant.stream().collect(toMap(p -> p, p -> {
-                                return getBranches(p);
+                                return getBranches(p.getEval(), p.getFirstInstruction());
                             }));
                             for (var parameter : parameterVariant) {
                                 var firstInstruction = parameter.getFirstInstruction();
 
                                 var eval = parameter.getEval();
-                                var branches = eval.getTree().findBranches(firstInstruction);
+                                List<InvokeBranch> branches = getBranches(eval, firstInstruction);
                                 System.out.println(branches);
                             }
                         }
@@ -1325,13 +1360,14 @@ public class Eval {
     }
 
     public InstructionHandle getPrev(InstructionHandle instructionHandle) {
-        var prevs = getPrevs(instructionHandle);
+        var prevs = getPrevious(instructionHandle);
         return !prevs.isEmpty() ? prevs.get(0) : null;
     }
 
-    public List<InstructionHandle> getPrevs(InstructionHandle instructionHandle) {
-        return tree.findBranches(instructionHandle).stream().map(b -> b.getPrevInstruction(instructionHandle))
-                .filter(Objects::nonNull).map(prev -> {
+    public List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
+        return tree.findBranches(instructionHandle).stream()
+                .flatMap(b -> b.getPrevInstructions(instructionHandle).stream())
+                .map(prev -> {
                     return prev.getInstruction() instanceof BranchInstruction ? prev.getPrev() : prev;
                 }).distinct().collect(toList());
     }

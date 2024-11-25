@@ -1,6 +1,7 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
+import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -16,7 +17,7 @@ import static lombok.AccessLevel.PRIVATE;
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 @EqualsAndHashCode(callSuper = true)
-public class Constant extends Result implements ContextAware, Result.RelationsAware, TypeAware {
+public class Constant extends Result implements ContextAware, RelationsAware, TypeAware {
     Object value;
     List<Result> relations;
     Eval eval;
