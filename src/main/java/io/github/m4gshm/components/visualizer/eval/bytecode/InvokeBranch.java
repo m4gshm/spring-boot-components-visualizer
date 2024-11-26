@@ -6,7 +6,10 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Code;
-import org.apache.bcel.generic.*;
+import org.apache.bcel.generic.BranchInstruction;
+import org.apache.bcel.generic.GotoInstruction;
+import org.apache.bcel.generic.Instruction;
+import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.*;
 
@@ -168,6 +171,18 @@ public class InvokeBranch {
         }
     }
 
+    public <T extends Instruction> List<InstructionHandle> findInstructions(Class<? super T> aClass) {
+        return this.opsGroups.getOrDefault(aClass, List.of());
+    }
+
+    public InstructionHandle first() {
+        return ops.isEmpty() ? null : ops.firstEntry().getValue();
+    }
+
+    public InstructionHandle last() {
+        return ops.isEmpty() ? null : ops.lastEntry().getValue();
+    }
+
     private void addNext(InvokeBranch... invokeBranches) {
         addNext(Arrays.asList(invokeBranches));
     }
@@ -179,7 +194,4 @@ public class InvokeBranch {
         }
     }
 
-    public <T extends Instruction> List<InstructionHandle> findInstructions(Class<? super T> aClass) {
-        return this.opsGroups.getOrDefault(aClass, List.of());
-    }
 }

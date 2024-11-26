@@ -92,7 +92,7 @@ public class WebsocketClientUtils {
         }
     }
 
-    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, Resolver resolver) {
+    private static List<String> getUrls(Collection<List<Result>> variants, int paramIndex, Resolver resolver) {
         var results = variants.stream().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);

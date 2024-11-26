@@ -9,6 +9,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.*;
+import org.springframework.util.Assert;
 
 import java.lang.Deprecated;
 import java.lang.invoke.MethodHandles;
@@ -44,6 +45,8 @@ import static lombok.AccessLevel.PRIVATE;
 import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.Const.*;
 import static org.springframework.aop.support.AopUtils.getTargetClass;
+import static org.springframework.util.Assert.notEmpty;
+import static org.springframework.util.Assert.state;
 
 @Slf4j
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -471,10 +474,6 @@ public class Eval {
                 .collect(toList());
     }
 
-    private static List<InvokeBranch> getBranches(Eval eval, InstructionHandle handle) {
-        return eval.getTree().findBranches(handle);
-    }
-
     private static List<InstructionHandle> getStoreInstructions(List<InvokeBranch> branches,
                                                                 int variableIndex, int loadInstructionPosition) {
         return branches.stream().map(branchPrev -> {
@@ -482,6 +481,53 @@ public class Eval {
             return !storeInstructions.isEmpty() ? storeInstructions : getStoreInstructions(branchPrev.getPrev(),
                     variableIndex, loadInstructionPosition);
         }).flatMap(Collection::stream).collect(toList());
+    }
+
+    private static Collection<List<Result>> combineVariants(InvokeBranch branch, Result[] firstVariant, boolean cloned,
+                                                            Map<InvokeBranch, Map<Integer, Collection<Result>>> groupedParams
+    ) {
+        var popMask = new BitSet(firstVariant.length);
+        var populated = false;
+        var allVariants = new LinkedHashSet<List<Result>>();
+        var paramIndexToVarinatsMap = groupedParams.getOrDefault(branch, Map.of());
+        for (var index : paramIndexToVarinatsMap.keySet()) {
+            var variants = paramIndexToVarinatsMap.get(index);
+            //todo must be one parameter variant per branch
+            state(variants.size() == 1, "variants must be exactly one " + variants);
+            var result = variants.stream().findFirst().get();
+            var existed = firstVariant[index];
+            var exists = existed != null;
+            var same = existed == result;
+            if (!cloned) {
+                var problem = exists && !same;
+                Assert.state(!problem, index + " parameter must be null or the same");
+            }
+            if (!(cloned && exists && same)) {
+                firstVariant[index] = result;
+                popMask.set(index);
+                populated = true;
+            }
+        }
+
+        var full = popMask.cardinality() == firstVariant.length;
+        var next = branch.getNext();
+        int nextSize = next.size();
+        if (populated && nextSize == 0) {
+            allVariants.add(Arrays.asList(firstVariant));
+        } else {
+            if (full) {
+                allVariants.add(Arrays.asList(firstVariant));
+            }
+            for (int i = 0; i < nextSize; i++) {
+                var clone = i > 0;
+                var nextVariant = full ? new Result[firstVariant.length] : clone ? firstVariant.clone() : firstVariant;
+                var variants = combineVariants(next.get(i), nextVariant, clone, groupedParams);
+                if (!variants.isEmpty()) {
+                    allVariants.addAll(variants);
+                }
+            }
+        }
+        return allVariants;
     }
 
     public ComponentKey getComponentKey() {
@@ -936,7 +982,7 @@ public class Eval {
     private Map<Boolean, List<InvokedResult>> callWithParameterVariants(
             DelayInvoke invoke, Class<?>[] parameterClasses, Resolver resolver,
             BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-            List<List<Result>> parameterVariants, InstructionHandle lastInstruction) {
+            Collection<List<Result>> parameterVariants, InstructionHandle lastInstruction) {
         return parameterVariants.stream().map(parameterVariant -> {
             try {
                 var result = resolveAndInvoke(invoke, parameterVariant, parameterClasses, lastInstruction,
@@ -1066,7 +1112,7 @@ public class Eval {
         return new InvokeObject(firstInstruction, lastInstruction, objectCallResult);
     }
 
-    public List<List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
+    public Collection<List<Result>> resolveInvokeParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
         if (parameters.isEmpty()) {
             return getResolvedParameters(parameters);
         }
@@ -1098,6 +1144,7 @@ public class Eval {
                 var dimensions = getDimensions(parameterVariants);
                 return flatResolvedVariants(dimensions, parameterVariants, parameters);
             } else {
+                var roots = new HashSet<InvokeBranch>();
                 var resolvedAll = resolveParametersWithContextArgumentVariants(parameters, resolver);
                 var resolvedParamVariants = new ArrayList<List<Result>>();
                 for (var resolvedVariantMap : resolvedAll) {
@@ -1106,18 +1153,20 @@ public class Eval {
                     if (dimensions <= 3) {
                         resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                     } else {
-
                         var grouped = new HashMap<InvokeBranch, Map<Integer, Collection<Result>>>();
                         for (int j = 0; j < parameterVariants.size(); j++) {
                             var parameterVariant = parameterVariants.get(j);
                             for (var parameter : parameterVariant) {
-                                var branches = getBranches(parameter.getEval(), parameter.getFirstInstruction());
+                                var root = parameter.getEval().getTree();
+                                roots.add(root);
+                                var branches = root.findBranches(parameter.getFirstInstruction());
+                                notEmpty(branches, "no branches for parameter " + parameter + " in method " +
+                                        this.getMethod().getName());
                                 for (var branch : branches) {
                                     grouped.computeIfAbsent(branch, k -> new HashMap<>()).computeIfAbsent(j, k -> new LinkedHashSet<>()).add(parameter);
                                 }
                             }
                         }
-
                         for (var branch : grouped.keySet()) {
                             var params = grouped.get(branch);
                             for (var index : new ArrayList<>(params.keySet())) {
@@ -1128,7 +1177,9 @@ public class Eval {
                                             var relAware = (RelationsAware) variant;
                                             var relations = relAware.getRelations();
                                             var collected = relations.stream().flatMap(r -> {
-                                                var branches = getBranches(r.getEval(), r.getFirstInstruction());
+                                                var root1 = r.getEval().getTree();
+                                                roots.add(root1);
+                                                var branches = root1.findBranches(r.getFirstInstruction());
                                                 return branches.stream().filter(b -> !b.equals(branch)).map(b -> entry(b, r));
                                             }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
                                             if (!collected.isEmpty()) {
@@ -1145,46 +1196,14 @@ public class Eval {
                             }
                         }
 
-                        var collected = parameterVariants.stream().flatMap(parameterVariant -> parameterVariant.stream().flatMap(p -> {
-                            var branches = getBranches(p.getEval(), p.getFirstInstruction());
-                            return branches.stream().map(b -> entry(b, p));
-                        })).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
+                        var combinedVariants = roots.stream().map(firstBranch -> {
+                            return combineVariants(firstBranch, new Result[parameters.size()], false, grouped);
+                        }).filter(r->!r.isEmpty()).collect(toLinkedHashSet());
 
-                        //group by branches
-                        for (var parameterVariant : parameterVariants) {
-                            var collect1 = parameterVariant.stream().flatMap(p -> {
-                                var branches = getBranches(p.getEval(), p.getFirstInstruction());
-                                return branches.stream().map(b -> entry(b, p));
-                            }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
-
-                            var collect = parameterVariant.stream().collect(toMap(p -> p, p -> {
-                                return getBranches(p.getEval(), p.getFirstInstruction());
-                            }));
-                            for (var parameter : parameterVariant) {
-                                var firstInstruction = parameter.getFirstInstruction();
-
-                                var eval = parameter.getEval();
-                                List<InvokeBranch> branches = getBranches(eval, firstInstruction);
-                                System.out.println(branches);
-                            }
+                        for (var combineVariants : combinedVariants) {
+                            resolvedParamVariants.addAll(combineVariants);
                         }
 
-                        //todo need to analyze the branch
-                        var callContexts = getCallContexts(parameters, parameterVariants);
-                        var result = getFullDistinctCallContexts(callContexts);
-                        if (result.isEmpty()) {
-//                        var callContexts2 = getCallContexts(parameters, parameterVariants);
-                            //log WARN todo
-                            //no common call contexts ????
-                            resolvedParamVariants.addAll(flatResolvedVariants(1, parameterVariants, parameters));
-                        } else {
-                            for (var variantOfVariantOfParameters : result) {
-                                resolvedParamVariants.addAll(flatResolvedVariants(
-                                        getDimensions(variantOfVariantOfParameters),
-                                        variantOfVariantOfParameters, parameters)
-                                );
-                            }
-                        }
                     }
                 }
                 return resolvedParamVariants;
