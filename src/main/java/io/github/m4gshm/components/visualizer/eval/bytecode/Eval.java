@@ -500,7 +500,7 @@ public class Eval {
             var same = existed == result;
             if (!cloned) {
                 var problem = exists && !same;
-                Assert.state(!problem, index + " parameter must be null or the same");
+                state(!problem, index + " parameter must be null or the same");
             }
             if (!(cloned && exists && same)) {
                 firstVariant[index] = result;
@@ -1198,7 +1198,7 @@ public class Eval {
 
                         var combinedVariants = roots.stream().map(firstBranch -> {
                             return combineVariants(firstBranch, new Result[parameters.size()], false, grouped);
-                        }).filter(r->!r.isEmpty()).collect(toLinkedHashSet());
+                        }).filter(r -> !r.isEmpty()).collect(toLinkedHashSet());
 
                         for (var combineVariants : combinedVariants) {
                             resolvedParamVariants.addAll(combineVariants);
@@ -1384,7 +1384,9 @@ public class Eval {
     }
 
     public List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
-        return tree.findBranches(instructionHandle).stream()
+        var branches = tree.findBranches(instructionHandle);
+        state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
+        return branches.stream()
                 .flatMap(b -> b.getPrevInstructions(instructionHandle).stream())
                 .map(prev -> {
                     return prev.getInstruction() instanceof BranchInstruction ? prev.getPrev() : prev;

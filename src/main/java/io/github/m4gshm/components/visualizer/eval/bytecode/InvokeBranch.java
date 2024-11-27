@@ -12,6 +12,7 @@ import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PRIVATE;
+import static org.springframework.util.Assert.state;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -30,27 +31,34 @@ public class InvokeBranch {
     public static InvokeBranch newTree(Code methodCode) {
         var instructionHandleStream = instructionHandleStream(methodCode);
         var cursor = instructionHandleStream.findFirst().orElse(null);
-        return newTree(cursor, List.of());
+        return newTree(null, cursor, List.of());
     }
 
-    private static InvokeBranch newTree(InstructionHandle start, @NonNull Collection<InvokeBranch> siblings) {
+    private static InvokeBranch newTree(InvokeBranch prev, InstructionHandle start, @NonNull Collection<InvokeBranch> siblings) {
         var branch = new InvokeBranch();
-        var hasSiblings = !siblings.isEmpty();
-
         var cursor = start;
         while (cursor != null) {
             var instruction = cursor.getInstruction();
-            int cursorPosition = cursor.getPosition();
-            if (hasSiblings) for (var targeter : cursor.getTargeters()) {
+            for (var targeter : cursor.getTargeters()) {
                 if (targeter instanceof BranchInstruction) {
-                    var branchInstruction = (BranchInstruction) targeter;
-                    var target = branchInstruction.getTarget();
-                    var tailOwnedBranch = foundEndedBy(branchInstruction, siblings);
-                    if (tailOwnedBranch != null) {
-                        var tail = requireNonNull(foundStartedFrom(target, List.of(tailOwnedBranch)), "no tail for branch");
-                        if (tail != null) {
-                            branch.addNext(tail);
-                            return branch;
+                    var targeterInstruction = (BranchInstruction) targeter;
+                    var target = targeterInstruction.getTarget();
+                    var refFromPrev = isRefFromPrev(prev, targeter);
+                    var isFirst = cursor == start;
+                    if (!isFirst && refFromPrev) {
+                        //maybe target from prev branch
+                        var tail = newTree(branch, cursor, List.of());
+                        return witTail(branch, tail);
+                    } else if (!refFromPrev) {
+                        var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
+                        if (tailOwnedBranch != null) {
+                            var tail = requireNonNull(foundStartedFrom(target, List.of(tailOwnedBranch)), "no tail for branch");
+                            return witTail(branch, tail);
+                        } else if (!siblings.isEmpty()) {
+                            var tail = foundStartedFrom(target, siblings);
+                            if (tail != null) {
+                                return witTail(branch, tail);
+                            }
                         }
                     }
                 }
@@ -61,12 +69,14 @@ public class InvokeBranch {
                 var jumpTo = ((BranchInstruction) instruction).getTarget();
                 if (instruction instanceof GotoInstruction) {
                     var jumpToPosition = jumpTo.getPosition();
-                    var goBack = jumpToPosition < cursorPosition;
+                    var goBack = jumpToPosition < cursor.getPosition();
                     if (!goBack) {
                         //no loop
                         InvokeBranch tail;
                         //split sibling
-                        var jumpToSibling = siblings.stream().filter(sibling -> sibling.ops.get(jumpToPosition) != null).findFirst().orElse(null);
+                        var jumpToSibling = siblings.stream().filter(sibling -> {
+                            return sibling.ops.get(jumpToPosition) != null;
+                        }).findFirst().orElse(null);
                         if (jumpToSibling != null) {
                             //todo the jumpToSibling must be same as the jumpTo
                             var remindedHead = new TreeMap<>(jumpToSibling.ops.headMap(jumpToPosition));
@@ -76,7 +86,7 @@ public class InvokeBranch {
                             jumpToSibling.ops = remindedHead;
                             jumpToSibling.opsGroups = newOpsGroups(remindedHead);
                         } else {
-                            tail = newTree(jumpTo, List.of());
+                            tail = newTree(branch, jumpTo, List.of());
                         }
                         branch.addNext(tail);
                     }
@@ -94,8 +104,32 @@ public class InvokeBranch {
         return branch;
     }
 
-    private static InvokeBranch foundEndedBy(BranchInstruction target, Collection<InvokeBranch> siblings) {
-        return siblings.stream().map(sibling -> {
+    private static InvokeBranch witTail(InvokeBranch branch, InvokeBranch tail) {
+        if (branch.ops.isEmpty()) {
+            return tail;
+        }
+        branch.addNext(tail);
+        return branch;
+    }
+
+    private static boolean isRefFromPrev(InvokeBranch prev, InstructionTargeter targeter) {
+        if (prev == null) {
+            return false;
+        }
+        var prevLast = prev.last();
+        var refFromPrev = prevLast.getInstruction() == targeter;
+        if (refFromPrev) {
+            return true;
+        }
+        var superPrevs = prev.getPrev();
+        if (superPrevs == null) {
+            return false;
+        }
+        return superPrevs.stream().anyMatch(p -> isRefFromPrev(p, targeter));
+    }
+
+    private static InvokeBranch foundEndedBy(BranchInstruction target, Collection<InvokeBranch> branches) {
+        return branches.stream().map(sibling -> {
             var handle = sibling.last();
             if (handle == null) {
                 return foundEndedBy(target, sibling.getNext());
@@ -132,15 +166,15 @@ public class InvokeBranch {
         return tailOpsGroups;
     }
 
-    private static void fork(InvokeBranch branch, InstructionHandle left, List<InstructionHandle> rights) {
-        var leftBranch = newTree(left, List.of());
+    private static void fork(InvokeBranch prev, InstructionHandle left, List<InstructionHandle> rights) {
+        var leftBranch = newTree(prev, left, List.of());
         var lefts = new ArrayList<InvokeBranch>();
         lefts.add(leftBranch);
-        branch.addNext(leftBranch);
+        prev.addNext(leftBranch);
         for (var right : rights) {
-            var rightBranch = newTree(right, lefts);
+            var rightBranch = newTree(prev, right, lefts);
             lefts.add(rightBranch);
-            branch.addNext(rightBranch);
+            prev.addNext(rightBranch);
         }
     }
 
@@ -202,6 +236,7 @@ public class InvokeBranch {
 
     private void addNext(Collection<InvokeBranch> invokeBranches) {
         for (var branch : invokeBranches) {
+            state(!next.contains(branch), () -> "Branch " + branch + " already added");
             next.add(branch);
             branch.prev.add(this);
         }
