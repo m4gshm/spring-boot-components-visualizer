@@ -81,22 +81,14 @@ cloud "output" as output #line.dotted;line:gray; {
   rectangle "http" as output.http {
     frame "http://service2" as output.http.http...service2 #line.dotted;text:gray {
       collections "<#transparent,transparent>|<r>GET: | |\n\
-<#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|" as output.http.http...service2.interfaces
+<#transparent,transparent>|<r>GET: |/load-deprecated/{Service2LegacyImpl.getDeprecated({id})}|\n\
+<#transparent,transparent>|<r>GET: |/load/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|\n\
+<#transparent,transparent>|<r>GET: |/load2/{Integer.valueOf(-{{Integer.valueOf({MainController.save({id})})}.intValue()}+2)}|" as output.http.http...service2.interfaces
       service2LegacyImpl ....(0 output.http.http...service2.interfaces
       frame "/{id}" as output.http.http...service2...id. #line.dotted;text:gray {
         collections "<#transparent,transparent>|<r>GET: | |\n\
 <#transparent,transparent>|<r>GET: |/unused|" as output.http.http...service2...id..interfaces
         service2FeignClient ....(0 output.http.http...service2...id..interfaces
-      }
-      frame "/load" as output.http.http...service2..load #line.dotted;text:gray {
-        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}|" as output.http.http...service2..load.interfaces
-        service2LegacyImpl ....(0 output.http.http...service2..load.interfaces
-      }
-      frame "/load2" as output.http.http...service2..load2 #line.dotted;text:gray {
-        collections "<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.get({id})})}.intValue()}+1)}.intValue()}+2)}|\n\
-<#transparent,transparent>|<r>GET: |/{Integer.valueOf(-{{Integer.valueOf({{Integer.valueOf({MainController.save({id})})}.intValue()}+1)}.intValue()}+2)}|" as output.http.http...service2..load2.interfaces
-        service2LegacyImpl ....(0 output.http.http...service2..load2.interfaces
       }
     }
     frame "/standalone-service2/{id}" as output.http..standalone.service2..id. #line.dotted;text:gray {
@@ -124,6 +116,7 @@ cloud "output" as output #line.dotted;line:gray; {
       collections "<#transparent,transparent>|jms-private-queue|\n\
 <#transparent,transparent>|jmsQueue2|\n\
 <#transparent,transparent>|jmsQueueEvents|\n\
+<#transparent,transparent>|jmsQueueEvents2|\n\
 <#transparent,transparent>|jmsQueueEvents3|\n\
 <#transparent,transparent>|jmsQueue{CoreService.lambda$makeAll$0({i})}|" as output.jms.jmsQueueService.interfaces
       jmsQueueService ....> output.jms.jmsQueueService.interfaces
