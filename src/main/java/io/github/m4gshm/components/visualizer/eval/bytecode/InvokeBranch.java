@@ -9,7 +9,6 @@ import java.util.*;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.asList;
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PRIVATE;
 import static org.springframework.util.Assert.state;
@@ -37,6 +36,7 @@ public class InvokeBranch {
     private static InvokeBranch newTree(InvokeBranch prev, InstructionHandle start, @NonNull Collection<InvokeBranch> siblings) {
         var branch = new InvokeBranch();
         var cursor = start;
+        var isFirst = true;
         while (cursor != null) {
             var instruction = cursor.getInstruction();
             for (var targeter : cursor.getTargeters()) {
@@ -44,7 +44,7 @@ public class InvokeBranch {
                     var targeterInstruction = (BranchInstruction) targeter;
                     var target = targeterInstruction.getTarget();
                     var refFromPrev = isRefFromPrev(prev, targeter);
-                    var isFirst = cursor == start;
+
                     if (!isFirst && refFromPrev) {
                         //maybe target from prev branch
                         var tail = newTree(branch, cursor, List.of());
@@ -52,7 +52,8 @@ public class InvokeBranch {
                     } else if (!refFromPrev) {
                         var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
                         if (tailOwnedBranch != null) {
-                            var tail = requireNonNull(foundStartedFrom(target, List.of(tailOwnedBranch)), "no tail for branch");
+                            var tail = foundStartedFrom(target, List.of(tailOwnedBranch));
+                            state(tail != null, "no tail for branch");
                             return witTail(branch, tail);
                         } else if (!siblings.isEmpty()) {
                             var tail = foundStartedFrom(target, siblings);
@@ -100,6 +101,7 @@ public class InvokeBranch {
                 return branch;
             }
             cursor = next;
+            isFirst = false;
         }
         return branch;
     }
