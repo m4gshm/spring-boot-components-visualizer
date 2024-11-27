@@ -6,6 +6,8 @@ import org.apache.bcel.classfile.Code;
 import org.apache.bcel.generic.*;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.asList;
@@ -39,29 +41,38 @@ public class InvokeBranch {
         var isFirst = true;
         while (cursor != null) {
             var instruction = cursor.getInstruction();
-            for (var targeter : cursor.getTargeters()) {
+            var targeters = cursor.getTargeters();
+            for (var targeter : targeters) {
                 if (targeter instanceof BranchInstruction) {
                     var targeterInstruction = (BranchInstruction) targeter;
-                    var target = targeterInstruction.getTarget();
-                    var refFromPrev = isRefFromPrev(prev, targeter);
-
-                    if (!isFirst && refFromPrev) {
-                        //maybe target from prev branch
+                    var index = targeterInstruction.getIndex();
+                    var isGoto = targeterInstruction instanceof GotoInstruction;
+                    var isLoop = index < 0 && isGoto;
+                    if (!isFirst && isLoop) {
                         var tail = newTree(branch, cursor, List.of());
                         return witTail(branch, tail);
-                    } else if (!refFromPrev) {
-                        var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
-                        if (tailOwnedBranch != null) {
-                            var tail = foundStartedFrom(target, List.of(tailOwnedBranch));
-                            state(tail != null, "no tail for branch");
+                    } else {
+                        var refFromPrev = isRefFromPrev(prev, targeter);
+                        if (!isFirst && refFromPrev) {
+                            //maybe target from prev branch
+                            var tail = newTree(branch, cursor, List.of());
                             return witTail(branch, tail);
-                        } else if (!siblings.isEmpty()) {
-                            var tail = foundStartedFrom(target, siblings);
-                            if (tail != null) {
+                        } else if (!refFromPrev) {
+                            var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
+                            var target = targeterInstruction.getTarget();
+                            if (tailOwnedBranch != null) {
+                                var tail = foundStartedFrom(target, List.of(tailOwnedBranch));
+                                state(tail != null, "no tail for branch");
                                 return witTail(branch, tail);
+                            } else if (!siblings.isEmpty()) {
+                                var tail = foundStartedFrom(target, siblings);
+                                if (tail != null) {
+                                    return witTail(branch, tail);
+                                }
                             }
                         }
                     }
+
                 }
             }
             branch.add(cursor);
@@ -70,22 +81,15 @@ public class InvokeBranch {
                 var jumpTo = ((BranchInstruction) instruction).getTarget();
                 if (instruction instanceof GotoInstruction) {
                     var jumpToPosition = jumpTo.getPosition();
-                    var goBack = jumpToPosition < cursor.getPosition();
-                    if (!goBack) {
+                    var goForward = jumpToPosition > cursor.getPosition();
+                    if (goForward) {
                         //no loop
-                        InvokeBranch tail;
                         //split sibling
-                        var jumpToSibling = siblings.stream().filter(sibling -> {
-                            return sibling.ops.get(jumpToPosition) != null;
-                        }).findFirst().orElse(null);
+                        var jumpToSibling = getJumpToSibling(jumpToPosition, siblings);
+                        InvokeBranch tail;
                         if (jumpToSibling != null) {
                             //todo the jumpToSibling must be same as the jumpTo
-                            var remindedHead = new TreeMap<>(jumpToSibling.ops.headMap(jumpToPosition));
-                            var tailOps = new TreeMap<>(jumpToSibling.ops.tailMap(jumpToPosition));
-                            tail = new InvokeBranch(tailOps, newOpsGroups(tailOps), new ArrayList<>(List.of(jumpToSibling)), jumpToSibling.next);
-                            jumpToSibling.next = new ArrayList<>(List.of(tail));
-                            jumpToSibling.ops = remindedHead;
-                            jumpToSibling.opsGroups = newOpsGroups(remindedHead);
+                            tail = jumpToSibling.splitBranch(jumpToPosition);
                         } else {
                             tail = newTree(branch, jumpTo, List.of());
                         }
@@ -104,6 +108,12 @@ public class InvokeBranch {
             isFirst = false;
         }
         return branch;
+    }
+
+    private static InvokeBranch getJumpToSibling(int jumpToPosition, Collection<InvokeBranch> siblings) {
+        return siblings.stream().filter(sibling -> {
+            return sibling.ops.get(jumpToPosition) != null;
+        }).findFirst().orElse(null);
     }
 
     private static InvokeBranch witTail(InvokeBranch branch, InvokeBranch tail) {
@@ -170,13 +180,13 @@ public class InvokeBranch {
 
     private static void fork(InvokeBranch prev, InstructionHandle left, List<InstructionHandle> rights) {
         var leftBranch = newTree(prev, left, List.of());
+        prev.addNext(leftBranch);
         var lefts = new ArrayList<InvokeBranch>();
         lefts.add(leftBranch);
-        prev.addNext(leftBranch);
         for (var right : rights) {
             var rightBranch = newTree(prev, right, lefts);
-            lefts.add(rightBranch);
             prev.addNext(rightBranch);
+            lefts.add(rightBranch);
         }
     }
 
@@ -186,6 +196,19 @@ public class InvokeBranch {
             opsGroups.computeIfAbsent(aClass, k -> new ArrayList<>()).add(instructionHandle);
             aClass = aClass.getSuperclass();
         }
+    }
+
+    private InvokeBranch splitBranch(int splitPosition) {
+        var remindedHead = new TreeMap<>(this.ops.headMap(splitPosition));
+        var tailOps = new TreeMap<>(this.ops.tailMap(splitPosition));
+        if (!remindedHead.isEmpty() && !tailOps.isEmpty()) {
+            var tail = new InvokeBranch(tailOps, newOpsGroups(tailOps), new ArrayList<>(List.of(this)), this.next);
+            this.next = new ArrayList<>(List.of(tail));
+            this.ops = remindedHead;
+            this.opsGroups = newOpsGroups(remindedHead);
+            return tail;
+        }
+        return this;
     }
 
     private void add(InstructionHandle instructionHandle) {
@@ -205,19 +228,25 @@ public class InvokeBranch {
         return prev != null ? List.of(prev) : List.of();
     }
 
-    public List<InvokeBranch> findBranches(InstructionHandle instructionHandle) {
-        if (instructionHandle == null) {
-            return null;
-        }
-        var exists = ops.get(instructionHandle.getPosition());
-        if (exists != null && exists.getInstruction().equals(instructionHandle.getInstruction())) {
-            return List.of(this);
+
+    public Stream<InvokeBranch> findContains(int position, Function<InvokeBranch, Collection<InvokeBranch>> selector) {
+        var exists = ops.get(position);
+        if (exists != null) {
+            return Stream.of(this);
         } else {
-            var next = this.next;
-            return next == null ? List.of() : next.stream().flatMap(b -> {
-                return b.findBranches(instructionHandle).stream();
-            }).filter(Objects::nonNull).distinct().collect(toList());
+            var prev = selector.apply(this);
+            return prev == null ? Stream.of() : prev.stream().flatMap(b -> {
+                return b.findContains(position, selector);
+            }).filter(Objects::nonNull).distinct();
         }
+    }
+
+    public List<InvokeBranch> findPrevBranchContains(int position) {
+        return findContains(position, InvokeBranch::getPrev).collect(toList());
+    }
+
+    public List<InvokeBranch> findNextBranchContains(int position) {
+        return findContains(position, InvokeBranch::getNext).collect(toList());
     }
 
     public <T extends Instruction> List<InstructionHandle> findInstructions(Class<? super T> aClass) {

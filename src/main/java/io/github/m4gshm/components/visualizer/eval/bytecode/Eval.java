@@ -9,7 +9,6 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.*;
-import org.springframework.util.Assert;
 
 import java.lang.Deprecated;
 import java.lang.invoke.MethodHandles;
@@ -831,7 +830,7 @@ public class Eval {
     }
 
     public List<Result> getStoreInstructionResults(InstructionHandle instructionHandle, int index, Result parent) {
-        var branches = tree.findBranches(instructionHandle);
+        var branches = tree.findNextBranchContains(instructionHandle.getPosition());
         var storeInstructions = getStoreInstructions(branches, index, instructionHandle.getPosition());
         var results = storeInstructions.stream()
                 .map(storeInstrHandle -> eval(getPrev(storeInstrHandle), parent))
@@ -1159,7 +1158,7 @@ public class Eval {
                             for (var parameter : parameterVariant) {
                                 var root = parameter.getEval().getTree();
                                 roots.add(root);
-                                var branches = root.findBranches(parameter.getFirstInstruction());
+                                var branches = root.findNextBranchContains(parameter.getFirstInstruction().getPosition());
                                 notEmpty(branches, "no branches for parameter " + parameter + " in method " +
                                         this.getMethod().getName());
                                 for (var branch : branches) {
@@ -1179,7 +1178,7 @@ public class Eval {
                                             var collected = relations.stream().flatMap(r -> {
                                                 var root1 = r.getEval().getTree();
                                                 roots.add(root1);
-                                                var branches = root1.findBranches(r.getFirstInstruction());
+                                                var branches = root1.findNextBranchContains(r.getFirstInstruction().getPosition());
                                                 return branches.stream().filter(b -> !b.equals(branch)).map(b -> entry(b, r));
                                             }).collect(groupingBy(Entry::getKey, mapping(Entry::getValue, toList())));
                                             if (!collected.isEmpty()) {
@@ -1384,7 +1383,7 @@ public class Eval {
     }
 
     public List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
-        var branches = tree.findBranches(instructionHandle);
+        var branches = tree.findNextBranchContains(instructionHandle.getPosition());
         state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
         return branches.stream()
                 .flatMap(b -> b.getPrevInstructions(instructionHandle).stream())
