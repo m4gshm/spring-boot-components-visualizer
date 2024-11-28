@@ -225,8 +225,9 @@ public class Eval {
         return variantOfVariantOfParameters.stream().map(List::size).reduce((l, r) -> l * r).orElse(1);
     }
 
-    private static List<List<Result>> flatResolvedVariants(int dimensions, List<List<Result>> parameterVariants,
-                                                           List<Result> parameters) {
+
+    private static List<List<Result>> flatResolvedVariants(
+            int dimensions, List<List<Result>> parameterVariants, List<Result> parameters) {
         var resolvedVariants = new ArrayList<List<Result>>();
         for (var d = 1; d <= dimensions; d++) {
             var variantOfParameters = new ArrayList<Result>();
@@ -239,6 +240,23 @@ public class Eval {
                         variantOfParameters.size() + ", parameters: " + parameters);
             }
             resolvedVariants.add(variantOfParameters);
+        }
+        return resolvedVariants;
+    }
+
+
+    private static List<Map<Integer, List<Result>>> flatResolvedVariants(int dimensions, Map<Integer, List<Result>> paramIndexToVariantsMap) {
+        var resolvedVariants = new ArrayList<Map<Integer, List<Result>>>();
+        for (var d = 1; d <= dimensions; d++) {
+            var paramIndexToVariantMap = new HashMap<Integer, List<Result>>();
+            for (var index : paramIndexToVariantsMap.keySet()) {
+                var variantsOfOneArgument = paramIndexToVariantsMap.get(index);
+                var i = d <= variantsOfOneArgument.size() ? d - 1 : variantsOfOneArgument.size() % d - 1;
+                Result result = variantsOfOneArgument.get(i);
+                paramIndexToVariantMap.put(index, List.of(result));
+            }
+            resolvedVariants.add(paramIndexToVariantMap);
+
         }
         return resolvedVariants;
     }
@@ -484,7 +502,7 @@ public class Eval {
     }
 
     private static Collection<List<Result>> combineVariants(InvokeBranch branch, Result[] firstVariant, boolean cloned,
-                                                            Map<InvokeBranch, Map<Integer, Collection<Result>>> groupedParams
+                                                            Map<InvokeBranch, Map<Integer, List<Result>>> groupedParams
     ) {
         var popMask = new BitSet(firstVariant.length);
         for (int i = 0; i < firstVariant.length; i++) {
@@ -494,53 +512,57 @@ public class Eval {
         }
 
         var allVariants = new LinkedHashSet<List<Result>>();
-        var paramIndexToVarinatsMap = groupedParams.getOrDefault(branch, Map.of());
-        for (var index : paramIndexToVarinatsMap.keySet()) {
-            var variants = paramIndexToVarinatsMap.get(index);
-            //todo must be one parameter variant per branch
-//            state(variants.size() == 1, "variants must be exactly one " + variants);
-            var result = variants.stream().findFirst().get();
-            var existed = firstVariant[index];
-            var exists = existed != null;
-            var same = existed == result;
-            if (!cloned) {
-                var problem = exists && !same;
+        var paramIndexToVariantsMap = groupedParams.getOrDefault(branch, Map.of());
+        int dimensions = getDimensions(paramIndexToVariantsMap.values());
+        var maps = flatResolvedVariants(dimensions, paramIndexToVariantsMap);
+        for (var map : maps) {
+            for (var index : map.keySet()) {
+                var variants = map.get(index);
+                //todo must be one parameter variant per branch
+                state(variants.size() == 1, "variants must be exactly one " + variants);
+                var result = variants.stream().findFirst().get();
+                var existed = firstVariant[index];
+                var exists = existed != null;
+                var same = existed == result;
+                if (!cloned) {
+                    var problem = exists && !same;
 //                state(!problem, index + " parameter must be null or the same");
+                }
+                if (!(cloned && exists && same)) {
+                    firstVariant[index] = result;
+                    popMask.set(index);
+                }
             }
-            if (!(cloned && exists && same)) {
-                firstVariant[index] = result;
-                popMask.set(index);
+
+            int cardinality = popMask.cardinality();
+            var full = cardinality == firstVariant.length;
+            var partial = !full && cardinality > 0;
+            var next = branch.getNext();
+            int nextSize = next.size();
+
+            if (full) {
+                allVariants.add(Arrays.asList(firstVariant));
+                firstVariant = firstVariant.clone();
+            } else if (partial && nextSize == 0) {
+                allVariants.add(Arrays.asList(firstVariant));
+                firstVariant = firstVariant.clone();
             }
-        }
-
-        int cardinality = popMask.cardinality();
-        var full = cardinality == firstVariant.length;
-        var partial = !full && cardinality > 0;
-        var next = branch.getNext();
-        int nextSize = next.size();
-
-        if (full) {
-            allVariants.add(Arrays.asList(firstVariant));
-            firstVariant = firstVariant.clone();
-        } else if (partial && nextSize == 0) {
-            allVariants.add(Arrays.asList(firstVariant));
-            firstVariant = firstVariant.clone();
-        }
-        for (int i = 0; i < nextSize; i++) {
-            var clone = i > 0;
-            var nextVariant = clone ? firstVariant.clone() : firstVariant;
-            var nextBranch = next.get(i);
-            var variants = combineVariants(nextBranch, nextVariant, clone, groupedParams);
-            if (!variants.isEmpty()) {
-                allVariants.addAll(variants);
+            for (int i = 0; i < nextSize; i++) {
+                var clone = i > 0;
+                var nextVariant = clone ? firstVariant.clone() : firstVariant;
+                var nextBranch = next.get(i);
+                var variants = combineVariants(nextBranch, nextVariant, clone, groupedParams);
+                if (!variants.isEmpty()) {
+                    allVariants.addAll(variants);
+                }
             }
         }
         return allVariants;
     }
 
     private static Stream<Entry<? extends Class<?>, Entry<Method, Collection<List<Result>>>>> getEntryStream(
-            List<Result> parameters, Map<Method, Collection<InvokeBranch>> methodBranches,
-            Map<Method, Map<InvokeBranch, Map<Integer, Collection<Result>>>> grouped,
+            List<Result> parameters, Map<Method, List<InvokeBranch>> methodBranches,
+            Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>> grouped,
             Class<?> aClass) {
         return methodBranches.entrySet().stream().flatMap(ee -> {
             var method1 = ee.getKey();
@@ -1176,7 +1198,7 @@ public class Eval {
                     if (dimensions <= 3) {
                         resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
                     } else {
-                        var roots = new HashMap<Class<?>, Map<Method, Collection<InvokeBranch>>>();
+                        var roots = new HashMap<Class<?>, Map<Method, List<InvokeBranch>>>();
                         var grouped = groupParamsByBranch(parameterVariants, roots);
 
                         var aClass1 = this.getComponent().getType();
@@ -1221,10 +1243,10 @@ public class Eval {
         }
     }
 
-    private Map<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, Collection<Result>>>>> groupParamsByBranch(
-            List<List<Result>> parameterVariants, Map<Class<?>, Map<Method, Collection<InvokeBranch>>> roots
+    private Map<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>>> groupParamsByBranch(
+            List<List<Result>> parameterVariants, Map<Class<?>, Map<Method, List<InvokeBranch>>> roots
     ) {
-        var grouped = new HashMap<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, Collection<Result>>>>>();
+        var grouped = new HashMap<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>>>();
         for (int index = 0; index < parameterVariants.size(); index++) {
             var parameterVariant = parameterVariants.get(index);
             for (var parameter : parameterVariant) {
@@ -1232,7 +1254,7 @@ public class Eval {
                 var root = eval.getTree();
                 var aClass = eval.getComponent().getType();
                 var method = eval.getMethod();
-                roots.computeIfAbsent(aClass, k -> new HashMap<>()).computeIfAbsent(method, k -> new LinkedHashSet<>()).add(root);
+                roots.computeIfAbsent(aClass, k -> new HashMap<>()).computeIfAbsent(method, k -> new ArrayList<>()).add(root);
                 populateBranches(parameter, grouped, aClass, method, index, root.findNextBranchContains(parameter.getFirstInstruction().getPosition()));
             }
         }
@@ -1283,7 +1305,7 @@ public class Eval {
     }
 
     private void populateBranches(Result parameter, HashMap<Class<?>,
-                                          Map<Method, Map<InvokeBranch, Map<Integer, Collection<Result>>>>> grouped,
+                                          Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>>> grouped,
                                   Class<?> aClass, Method method, int index, List<InvokeBranch> branches) {
 
         notEmpty(branches, "no branches for parameter " + parameter + " in method " + this.getMethod().getName());
@@ -1291,7 +1313,7 @@ public class Eval {
         for (var branch : branches) {
             grouped.computeIfAbsent(aClass, k -> new HashMap<>()).computeIfAbsent(method, k -> new HashMap<>())
                     .computeIfAbsent(branch, k -> new HashMap<>())
-                    .computeIfAbsent(index, k -> new LinkedHashSet<>())
+                    .computeIfAbsent(index, k -> new ArrayList<>())
                     .add(parameter);
         }
     }
