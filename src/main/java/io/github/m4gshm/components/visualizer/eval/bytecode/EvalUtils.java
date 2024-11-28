@@ -102,7 +102,7 @@ public class EvalUtils {
                          Eval eval, List<ParameterValue> parameters) {
         try {
             var value = methodHandle.invokeWithArguments(asList(arguments));
-            return invoked(value, expectedType, firstInstruction, lastArgInstruction, eval, parameters);
+            return invoked(value, expectedType, firstInstruction, lastArgInstruction, null, eval, parameters);
         } catch (Throwable e) {
             throw new EvalException(e);
         }

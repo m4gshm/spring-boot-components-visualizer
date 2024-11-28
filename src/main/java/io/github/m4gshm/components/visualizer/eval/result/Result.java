@@ -37,9 +37,10 @@ public abstract class Result implements ContextAware {
     InstructionHandle lastInstruction;
 
     public static Constant invoked(Object value, Type type, InstructionHandle invokeInstruction,
-                                   InstructionHandle lastInstruction, Eval eval, List<ParameterValue> parameters) {
+                                   InstructionHandle lastInstruction, Object resolvedBy, Eval eval,
+                                   List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, type, invokeInstruction, lastInstruction, null, eval, params);
+        return constant(value, type, invokeInstruction, lastInstruction, resolvedBy, eval, params);
     }
 
     public static Constant constant(Object value, Type type, InstructionHandle firstInstruction,

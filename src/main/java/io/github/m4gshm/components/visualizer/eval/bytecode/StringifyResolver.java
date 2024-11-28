@@ -106,7 +106,7 @@ public class StringifyResolver implements Resolver {
                             var values = getParameterValues(parameters, this::stringifyUnresolved);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
-                            return invoked(string, getType(string), lastInstruction, lastInstruction, eval, parameters);
+                            return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, parameters);
                         });
                 return result;
             }
@@ -223,14 +223,14 @@ public class StringifyResolver implements Resolver {
         var string = stringifyMethodCall(objectClass, methodName, (String) objectValue, argValues);
         var lastInstruction = delay.getLastInstruction();
         var parameterValues = concatCallParameters(object, resolvedArguments);
-        return invoked(string, getType(string), lastInstruction, lastInstruction, eval, parameterValues);
+        return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, parameterValues);
     }
 
     private Constant stringifyInvokeNew(Delay delay, Class<?> objectClass, List<ParameterValue> resolvedArguments, Eval eval) {
         var argValues = getArgValues(resolvedArguments);
         var string = stringifyNewCall(objectClass, argValues);
         var lastInstruction = delay.getLastInstruction();
-        return invoked(string, getType(string), lastInstruction, lastInstruction, eval, resolvedArguments);
+        return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, resolvedArguments);
     }
 
     private Object[] getArgValues(List<ParameterValue> resolvedArguments) {

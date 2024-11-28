@@ -16,13 +16,13 @@ import static lombok.AccessLevel.PRIVATE;
 import static org.springframework.util.Assert.state;
 
 @AllArgsConstructor
-@NoArgsConstructor
+@RequiredArgsConstructor
 @FieldDefaults(level = PRIVATE)
 @ToString(onlyExplicitlyIncluded = true)
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class InvokeBranch {
-    Class<?> aClass;
-    Method method;
+    final Class<?> aClass;
+    final Method method;
     @ToString.Include
     @EqualsAndHashCode.Include
     NavigableMap<Integer, InstructionHandle> ops = new TreeMap<>();
@@ -41,9 +41,7 @@ public class InvokeBranch {
 
     private static InvokeBranch newTree(Class<?> aClass, Method method, InvokeBranch prev, InstructionHandle start,
                                         @NonNull Collection<InvokeBranch> siblings) {
-        var branch = new InvokeBranch();
-        branch.method = method;
-        branch.aClass = aClass;
+        var branch = new InvokeBranch(aClass, method);
         var cursor = start;
         var isFirst = true;
         while (cursor != null) {
@@ -56,13 +54,13 @@ public class InvokeBranch {
                     var isGoto = targeterInstruction instanceof GotoInstruction;
                     var isLoop = index < 0 && isGoto;
                     if (!isFirst && isLoop) {
-                        var tail = newTree(null, null, branch, cursor, List.of());
+                        var tail = newTree(aClass, method, branch, cursor, List.of());
                         return witTail(branch, tail);
                     } else {
                         var refFromPrev = isRefFromPrev(prev, targeter);
                         if (!isFirst && refFromPrev) {
                             //maybe target from prev branch
-                            var tail = newTree(null, null, branch, cursor, List.of());
+                            var tail = newTree(aClass, method, branch, cursor, List.of());
                             return witTail(branch, tail);
                         } else if (!refFromPrev) {
                             var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
@@ -98,7 +96,7 @@ public class InvokeBranch {
                             //todo the jumpToSibling must be same as the jumpTo
                             tail = jumpToSibling.splitBranch(jumpToPosition);
                         } else {
-                            tail = newTree(null, null, branch, jumpTo, List.of());
+                            tail = newTree(aClass, method, branch, jumpTo, List.of());
                         }
                         branch.addNext(tail);
                     }
@@ -186,12 +184,12 @@ public class InvokeBranch {
     }
 
     private static void fork(InvokeBranch prev, InstructionHandle left, List<InstructionHandle> rights) {
-        var leftBranch = newTree(null, null, prev, left, List.of());
+        var leftBranch = newTree(prev.aClass, prev.method, prev, left, List.of());
         prev.addNext(leftBranch);
         var lefts = new ArrayList<InvokeBranch>();
         lefts.add(leftBranch);
         for (var right : rights) {
-            var rightBranch = newTree(null, null, prev, right, lefts);
+            var rightBranch = newTree(prev.aClass, prev.method, prev, right, lefts);
             prev.addNext(rightBranch);
             lefts.add(rightBranch);
         }
