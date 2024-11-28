@@ -2,7 +2,7 @@ package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-import org.apache.bcel.classfile.Code;
+import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
 import java.util.*;
@@ -19,8 +19,12 @@ import static org.springframework.util.Assert.state;
 @NoArgsConstructor
 @FieldDefaults(level = PRIVATE)
 @ToString(onlyExplicitlyIncluded = true)
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class InvokeBranch {
+    Class<?> aClass;
+    Method method;
     @ToString.Include
+    @EqualsAndHashCode.Include
     NavigableMap<Integer, InstructionHandle> ops = new TreeMap<>();
     Map<Class<?>, List<InstructionHandle>> opsGroups = new HashMap<>();
     @Getter
@@ -29,14 +33,17 @@ public class InvokeBranch {
     @ToString.Include
     List<InvokeBranch> next = new ArrayList<>();
 
-    public static InvokeBranch newTree(Code methodCode) {
-        var instructionHandleStream = instructionHandleStream(methodCode);
+    public static InvokeBranch newTree(Class<?> aClass, Method method) {
+        var instructionHandleStream = instructionHandleStream(method.getCode());
         var cursor = instructionHandleStream.findFirst().orElse(null);
-        return newTree(null, cursor, List.of());
+        return newTree(aClass, method, null, cursor, List.of());
     }
 
-    private static InvokeBranch newTree(InvokeBranch prev, InstructionHandle start, @NonNull Collection<InvokeBranch> siblings) {
+    private static InvokeBranch newTree(Class<?> aClass, Method method, InvokeBranch prev, InstructionHandle start,
+                                        @NonNull Collection<InvokeBranch> siblings) {
         var branch = new InvokeBranch();
+        branch.method = method;
+        branch.aClass = aClass;
         var cursor = start;
         var isFirst = true;
         while (cursor != null) {
@@ -49,13 +56,13 @@ public class InvokeBranch {
                     var isGoto = targeterInstruction instanceof GotoInstruction;
                     var isLoop = index < 0 && isGoto;
                     if (!isFirst && isLoop) {
-                        var tail = newTree(branch, cursor, List.of());
+                        var tail = newTree(null, null, branch, cursor, List.of());
                         return witTail(branch, tail);
                     } else {
                         var refFromPrev = isRefFromPrev(prev, targeter);
                         if (!isFirst && refFromPrev) {
                             //maybe target from prev branch
-                            var tail = newTree(branch, cursor, List.of());
+                            var tail = newTree(null, null, branch, cursor, List.of());
                             return witTail(branch, tail);
                         } else if (!refFromPrev) {
                             var tailOwnedBranch = foundEndedBy(targeterInstruction, siblings);
@@ -91,7 +98,7 @@ public class InvokeBranch {
                             //todo the jumpToSibling must be same as the jumpTo
                             tail = jumpToSibling.splitBranch(jumpToPosition);
                         } else {
-                            tail = newTree(branch, jumpTo, List.of());
+                            tail = newTree(null, null, branch, jumpTo, List.of());
                         }
                         branch.addNext(tail);
                     }
@@ -179,12 +186,12 @@ public class InvokeBranch {
     }
 
     private static void fork(InvokeBranch prev, InstructionHandle left, List<InstructionHandle> rights) {
-        var leftBranch = newTree(prev, left, List.of());
+        var leftBranch = newTree(null, null, prev, left, List.of());
         prev.addNext(leftBranch);
         var lefts = new ArrayList<InvokeBranch>();
         lefts.add(leftBranch);
         for (var right : rights) {
-            var rightBranch = newTree(prev, right, lefts);
+            var rightBranch = newTree(null, null, prev, right, lefts);
             prev.addNext(rightBranch);
             lefts.add(rightBranch);
         }
@@ -199,10 +206,12 @@ public class InvokeBranch {
     }
 
     private InvokeBranch splitBranch(int splitPosition) {
-        var remindedHead = new TreeMap<>(this.ops.headMap(splitPosition));
-        var tailOps = new TreeMap<>(this.ops.tailMap(splitPosition));
+        var ops = this.ops;
+        var remindedHead = new TreeMap<>(ops.headMap(splitPosition));
+        var tailOps = new TreeMap<>(ops.tailMap(splitPosition));
         if (!remindedHead.isEmpty() && !tailOps.isEmpty()) {
-            var tail = new InvokeBranch(tailOps, newOpsGroups(tailOps), new ArrayList<>(List.of(this)), this.next);
+            var tail = new InvokeBranch(null, null, tailOps, newOpsGroups(tailOps),
+                    new ArrayList<>(List.of(this)), this.next);
             this.next = new ArrayList<>(List.of(tail));
             this.ops = remindedHead;
             this.opsGroups = newOpsGroups(remindedHead);
