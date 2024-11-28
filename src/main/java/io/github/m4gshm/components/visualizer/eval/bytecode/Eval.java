@@ -1236,7 +1236,10 @@ public class Eval {
                                     });
                                 });
                             }).collect(toLinkedHashSet());
-                            resolvedParamVariants.addAll(combinedVariants);
+                            var withoutNulls = combinedVariants.stream().filter(ll -> {
+                                return !ll.contains(null);
+                            }).collect(toList());
+                            resolvedParamVariants.addAll(withoutNulls);
                         }
                     }
                 }
@@ -1260,7 +1263,7 @@ public class Eval {
                 populateBranches(parameter, grouped, aClass, method, index, root.findNextBranchContains(parameter.getFirstInstruction().getPosition()));
             }
         }
-        for (var aClass : grouped.keySet()) {
+        for (var aClass : new ArrayList<>(grouped.keySet())) {
             var methods = grouped.get(aClass);
             for (var method : methods.keySet()) {
                 var branches = methods.get(method);
