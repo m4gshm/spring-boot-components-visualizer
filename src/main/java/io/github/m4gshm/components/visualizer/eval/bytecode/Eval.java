@@ -37,7 +37,6 @@ import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Collections.singletonList;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.IntStream.range;
 import static java.util.stream.Stream.*;
@@ -504,8 +503,8 @@ public class Eval {
         }).flatMap(Collection::stream).collect(toList());
     }
 
-    private static Collection<List<Result>> combineVariants(InvokeBranch branch, Result[] firstVariant, boolean cloned,
-                                                            Map<InvokeBranch, Map<Integer, List<Result>>> groupedParams
+    private static LinkedHashSet<List<Result>> combineVariants(InvokeBranch branch, Result[] firstVariant, boolean cloned,
+                                                           Map<InvokeBranch, Map<Integer, List<Result>>> groupedParams
     ) {
         var popMask = new BitSet(firstVariant.length);
         for (int i = 0; i < firstVariant.length; i++) {
@@ -563,19 +562,16 @@ public class Eval {
         return allVariants;
     }
 
-    private static Stream<Entry<? extends Class<?>, Entry<Method, Collection<List<Result>>>>> getEntryStream(
-            List<Result> parameters, Map<Method, List<InvokeBranch>> methodBranches,
-            Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>> grouped,
-            Class<?> aClass) {
-        return methodBranches.entrySet().stream().flatMap(ee -> {
-            var method1 = ee.getKey();
-            var branches = ee.getValue();
-            return branches.stream().map(firstBranch -> {
-                        var groupedParams = grouped.get(method1);
-                        return combineVariants(firstBranch, new Result[parameters.size()], false, groupedParams);
-                    }).filter(r -> !r.isEmpty())
-                    .map(combineVariants -> entry(method1, combineVariants));
-        }).map(combineVariantsPerMethod -> entry(aClass, combineVariantsPerMethod));
+    private static Stream<List<Result>> getListStream(Entry<Method, Set<InvokeBranch>> methodBranches,
+                                                      Map<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>>> grouped,
+                                                      Class<?> aClass, Result[] firstVariant) {
+        var method = methodBranches.getKey();
+        var branches = methodBranches.getValue();
+        return branches.stream().flatMap(branch -> {
+            var methodMapMap = grouped.get(aClass);
+            var groupedParams = methodMapMap.get(method);
+            return combineVariants(branch, firstVariant.clone(), false, groupedParams).stream();
+        }).filter(r -> !r.isEmpty());
     }
 
     public ComponentKey getComponentKey() {
@@ -1205,15 +1201,21 @@ public class Eval {
                         var grouped = groupParamsByBranch(parameterVariants, roots);
 
                         var aClass1 = this.getComponent().getType();
-//                        var thisComponentMethodBranches = roots.remove(aClass1);
-//
-//                        var internal = getEntryStream(parameters, thisComponentMethodBranches, grouped.get(aClass1), aClass1)
+
+                        var externalRoots = new HashMap<>(roots);
+                        var thisMethodsBranches = externalRoots.remove(aClass1);
+
+                        var results = thisMethodsBranches.entrySet().stream().flatMap(methodBranches -> {
+                            return getListStream(methodBranches, grouped, aClass1, new Result[parameters.size()]);
+                        }).collect(toList());
+
+//                        var internal = getEntryStream(parameters, thisMethodsBranches, grouped.get(aClass1), aClass1)
 //                                .collect(groupingBy(Entry::getKey,
 //                                        groupingBy(e1 -> e1.getValue().getKey(),
 //                                                mapping(rt -> rt.getValue().getValue(), toList())))
 //                                );
-
-//                        var external = roots.entrySet().stream().flatMap(rootClassMethod -> {
+//
+//                        var external = externalRoots.entrySet().stream().flatMap(rootClassMethod -> {
 //                            var aClass = rootClassMethod.getKey();
 //                            var methodBranches = rootClassMethod.getValue();
 //                            return getEntryStream(parameters, methodBranches, grouped.get(aClass), aClass);
@@ -1222,23 +1224,20 @@ public class Eval {
 //                                        mapping(rt -> rt.getValue().getValue(), toList())))
 //                        );
 
-                        var combinedVariants = roots.entrySet().stream()
-                                .flatMap(e -> {
+                        if (externalRoots.isEmpty()) {
+                            resolvedParamVariants.addAll(results);
+                        } else {
+                            var combinedVariants = results.stream().flatMap(firstVariant -> {
+                                return externalRoots.entrySet().stream().flatMap(e -> {
                                     var aClass = e.getKey();
-                                    var cc = e.getValue();
-                                    var values = cc.entrySet();
-                                    return values.stream().flatMap(t -> {
-                                        var method = t.getKey();
-                                        var branches = t.getValue();
-                                        return branches.stream().flatMap(firstBranch -> {
-                                            var methodMapMap = grouped.get(aClass);
-                                            var groupedParams = methodMapMap.get(method);
-                                            return combineVariants(firstBranch, new Result[parameters.size()], false, groupedParams).stream();
-                                        }).filter(r -> !r.isEmpty());
+                                    var methodsBranches = e.getValue();
+                                    return methodsBranches.entrySet().stream().flatMap(methodBranches -> {
+                                        return getListStream(methodBranches, grouped, aClass, firstVariant.toArray(new Result[0]));
                                     });
-                                })
-                                .collect(toLinkedHashSet());
-                        resolvedParamVariants.addAll(combinedVariants);
+                                });
+                            }).collect(toLinkedHashSet());
+                            resolvedParamVariants.addAll(combinedVariants);
+                        }
                     }
                 }
                 return resolvedParamVariants;
