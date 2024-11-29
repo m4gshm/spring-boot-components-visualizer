@@ -21,9 +21,9 @@ public class DelayInvoke extends Delay {
     List<Result> arguments;
 
     public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
-                       String description, DelayFunction<DelayInvoke> evaluator, Result prev,
+                       String description, DelayFunction<DelayInvoke> evaluator,
                        Type type, Result object, String methodName, List<Result> arguments) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev,
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator,
                 Stream.of(ofNullable(object), arguments.stream()).flatMap(s -> s).collect(toList()), type, null);
         this.object = object;
         this.methodName = methodName;
@@ -33,6 +33,6 @@ public class DelayInvoke extends Delay {
     @Override
     public DelayInvoke withEval(Eval eval) {
         return new DelayInvoke(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayInvoke>) (Object) evaluator, prev, type, object, methodName, arguments);
+                (DelayFunction<DelayInvoke>) (Object) evaluator, type, object, methodName, arguments);
     }
 }

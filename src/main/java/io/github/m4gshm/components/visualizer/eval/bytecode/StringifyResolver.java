@@ -164,7 +164,7 @@ public class StringifyResolver implements Resolver {
                         });
             } else {
                 if (instruction instanceof ArithmeticInstruction) {
-                    var first = resolve(eval.evalPrev(instructionHandle, delay), ex);
+                    var first = resolve(eval.evalPrev(instructionHandle), ex);
                     var second = instruction.consumeStack(constantPoolGen) == 2
                             ? resolve(eval.evalPrev(first), ex) : null;
 
@@ -180,7 +180,7 @@ public class StringifyResolver implements Resolver {
                             .collect(toList());
                     return collapse(values, instructionHandle, lastInstruction, delay.getMethod().getConstantPool(), eval);
                 } else if (instruction instanceof ArrayInstruction) {
-                    var element = eval.evalPrev(instructionHandle, delay);
+                    var element = eval.evalPrev(instructionHandle);
                     var index = eval.evalPrev(element);
                     var array = eval.evalPrev(index);
                     var result = stringifyValue(array);
@@ -198,7 +198,7 @@ public class StringifyResolver implements Resolver {
                         return constant(value, instructionHandle, instructionHandle, eval, this, List.of(delay));
                     }
 
-                    var storeResults = eval.getStoreInstructionResults(instructionHandle, aloadIndex, delay);
+                    var storeResults = eval.getStoreInstructionResults(instructionHandle, aloadIndex);
 
                     var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult).stream()
                                     .map(String::valueOf)

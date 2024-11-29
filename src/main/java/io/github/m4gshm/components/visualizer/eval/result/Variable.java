@@ -2,11 +2,9 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
@@ -20,17 +18,15 @@ public class Variable extends Result implements ContextAware, TypeAware {
     int index;
     String name;
     Type type;
-    Result prev;
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
-                    Eval eval, int index, String name, Type type, Result prev) {
+                    Eval eval, int index, String name, Type type) {
         super(firstInstruction, lastInstruction);
         this.varType = varType;
         this.eval = eval;
         this.index = index;
         this.name = name;
         this.type = type;
-        this.prev = prev;
     }
 
     @Override

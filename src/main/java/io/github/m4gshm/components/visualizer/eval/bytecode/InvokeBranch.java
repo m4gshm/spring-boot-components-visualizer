@@ -5,6 +5,8 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -19,12 +21,10 @@ import static org.springframework.util.Assert.state;
 @RequiredArgsConstructor
 @FieldDefaults(level = PRIVATE)
 @ToString(onlyExplicitlyIncluded = true)
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class InvokeBranch {
     final Class<?> aClass;
     final Method method;
     @ToString.Include
-    @EqualsAndHashCode.Include
     NavigableMap<Integer, InstructionHandle> ops = new TreeMap<>();
     Map<Class<?>, List<InstructionHandle>> opsGroups = new HashMap<>();
     @Getter
@@ -203,6 +203,52 @@ public class InvokeBranch {
         }
     }
 
+    @Override
+    @SneakyThrows
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+        if (object == null || getClass() != object.getClass()) {
+            return false;
+        }
+        var that = (InvokeBranch) object;
+        if (ops.size() != that.ops.size()) {
+            return false;
+        }
+
+        for (var index : ops.keySet()) {
+            var thisOp = ops.get(index);
+            var thatOp = that.ops.get(index);
+            if (thatOp == null) {
+                return false;
+            }
+            var thisInst = thisOp.getInstruction();
+            var thatInst = thatOp.getInstruction();
+            var thisBytes = new ByteArrayOutputStream();
+            var thatBytes = new ByteArrayOutputStream();
+            thisInst.dump(new DataOutputStream(thisBytes));
+            thatInst.dump(new DataOutputStream(thatBytes));
+            var thisBytesByteArray = thisBytes.toByteArray();
+            var thatBytesByteArray = thatBytes.toByteArray();
+            if (!Arrays.equals(thisBytesByteArray, thatBytesByteArray)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        var hash = 0;
+        for (var index : ops.keySet()) {
+            var thisOp = ops.get(index);
+            var thisInst = thisOp.getInstruction();
+            hash += thisInst.hashCode();
+        }
+        return hash;
+    }
+
     private InvokeBranch splitBranch(int splitPosition) {
         var ops = this.ops;
         var remindedHead = new TreeMap<>(ops.headMap(splitPosition));
@@ -223,16 +269,14 @@ public class InvokeBranch {
         addToOpsGroups(instructionHandle, this.opsGroups);
     }
 
-    public List<InstructionHandle> getPrevInstructions(InstructionHandle instructionHandle) {
+    public Stream<InstructionHandle> getPrevInstructionsStream(InstructionHandle instructionHandle) {
         var position = instructionHandle.getPosition();
         var upperOps = ops.headMap(position);
         if (upperOps.isEmpty()) {
-            var prevInstructions = prev.stream().map(InvokeBranch::last).filter(Objects::nonNull)
-                    .collect(toList());
-            return prevInstructions;
+            return prev.stream().map(InvokeBranch::last).filter(Objects::nonNull);
         }
         var prev = upperOps.get(upperOps.lastKey());
-        return prev != null ? List.of(prev) : List.of();
+        return prev != null ? Stream.of(prev) : Stream.of();
     }
 
 

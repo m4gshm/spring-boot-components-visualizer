@@ -169,11 +169,15 @@ public class InvokeDynamicUtils {
     }
 
     static Lookup getPrivateLookup(Class<?> targetClass, Lookup lookup) {
-        try {
-            return privateLookupIn(targetClass, lookup);
-        } catch (IllegalAccessException e) {
-            throw new EvalException(e);
+        var open = targetClass.getModule().isOpen(targetClass.getPackageName());
+        if (open) {
+            try {
+                return privateLookupIn(targetClass, lookup);
+            } catch (IllegalAccessException e) {
+                throw new EvalException(e);
+            }
         }
+        return lookup;
     }
 
     private static MethodHandle lookupReference(Lookup lookup, int referenceKind, Class<?> targetClass, String

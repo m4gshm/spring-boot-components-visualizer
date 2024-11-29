@@ -3,10 +3,8 @@ package io.github.m4gshm.components.visualizer.eval.result;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.eval.result.Result.RelationsAware;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
@@ -20,19 +18,17 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
     final Eval eval;
     final String description;
     final DelayFunction<Delay> evaluator;
-    final Result prev;
     final List<Result> relations;
     final Type type;
     Result result;
 
     public Delay(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                  Eval eval, String description, DelayFunction<? extends Delay> evaluator,
-                 Result prev, List<Result> relations, Type type, Result result) {
+                 List<Result> relations, Type type, Result result) {
         super(firstInstruction, lastInstruction);
         this.eval = eval;
         this.description = description;
         this.evaluator = (DelayFunction<Delay>) evaluator;
-        this.prev = prev;
         this.relations = relations;
         this.type = type;
         this.result = result;
@@ -61,7 +57,7 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
     }
 
     public Delay withEval(Eval eval) {
-        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, prev, relations, type, null);
+        return new Delay(firstInstruction, lastInstruction, eval, description, evaluator, relations, type, null);
     }
 
     @Override

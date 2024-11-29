@@ -17,14 +17,14 @@ public class DelayLoadFromStore extends Delay {
 
     public DelayLoadFromStore(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                               Eval evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
-                              Result prev, List<Result> storeInstructions, Type type) {
-        super(firstInstruction, lastInstruction, evalContext, description, evaluator, prev, storeInstructions, type, null);
+                              List<Result> storeInstructions, Type type) {
+        super(firstInstruction, lastInstruction, evalContext, description, evaluator, storeInstructions, type, null);
         this.storeInstructions = storeInstructions;
     }
 
     @Override
     public Delay withEval(Eval eval) {
         return new DelayLoadFromStore(firstInstruction, lastInstruction, eval, description,
-                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, prev, storeInstructions, type);
+                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, storeInstructions, type);
     }
 }

@@ -49,7 +49,6 @@ import static io.github.m4gshm.components.visualizer.client.JmsOperationsUtils.e
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.extractRestOperationsUris;
 import static io.github.m4gshm.components.visualizer.client.WebsocketClientUtils.extractWebsocketClientUris;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCache.newCallCache;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl.getCallPoints;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
@@ -328,7 +327,7 @@ public class ComponentsExtractor {
         var components = componentsPerName.values();
 
         var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
-        var callCache = newCallCache(new HashMap<>());
+        var callCache = newCallCache(new HashMap<>(), new HashMap<>());
 
         var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast());
 
