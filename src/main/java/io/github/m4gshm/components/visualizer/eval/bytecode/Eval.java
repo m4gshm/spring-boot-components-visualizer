@@ -335,12 +335,6 @@ public class Eval {
         }
     }
 
-    private static List<List<List<Result>>> getFullDistinctCallContexts(Map<CallContext, List<Result>[]> callContexts) {
-        return callContexts.values().stream()
-                .filter(args -> Arrays.stream(args).noneMatch(Objects::isNull))
-                .map(Arrays::asList).distinct().collect(toList());
-    }
-
     public static Result callInvokeSpecial(DelayInvoke invoke, Class<?>[] argumentClasses, Eval eval,
                                            boolean throwNoCall, Resolver resolver,
                                            BiFunction<List<ParameterValue>, InstructionHandle, Result> call) {
@@ -1508,7 +1502,7 @@ public class Eval {
         return branches.stream()
                 .flatMap(b -> b.getPrevInstructions(instructionHandle).stream())
                 .map(prev -> {
-                    return prev.getInstruction() instanceof BranchInstruction ? prev.getPrev() : prev;
+                    return /*prev.getInstruction() instanceof BranchInstruction ? prev.getPrev() : */prev;
                 }).distinct().collect(toList());
     }
 

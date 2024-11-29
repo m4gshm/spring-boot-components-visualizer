@@ -220,7 +220,15 @@ public class StringifyResolver implements Resolver {
                                            ParameterValue object, List<ParameterValue> resolvedArguments, Eval eval) {
         var argValues = getArgValues(resolvedArguments);
         var objectValue = object != null ? getParameterValue(object, this::stringifyUnresolved) : null;
-        var string = stringifyMethodCall(objectClass, methodName, (String) objectValue, argValues);
+        final String stringValue;
+        if (objectValue instanceof String)
+            stringValue = (String) objectValue;
+        else if (objectValue != null) {
+            stringValue = String.valueOf(objectValue);
+        } else {
+            stringValue = null;
+        }
+        var string = stringifyMethodCall(objectClass, methodName, stringValue, argValues);
         var lastInstruction = delay.getLastInstruction();
         var parameterValues = concatCallParameters(object, resolvedArguments);
         return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, parameterValues);
