@@ -336,7 +336,7 @@ public class ComponentsExtractor {
         var callPointsProvider = (CallPointsProvider) componentType -> getCallPoints(componentType, callPointsCache);
 
         var evalContextFactory = new EvalContextFactoryCacheImpl(evalCache,
-                new EvalContextFactoryImpl(callCache, dependentProvider, callPointsProvider)
+                new EvalContextFactoryImpl(callCache, dependentProvider, callPointsProvider, resolver)
         );
 
         var componentsWithInterfaces = components.stream().map(component -> {

@@ -240,8 +240,8 @@ public class SchedulingConfigurerUtils {
     }
 
     private static IllegalStateException methodNotFoundException(String className, String methodName, Type[] argumentTypes) {
-        return new IllegalStateException("no method '" + methodName +
-                "' with args " + asList(argumentTypes) + " in class " +
+        return new IllegalStateException("no method '" + methodName + "' with args "
+                + asList(argumentTypes) + " in class " +
                 className);
     }
 

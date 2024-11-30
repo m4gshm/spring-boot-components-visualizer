@@ -2,6 +2,7 @@ package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCache;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
+import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
 import io.github.m4gshm.components.visualizer.eval.result.Variable;
 import io.github.m4gshm.components.visualizer.model.CallPoint;
@@ -36,6 +37,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     CallCache callCache;
     DependentProvider dependentProvider;
     CallPointsProvider callPointsProvider;
+    Resolver resolver;
 
     public static List<List<Result>> computeArgumentVariants(Component component, Method method,
                                                              EvalContextFactory evalContextFactory,
@@ -176,7 +178,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     public Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
         var argumentVariants = component != null ? computeArgumentVariants(component, method, this,
                 dependentProvider, callPointsProvider) : List.<List<Result>>of();
-        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants, callCache);
+        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants, callCache, resolver);
     }
 
     public interface DependentProvider extends Function<Component, List<Component>> {

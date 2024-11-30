@@ -64,8 +64,7 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
-                                                         Type type, Eval evalContext,
-                                                         List<Result> storeInstructions,
+                                                         Type type, Eval evalContext, List<Result> storeInstructions,
                                                          DelayFunction<DelayLoadFromStore> delayFunction
     ) {
         if (storeInstructions.isEmpty()) {
@@ -75,7 +74,8 @@ public abstract class Result implements ContextAware {
                 delayFunction, storeInstructions, type);
     }
 
-    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate, Eval eval) {
+    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction,
+                                      Result onDuplicate, Eval eval) {
         return new Duplicate(instructionHandle, lastInstruction, onDuplicate, eval);
     }
 
@@ -87,15 +87,16 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Type expectedType, Eval evalContext,
-                                          InvokeObject invokeObject, String methodName, EvalArguments arguments,
+                                          InvokeObject invokeObject, String className, String methodName, EvalArguments arguments,
                                           DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
                 ? invokeObject.getLastInstruction()
                 : arguments.getLastArgInstruction();
         var object = invokeObject != null ? invokeObject.getObject() : null;
+
         var description = getInstructionString(instructionHandle, evalContext.getConstantPoolGen());
         var delayInvoke = new DelayInvoke(instructionHandle, lastInstruction, evalContext, description,
-                delayFunction, expectedType, object, methodName, arguments.getArguments());
+                delayFunction, expectedType, object, className, methodName, arguments.getArguments());
         return delayInvoke;
     }
 
@@ -109,7 +110,7 @@ public abstract class Result implements ContextAware {
                     localVariable.getName() + ", " + componentType.getName() + "." +
                     method.getName() + method.getSignature());
         }
-        var type = getType(localVariable.getSignature());
+        var type = ObjectType.getType(localVariable.getSignature());
         int index = localVariable.getIndex();
         var name = localVariable.getName();
         return methodArg(evalContext, index, name, type, lastInstruction);
@@ -121,8 +122,8 @@ public abstract class Result implements ContextAware {
     }
 
     public static Variable variable(Eval evalContext, LocalVariable localVariable,
-                                    InstructionHandle lastInstruction, Result parent) {
-        var type = getType(localVariable.getSignature());
+                                    InstructionHandle lastInstruction) {
+        var type = ObjectType.getType(localVariable.getSignature());
         int index = localVariable.getIndex();
         var name = localVariable.getName();
         return variable(evalContext, index, name, type, lastInstruction);
