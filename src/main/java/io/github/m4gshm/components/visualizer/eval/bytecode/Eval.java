@@ -40,6 +40,7 @@ import static java.lang.invoke.MethodType.fromMethodDescriptorString;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Collections.singletonList;
+import static java.util.Comparator.comparingInt;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.IntStream.range;
 import static java.util.stream.Stream.*;
@@ -522,6 +523,15 @@ public class Eval {
 
     private static List<Result> resolveExpand(Result storeResult, Eval eval, Resolver resolver) {
         return expand(eval.resolve(storeResult, resolver));
+    }
+
+    private static boolean isEquals(List<InstructionHandle> prevs, ArrayList<InstructionHandle> prevs2) {
+        if (prevs.size() != prevs2.size()) {
+            return false;
+        }
+        var instructions = prevs.stream().map(InstructionHandle::getInstruction).collect(toList());
+        var instructions2 = prevs2.stream().map(InstructionHandle::getInstruction).collect(toList());
+        return instructions.equals(instructions2);
     }
 
     public ComponentKey getComponentKey() {
@@ -1364,9 +1374,9 @@ public class Eval {
 
     private Eval withArguments(Map<Integer, Result> arguments) {
         var collect = arguments.values().stream().collect(partitioningBy(Result::isResolved));
-        if (!collect.get(false).isEmpty()) {
-            System.out.println(collect);
-        }
+//        if (!collect.get(false).isEmpty()) {
+//            System.out.println(collect);
+//        }
         return new Eval(component, javaClass, method, bootstrapMethods, callCache, argumentVariants, arguments, tree);
     }
 
@@ -1397,10 +1407,14 @@ public class Eval {
             values[valIndex] = firstPrev;
             if (prevs.size() > 1) {
                 for (var j = 1; j < prevs.size(); j++) {
-                    var prev = prevs.get(j);
-                    var prevLastInstructions = prev.getLastInstructions();
+                    var valuesFork = values.clone();
+                    var nextPrev = prevs.get(j);
+                    valuesFork[valIndex] = nextPrev;
+
+                    var prevLastInstructions = nextPrev.getLastInstructions();
                     var instruction = prevLastInstructions.get(0);
-                    var evalArguments = evalArguments(instruction, i, values.clone());
+
+                    var evalArguments = evalArguments(instruction, i - 1, valuesFork);
                     result.addAll(evalArguments);
                 }
             }
@@ -1417,36 +1431,142 @@ public class Eval {
     }
 
     private List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
-        var branches = tree.findNextBranchContains(instructionHandle.getPosition());
-        state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
-        return branches.stream().flatMap(branch -> {
-            var prevInstructions = branch.getPrevInstructions(instructionHandle);
-            return prevInstructions.stream().flatMap(prev -> {
-                var instruction = prev.getInstruction();
-                if (instruction instanceof BranchInstruction) {
-                    var isGoto = instruction instanceof GotoInstruction;
-                    if (isGoto) {
-                        var target = ((BranchInstruction) instruction).getTarget();
-                        //todo need check
-                        state(instructionHandle.getPosition() == target.getPosition(),
-                                "diff position, expected " + instructionHandle.getPosition() +
-                                        ", actual " + target.getPosition());
-                        return Stream.of(prev.getPrev());
-                    } else {
-                        //if, switch
-                        var skipCount = instruction.consumeStack(constantPoolGen);
-                        var condition = List.of(prev);
-                        while (skipCount > 0) {
-                            condition = getPrevious(condition);
-                            skipCount--;
+        var prevs2 = new ArrayList<InstructionHandle>();
+        var prev1 = instructionHandle.getPrev();
+        var targeterRequired = false;
+        if (prev1 != null) {
+            var prevInstruction = prev1.getInstruction();
+            if (prevInstruction instanceof GotoInstruction) {
+                var goTo = (GotoInstruction) prevInstruction;
+                var target = goTo.getTarget();
+                int targetPosition = target.getPosition();
+                if (targetPosition < prev1.getPosition()) {
+                    //go back, loop
+                    prev1 = prev1.getPrev();
+                } else if (targetPosition > instructionHandle.getPosition()) {
+                    //no prev in this branch must be targeter
+                    targeterRequired = true;
+                    prev1 = null;
+//                    var skip = 0;
+//                    var next = instructionHandle;
+//                    while (next.getPosition() <= targetPosition) {
+//                        skip++;
+//                        next = next.getNext();
+//                    }
+//                    var skipped = skip;
+//                    while (skipped > 0) {
+//                        prev1 = prev1.getPrev();
+//                        skipped--;
+//                    }
+                } else if (targetPosition > prev1.getPosition()) {
+                    targeterRequired = true;
+                    prev1 = null;
+                    //calc skip steps
+//                    var skip = 0;
+//                    var next = prev1;
+//                    while (next.getPosition() <= targetPosition) {
+//                        skip++;
+//                        next = next.getNext();
+//                    }
+//                    var skipped = skip;
+//                    while (skipped > 0) {
+//                        prev1 = prev1.getPrev();
+//                        skipped--;
+//                    }
+                }
+            } else if (prevInstruction instanceof BranchInstruction) {
+                //if switch
+                var condition = prev1;
+                var conditionInstruction = condition.getInstruction();
+                var skip = conditionInstruction.consumeStack(constantPoolGen);
+                var skipped = skip;
+                prev1 = condition.getPrev();
+                while (skipped > 0) {
+                    prevInstruction = prev1.getInstruction();
+                    var plusSkip = prevInstruction.consumeStack(constantPoolGen);
+                    prev1 = prev1.getPrev();
+                    skip += plusSkip;
+                    skipped += plusSkip;
+                    skipped--;
+                }
+            }
+            if (prev1 != null) {
+                prevs2.add(prev1);
+            }
+        }
+
+        var targeters = instructionHandle.getTargeters();
+        var fork = targeters.length > 0;
+        state(!targeterRequired || fork);
+        if (fork) {
+            for (var targeter : targeters) {
+                if (targeter instanceof BranchInstruction) {
+                    var offset = ((BranchInstruction) targeter).getIndex();
+                    var isGoto = targeter instanceof GotoInstruction;
+                    var isLoop = offset < 0 && isGoto;
+                    if (!isLoop) {
+                        var targetPosition = instructionHandle.getPosition() - offset;
+                        var branch = instructionHandle.getPrev();
+                        while (branch != null && branch.getPosition() != targetPosition) {
+                            branch = branch.getPrev();
                         }
-                        var prevs = getPrevious(condition);
-                        return prevs.stream();
+                        if (branch != null) {
+                            var targetInstruction = branch.getInstruction();
+                            var skip = targetInstruction.consumeStack(constantPoolGen);
+                            var prev2 = branch.getPrev();
+                            var skipped = skip;
+                            while (skipped > 0) {
+                                prev2 = prev2.getPrev();
+                                var plus = prev2.getInstruction().consumeStack(constantPoolGen);
+                                skip += plus;
+                                skipped += plus;
+                                skipped--;
+                            }
+                            prevs2.add(prev2);
+                        }
                     }
                 }
-                return Stream.of(prev);
-            });
-        }).distinct().collect(toList());
+            }
+        }
+
+        prevs2.sort(comparingInt(InstructionHandle::getPosition));
+
+        return prevs2;
+
+//        var branches = tree.findNextBranchContains(instructionHandle.getPosition());
+//        state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
+//
+//        var prevs = branches.stream().flatMap(branch -> {
+//            var prevInstructions = branch.getPrevInstructions(instructionHandle);
+//            return prevInstructions.stream().flatMap(prev -> {
+//                var instruction = prev.getInstruction();
+//                if (instruction instanceof BranchInstruction) {
+//                    var isGoto = instruction instanceof GotoInstruction;
+//                    if (isGoto) {
+//                        var target = ((BranchInstruction) instruction).getTarget();
+//                        //todo need check
+//                        state(instructionHandle.getPosition() == target.getPosition(),
+//                                "diff position, expected " + instructionHandle.getPosition() +
+//                                        ", actual " + target.getPosition());
+//                        return of(prev.getPrev());
+//                    } else {
+//                        //if, switch
+//                        var skipCount = instruction.consumeStack(constantPoolGen);
+//                        var condition = List.of(prev);
+//                        while (skipCount > 0) {
+//                            condition = getPrevious(condition);
+//                            skipCount--;
+//                        }
+//                        var prevs1 = getPrevious(condition);
+//                        return prevs1.stream();
+//                    }
+//                }
+//                return of(prev);
+//            });
+//        }).distinct().sorted(comparingInt(InstructionHandle::getPosition)).collect(toList());
+//        boolean equals = isEquals(prevs, prevs2);
+//        state(equals);
+//        return prevs;
     }
 
     private List<InstructionHandle> getPrevious(List<InstructionHandle> instructionHandles) {

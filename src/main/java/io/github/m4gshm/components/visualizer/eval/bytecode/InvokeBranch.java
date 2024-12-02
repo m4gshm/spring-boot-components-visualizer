@@ -267,6 +267,11 @@ public class InvokeBranch {
         return prev != null ? List.of(prev) : List.of();
     }
 
+    public InstructionHandle getPrevInstruction(InstructionHandle instructionHandle) {
+        var position = instructionHandle.getPosition();
+        return ops.higherEntry(position).getValue();
+    }
+
 
     public Stream<InvokeBranch> findContains(int position, Function<InvokeBranch, Collection<InvokeBranch>> selector) {
         var exists = ops.get(position);
