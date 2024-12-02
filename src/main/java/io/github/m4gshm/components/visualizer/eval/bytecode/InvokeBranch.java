@@ -5,8 +5,6 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -223,17 +221,7 @@ public class InvokeBranch {
             if (thatOp == null) {
                 return false;
             }
-            var thisInst = thisOp.getInstruction();
-            var thatInst = thatOp.getInstruction();
-            var thisBytes = new ByteArrayOutputStream();
-            var thatBytes = new ByteArrayOutputStream();
-            thisInst.dump(new DataOutputStream(thisBytes));
-            thatInst.dump(new DataOutputStream(thatBytes));
-            var thisBytesByteArray = thisBytes.toByteArray();
-            var thatBytesByteArray = thatBytes.toByteArray();
-            if (!Arrays.equals(thisBytesByteArray, thatBytesByteArray)) {
-                return false;
-            }
+            if (InstructionUtils.equals(thisOp, thatOp)) return false;
         }
         return true;
     }
@@ -269,14 +257,14 @@ public class InvokeBranch {
         addToOpsGroups(instructionHandle, this.opsGroups);
     }
 
-    public Stream<InstructionHandle> getPrevInstructionsStream(InstructionHandle instructionHandle) {
+    public List<InstructionHandle> getPrevInstructions(InstructionHandle instructionHandle) {
         var position = instructionHandle.getPosition();
         var upperOps = ops.headMap(position);
         if (upperOps.isEmpty()) {
-            return prev.stream().map(InvokeBranch::last).filter(Objects::nonNull);
+            return prev.stream().map(InvokeBranch::last).filter(Objects::nonNull).collect(toList());
         }
         var prev = upperOps.get(upperOps.lastKey());
-        return prev != null ? Stream.of(prev) : Stream.of();
+        return prev != null ? List.of(prev) : List.of();
     }
 
 
@@ -286,7 +274,7 @@ public class InvokeBranch {
             return Stream.of(this);
         } else {
             var prev = selector.apply(this);
-            return prev == null ? Stream.of() : prev.stream().flatMap(b -> {
+            return prev == null ? Stream.of() : prev.stream().parallel().flatMap(b -> {
                 return b.findContains(position, selector);
             }).filter(Objects::nonNull).distinct();
         }

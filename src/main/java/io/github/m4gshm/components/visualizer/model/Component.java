@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.unproxy;
 import static lombok.AccessLevel.PRIVATE;
 
 @Data
@@ -35,7 +36,7 @@ public class Component implements ComponentDependency {
     }
 
     public Class<?> getType() {
-        return type != null ? type : bean.getClass();
+        return type != null ? type : unproxy(bean.getClass());
     }
 
     @Override

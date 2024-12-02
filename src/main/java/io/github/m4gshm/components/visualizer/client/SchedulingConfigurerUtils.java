@@ -225,16 +225,16 @@ public class SchedulingConfigurerUtils {
                 method1 = classAndMethodSource.getValue();
             }
             var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1)
-                    .withArguments2(0, delayInvokeExpr.getArguments());
+                    .withArguments(0, delayInvokeExpr.getArguments());
 
             var instructionHandles = instructionHandleStream(method1).collect(toList());
 
             var last1 = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
 
-            var nextExp = evalContext1.eval(last1);
+            var nextExp = last1 != null ? evalContext1.eval(last1) : null;
 
-            return findTaskConstructorExpr(javaClass1, method1, evalContextFactory,
-                    nextExp.getFirstInstruction(), evalContext1);
+            return nextExp != null ? findTaskConstructorExpr(javaClass1, method1, evalContextFactory,
+                    nextExp.getFirstInstruction(), evalContext1) : null;
         }
         return null;
     }
@@ -318,7 +318,7 @@ public class SchedulingConfigurerUtils {
         }
 
         return methodIdStream.flatMap(methodId -> getScheduledMethodStream(triggerType, methodId,
-                triggerExpressions)).collect(toList());
+                triggerExpressions, component.getName())).collect(toList());
     }
 
     private static boolean isLambda(Class<?> aClass) {
@@ -336,9 +336,12 @@ public class SchedulingConfigurerUtils {
         var bootstrapMethods = getBootstrapMethods(source);
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
-        return instructionHandleStream(method.getCode()).map(instructionHandle -> {
-            return getMethodIds(beanType, instructionHandle, constantPoolGen, source, bootstrapMethods, touched);
-        }).flatMap(Collection::stream).collect(toList());
+        return instructionHandleStream(method.getCode())
+                .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETFIELD))
+                .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETSTATIC))
+                .map(instructionHandle -> {
+                    return getMethodIds(beanType, instructionHandle, constantPoolGen, source, bootstrapMethods, touched);
+                }).flatMap(Collection::stream).collect(toList());
     }
 
     private static List<MethodId> getMethodIds(Class<?> beanType, InstructionHandle instructionHandle,
@@ -351,6 +354,13 @@ public class SchedulingConfigurerUtils {
             return getMethodIds(beanType, instructionHandle, constantPoolGen, touched);
         } else if (instruction instanceof GETFIELD) {
             var classAndMethodSource = getMethodsSource(source, byName("<init>"));
+            //find a field initialize inside constructors
+            return classAndMethodSource.stream().flatMap(method -> {
+                return getScheduledMethodIdsFromMethodSource(beanType, source, method, touched).stream();
+            }).collect(toList());
+        } else if (instruction instanceof GETSTATIC) {
+            var classAndMethodSource = getMethodsSource(source, byName("<cinit>"));
+            //find a field initialize inside constructors
             return classAndMethodSource.stream().flatMap(method -> {
                 return getScheduledMethodIdsFromMethodSource(beanType, source, method, touched).stream();
             }).collect(toList());
@@ -469,8 +479,9 @@ public class SchedulingConfigurerUtils {
     }
 
     private static Stream<ScheduledMethod> getScheduledMethodStream(TriggerType triggerType, MethodId methodId,
-                                                                    List<String> triggerExpressions) {
+                                                                    List<String> triggerExpressions, String beanName) {
         return triggerExpressions.stream().map(expression -> ScheduledMethod.builder()
+                .beanName(beanName)
                 .method(methodId)
                 .expression(expression)
                 .triggerType(triggerType)

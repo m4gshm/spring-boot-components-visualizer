@@ -2,11 +2,13 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.model.Component;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
 @Getter
+@EqualsAndHashCode
 public class Duplicate extends Result implements ContextAware {
 
     private final Result onDuplicate;

@@ -8,6 +8,7 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
+import java.util.Objects;
 import java.util.Set;
 
 import static lombok.AccessLevel.PRIVATE;
@@ -31,7 +32,7 @@ public class Illegal extends Result {
 
     @Override
     public Object getValue() {
-        throw new IllegalInvokeException(prev, firstInstruction, target);
+        throw new IllegalInvokeException(prev, firstInstructions, target);
     }
 
     @Override
@@ -41,5 +42,19 @@ public class Illegal extends Result {
 
     public enum Status {
         notAccessible, notFound, stub, illegalArgument, illegalTarget;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (object == null || getClass() != object.getClass()) return false;
+        if (!super.equals(object)) return false;
+        Illegal illegal = (Illegal) object;
+        return Objects.equals(status, illegal.status) && Objects.equals(target, illegal.target)
+                && Objects.equals(prev, illegal.prev) && Objects.equals(eval, illegal.eval);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), status, target, prev, eval);
     }
 }

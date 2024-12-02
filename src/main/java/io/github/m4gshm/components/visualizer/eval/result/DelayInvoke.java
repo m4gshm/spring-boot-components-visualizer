@@ -21,7 +21,7 @@ public class DelayInvoke extends Delay {
     String methodName;
     List<Result> arguments;
 
-    public DelayInvoke(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Eval evalContext,
+    public DelayInvoke(List<InstructionHandle> firstInstruction, List<InstructionHandle> lastInstruction, Eval evalContext,
                        String description, DelayFunction<DelayInvoke> evaluator,
                        Type type, Result object, String className, String methodName, List<Result> arguments) {
         super(firstInstruction, lastInstruction, evalContext, description, evaluator,
@@ -34,7 +34,7 @@ public class DelayInvoke extends Delay {
 
     @Override
     public DelayInvoke withEval(Eval eval) {
-        return new DelayInvoke(firstInstruction, lastInstruction, eval, description,
+        return new DelayInvoke(firstInstructions, lastInstructions, eval, description,
                 (DelayFunction<DelayInvoke>) (Object) evaluator, type, object, className, methodName, arguments);
     }
 }

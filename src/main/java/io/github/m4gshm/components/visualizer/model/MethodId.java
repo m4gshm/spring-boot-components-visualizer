@@ -5,6 +5,7 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.Type;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 import static lombok.AccessLevel.PRIVATE;
 
@@ -30,5 +31,10 @@ public class MethodId {
 
     public static MethodId newMethodId(org.apache.bcel.classfile.Method method) {
         return newMethodId(method.getName(), method.getArgumentTypes());
+    }
+
+    @Override
+    public String toString() {
+        return name + Arrays.toString(argumentTypes);
     }
 }

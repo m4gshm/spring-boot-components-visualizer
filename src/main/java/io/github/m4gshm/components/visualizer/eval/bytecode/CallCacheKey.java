@@ -17,5 +17,5 @@ public class CallCacheKey {
     Delay call;
     List<List<ParameterValue>> parametersVariants;
     Instruction lastInstruction;
-    Resolver resolver;
+//    Resolver resolver;
 }

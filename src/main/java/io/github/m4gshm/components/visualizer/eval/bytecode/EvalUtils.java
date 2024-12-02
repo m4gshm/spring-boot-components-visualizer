@@ -128,7 +128,7 @@ public class EvalUtils {
         }
         if (constructor.trySetAccessible()) try {
             var value = constructor.newInstance(arguments);
-            return constant(value, ObjectType.getType(type), instructionHandle, instructionHandle,
+            return constant(value, ObjectType.getType(type), Result.getInstructions(instructionHandle), Result.getInstructions(instructionHandle),
                     null, eval, parent.getRelations()
             );
         } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |

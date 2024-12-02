@@ -8,6 +8,8 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
+import java.util.Objects;
+
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
@@ -44,6 +46,22 @@ public class Variable extends Result implements ContextAware, TypeAware {
         var methodName = getMethod().getName();
         var className = getComponentType();
         return varType.code + "(" + className + "." + methodName + "(" + getIndex() + " " + getName() + "))";
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (object == null || getClass() != object.getClass()) return false;
+        if (!super.equals(object)) return false;
+        var variable = (Variable) object;
+        return index == variable.index && varType == variable.varType
+                && Objects.equals(eval, variable.eval)
+                && Objects.equals(name, variable.name)
+                && Objects.equals(type, variable.type);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), varType, eval, index, name, type);
     }
 
     @RequiredArgsConstructor

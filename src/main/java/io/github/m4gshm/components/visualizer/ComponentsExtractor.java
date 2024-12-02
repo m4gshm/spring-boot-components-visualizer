@@ -35,8 +35,10 @@ import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler
 
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 
@@ -242,7 +244,8 @@ public class ComponentsExtractor {
     }
 
     private static Stream<BeanInfo> filter(Stream<BeanInfo> beanInfos, Set<String> excludeNames,
-                                           Set<String> excludePackages, Set<Class<?>> excludeTypes) {
+                                           Set<String> excludePackages, Set<Class<?>> excludeTypes,
+                                           Predicate<BeanInfo> filter) {
         return beanInfos.filter(Objects::nonNull).filter(beanInfo -> {
             var componentType = beanInfo.getType();
             var componentName = beanInfo.getName();
@@ -259,7 +262,7 @@ public class ComponentsExtractor {
                 return false;
             }
             return true;
-        });
+        }).filter(filter);
     }
 
     private static void logInterfaces(Component component) {
@@ -286,6 +289,7 @@ public class ComponentsExtractor {
         var excludeNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
         var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
         var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
+        var filter = exclude.map(BeanFilter::getFilter).orElse(info -> true);
 
         var beanFactory = context.getBeanFactory();
 
@@ -299,7 +303,7 @@ public class ComponentsExtractor {
                         bean.getClass().getName());
             }
             return new BeanInfo(name, type, bean);
-        }), excludeNames, excludePackages, excludeTypes).collect(toMap(BeanInfo::getName, e -> e,
+        }), excludeNames, excludePackages, excludeTypes, filter).collect(toMap(BeanInfo::getName, e -> e,
                 warnDuplicated(), LinkedHashMap::new));
 
         var rootPackageNames = (rootPackageClasses.length > 0
@@ -326,7 +330,7 @@ public class ComponentsExtractor {
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
         var components = componentsPerName.values();
 
-        var evalCache = new HashMap<EvalContextFactoryCacheImpl.Key, Eval>();
+        var evalCache = new ConcurrentHashMap<EvalContextFactoryCacheImpl.Key, Eval>();
         var callCache = newCallCache(new HashMap<>(), new HashMap<>());
 
         var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast());
@@ -335,9 +339,8 @@ public class ComponentsExtractor {
         var callPointsCache = new HashMap<Class<?>, List<CallPoint>>();
         var callPointsProvider = (CallPointsProvider) componentType -> getCallPoints(componentType, callPointsCache);
 
-        var evalContextFactory = new EvalContextFactoryCacheImpl(evalCache,
-                new EvalContextFactoryImpl(callCache, dependentProvider, callPointsProvider, resolver)
-        );
+        var evalContextFactory = new EvalContextFactoryCacheImpl(callCache, dependentProvider, callPointsProvider,
+                resolver);
 
         var componentsWithInterfaces = components.stream().map(component -> {
             return populateInterfaces(component, evalContextFactory, resolver);
@@ -362,8 +365,7 @@ public class ComponentsExtractor {
     private Component populateInterfaces(Component component, EvalContextFactory evalContextFactory,
                                          StringifyResolver resolver) {
         var exists = component.getInterfaces();
-        var interfaces = getInterfaces(component, component.getName(), component.getType(),
-                component.getDependencies(), evalContextFactory, resolver);
+        var interfaces = getInterfaces(component, evalContextFactory, resolver);
         if (exists == null) {
             exists = interfaces;
         } else if (interfaces != null && !interfaces.isEmpty()) {
@@ -378,7 +380,8 @@ public class ComponentsExtractor {
         var excludeBeanNames = exclude.map(BeanFilter::getBeanName).orElse(Set.of());
         var excludeTypes = exclude.map(BeanFilter::getType).orElse(Set.of());
         var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
-        return filter(dependencyNames.map(allBeans::get), excludeBeanNames, excludePackages, excludeTypes);
+        var filter = exclude.map(BeanFilter::getFilter).orElse(info -> true);
+        return filter(dependencyNames.map(allBeans::get), excludeBeanNames, excludePackages, excludeTypes, filter);
     }
 
     protected BeanInfo findSpringBootAppBean(Map<String, BeanInfo> allBeans) {
@@ -433,14 +436,17 @@ public class ComponentsExtractor {
         }
     }
 
-    private List<Interface> getInterfaces(Component component, String componentName, Class<?> componentType,
-                                          Set<Component> dependencies, EvalContextFactory evalContextFactory,
-                                          Resolver resolver) {
+    private List<Interface> getInterfaces(Component component, EvalContextFactory evalContextFactory, Resolver resolver) {
+        var componentName = component.getName();
+        var componentType = component.getType();
+        var dependencies = component.getDependencies();
         var scheduledMethods = extractScheduledMethods(component, componentType, options.timeUnitStringifier,
                 evalContextFactory, resolver).stream()
                 .map(scheduledMethod -> Interface.builder().direction(internal).type(scheduler)
-                        .core(scheduledMethod).call(scheduled)
+                        .core(scheduledMethod)
+                        .call(scheduled)
                         .methodSource(scheduledMethod.getMethod())
+                        .name(scheduledMethod.toTriggerString())
                         .build())
                 .collect(toList());
 
@@ -820,6 +826,7 @@ public class ComponentsExtractor {
             Set<String> packageName;
             Set<String> beanName;
             Set<Class<?>> type;
+            Predicate<BeanInfo> filter;
         }
     }
 
@@ -861,12 +868,17 @@ public class ComponentsExtractor {
     @Builder
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class ScheduledMethod {
+        String beanName;
         MethodId method;
         String expression;
         TriggerType triggerType;
 
         @Override
         public String toString() {
+            return beanName + ":" + method + ":" + toTriggerString();
+        }
+
+        public String toTriggerString() {
             return triggerType + "(" + expression + ")";
         }
 

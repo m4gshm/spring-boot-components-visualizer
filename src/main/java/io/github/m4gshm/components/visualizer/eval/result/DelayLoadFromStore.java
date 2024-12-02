@@ -15,7 +15,7 @@ import static lombok.AccessLevel.PRIVATE;
 public class DelayLoadFromStore extends Delay {
     List<Result> storeInstructions;
 
-    public DelayLoadFromStore(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
+    public DelayLoadFromStore(List<InstructionHandle> firstInstruction, List<InstructionHandle> lastInstruction,
                               Eval evalContext, String description, DelayFunction<DelayLoadFromStore> evaluator,
                               List<Result> storeInstructions, Type type) {
         super(firstInstruction, lastInstruction, evalContext, description, evaluator, storeInstructions, type, null);
@@ -24,7 +24,7 @@ public class DelayLoadFromStore extends Delay {
 
     @Override
     public Delay withEval(Eval eval) {
-        return new DelayLoadFromStore(firstInstruction, lastInstruction, eval, description,
+        return new DelayLoadFromStore(firstInstructions, lastInstructions, eval, description,
                 (DelayFunction<DelayLoadFromStore>) (Object) evaluator, storeInstructions, type);
     }
 }

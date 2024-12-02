@@ -191,7 +191,7 @@ public class ComponentsExtractorUtils {
 
         var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component,
                 componentType, timeUnitStringifier, evalContextFactory, resolver);
-        var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(componentType, timeUnitStringifier);
+        var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(component.getName(), componentType, timeUnitStringifier);
         return Stream.concat(scheduledByConfigurerMethods.stream(), scheduledByAnnotationMethods.stream()).collect(toList());
     }
 
@@ -429,7 +429,7 @@ public class ComponentsExtractorUtils {
         return type.isArray() ? getFieldType(type.getComponentType()) : type.getPackage();
     }
 
-    public static List<ScheduledMethod> getScheduledByAnnotationMethods(Class<?> componentType,
+    public static List<ScheduledMethod> getScheduledByAnnotationMethods(String name, Class<?> componentType,
                                                                         Function<TimeUnit, String> timeUnitStringifier) {
         var scheduledAnnotationMethods = getMergedRepeatableAnnotationsMap(asList(componentType.getMethods()), () -> Scheduled.class);
         return scheduledAnnotationMethods.entrySet().stream()
@@ -462,6 +462,7 @@ public class ComponentsExtractorUtils {
                             : null;
 
                     return ScheduledMethod.builder()
+                            .beanName(name)
                             .method(newMethodId(entry.getKey()))
                             .triggerType(triggerType)
                             .expression(expression)

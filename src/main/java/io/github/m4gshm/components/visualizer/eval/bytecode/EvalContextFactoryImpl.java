@@ -21,13 +21,16 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.CallPointsHelper.CallPointsProvider;
 import static io.github.m4gshm.components.visualizer.Utils.warnDuplicated;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.resolveArgumentVariants;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.findClassByName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.stringForLog;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeBranch.newTree;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.concat;
 import static lombok.AccessLevel.PROTECTED;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -45,12 +48,14 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                                                              CallPointsProvider callPointsProvider) {
         var methodCallPoints = getCallPoints(component, method.getName(), method.getArgumentTypes(),
                 dependentProvider, callPointsProvider);
-        var methodArgumentVariants = getEvalCallPointVariants(methodCallPoints, evalContextFactory);
-        return methodArgumentVariants.values().stream()
+        var methodArgumentVariants = getEvalCallPointVariants(component, method, methodCallPoints, evalContextFactory);
+        var variants = methodArgumentVariants.values().stream().parallel()
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
                 .flatMap(e -> e.getValue().stream()).map(EvalArguments::getArguments)
-                .distinct().collect(toList());
+                .distinct()
+                .collect(toList());
+        return variants;
     }
 
     public static Map<Component, Map<CallPoint, List<CallPoint>>> getCallPoints(
@@ -69,7 +74,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             Class<?> declaringClass, String methodName, Type[] argumentTypes,
             List<Component> dependentOnThisComponent, CallPointsProvider callPointsProvider
     ) {
-        return dependentOnThisComponent.stream().map(dependentComponent -> {
+        return dependentOnThisComponent.stream().parallel().map(dependentComponent -> {
             var dependentComponentType = dependentComponent.getType();
             var callPoints = callPointsProvider.apply(dependentComponentType);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
@@ -96,38 +101,41 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     }
 
     static Map<Component, Map<CallPoint, List<EvalArguments>>> getEvalCallPointVariants(
-            Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
+            Component component, Method method, Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
             EvalContextFactory evalContextFactory
     ) {
         return callPoints.entrySet().stream().map(e -> {
             var dependentComponent = e.getKey();
             var callPointListMap = e.getValue();
             var variants = callPointListMap.entrySet().stream().map(ee -> {
-                var callPoint = ee.getKey();
-                var matchedCallPoints = ee.getValue();
-                var javaClass = callPoint.getJavaClass();
-                var method = callPoint.getMethod();
-                var eval = evalContextFactory.getEvalContext(dependentComponent, javaClass, method);
-                var argumentVariants = evalCallPointArgumentVariants(callPoint, matchedCallPoints, eval);
-                return argumentVariants;
+                return getCallPointListEntry(component, method, evalContextFactory, ee.getKey(), dependentComponent, ee.getValue());
             }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
                     warnDuplicated(), LinkedHashMap::new));
             return entry(dependentComponent, variants);
         }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue, warnDuplicated(), LinkedHashMap::new));
     }
 
+    private static Map.Entry<CallPoint, List<EvalArguments>> getCallPointListEntry(
+            Component component, Method method, EvalContextFactory evalContextFactory, CallPoint callPoint, Component dependentComponent,
+            List<CallPoint> matchedCallPoints
+    ) {
+        var eval = evalContextFactory.getEvalContext(dependentComponent, callPoint.getJavaClass(), callPoint.getMethod());
+        var argumentVariants = evalCallPointArgumentVariants(eval, callPoint, matchedCallPoints);
+        return argumentVariants;
+    }
+
     static Map.Entry<CallPoint, List<EvalArguments>> evalCallPointArgumentVariants(
-            CallPoint dependentMethod, List<CallPoint> matchedCallPoints,
-            Eval eval
+            Eval eval, CallPoint dependentMethod, List<CallPoint> matchedCallPoints
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return Eval.evalArguments(callPoint, eval);
+                return Eval.evalArguments(eval, callPoint);
             } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
                     var variable = (Variable) result;
                     var evalContext = variable.getEval();
+                    assertEquals(eval, evalContext);
                     var variableMethod = evalContext.getMethod();
                     log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", "evalCallPointArgumentVariants",
                             variable.getName(), variableMethod.getName(),
@@ -176,9 +184,20 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     @Override
     public Eval getEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
+        var emptyEval = newEmptyEvalContext(component, javaClass, method, bootstrapMethods);
+        return withArgumentsVariants(component, method, emptyEval);
+    }
+
+    protected Eval withArgumentsVariants(Component component, Method method, Eval emptyEval) {
         var argumentVariants = component != null ? computeArgumentVariants(component, method, this,
                 dependentProvider, callPointsProvider) : List.<List<Result>>of();
-        return new Eval(component, javaClass, method, bootstrapMethods, argumentVariants, callCache, resolver);
+        var resolveArgumentVariants = resolveArgumentVariants(component, method, argumentVariants, method.isStatic(), resolver);
+        return emptyEval.withArgumentVariants(resolveArgumentVariants);
+    }
+
+    protected Eval newEmptyEvalContext(Component component, JavaClass javaClass, Method method, BootstrapMethods bootstrapMethods) {
+        var tree = newTree(component.getType(), method);
+        return new Eval(component, javaClass, method, bootstrapMethods, callCache, Set.of(), null, tree);
     }
 
     public interface DependentProvider extends Function<Component, List<Component>> {

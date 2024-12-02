@@ -98,6 +98,25 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         return Utils.compareNullable(name1, name2, comparator);
     }
 
+    public static Package extractPackage(Component component) {
+        var componentPath = component.getPath();
+        if (componentPath == null) {
+            return NO_PACKAGE;
+        }
+        var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
+                .map(packageName -> Package.builder().name(packageName)).collect(toList());
+
+        reversePathBuilders.stream().findFirst().ifPresent(packageBuilder ->
+                packageBuilder.components(singletonList(component)));
+
+        return reversePathBuilders.stream().reduce((l, r) -> {
+            var lPack = l.build();
+            r.packages(singletonList(lPack));
+            return r;
+        }).map(Package.PackageBuilder::build).orElse(Package.builder().name(componentPath)
+                .components(singletonList(component)).build());
+    }
+
     public String create(Components components, Options options) {
         return new PlantUmlTextFactory(this.applicationName, options).create(components);
     }
@@ -954,22 +973,7 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
     }
 
     protected Package getComponentPackage(Component component) {
-        var componentPath = component.getPath();
-        if (componentPath == null) {
-            return NO_PACKAGE;
-        }
-        var reversePathBuilders = reverse(asList(componentPath.split("\\."))).stream()
-                .map(packageName -> Package.builder().name(packageName)).collect(toList());
-
-        reversePathBuilders.stream().findFirst().ifPresent(packageBuilder ->
-                packageBuilder.components(singletonList(component)));
-
-        return reversePathBuilders.stream().reduce((l, r) -> {
-            var lPack = l.build();
-            r.packages(singletonList(lPack));
-            return r;
-        }).map(Package.PackageBuilder::build).orElse(Package.builder().name(componentPath)
-                .components(singletonList(component)).build());
+        return options.packager.apply(component);
     }
 
     protected void printComponentReferences(IndentStringAppender out, Component component) {
@@ -1185,6 +1189,8 @@ public class PlantUmlTextFactory implements SchemaFactory<String> {
         boolean groupByInterfaceType = true;
         @Builder.Default
         Set<Interface.Type> groupedByComponent = Set.of(jms, ws, kafka);
+        @Builder.Default
+        Function<Component, Package> packager = PlantUmlTextFactory::extractPackage;
 
         public static UnionStyle newUnionStyle(UnionBorder unionBorder) {
             return UnionStyle.builder().unionBorder(unionBorder).build();

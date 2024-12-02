@@ -3,6 +3,7 @@ package io.github.m4gshm.components.visualizer.eval.result;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.components.visualizer.model.Component;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
@@ -13,11 +14,12 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
+@EqualsAndHashCode
 public class Stub extends Result implements ContextAware, TypeAware {
     Variable stubbed;
 
     public Stub(Variable stubbed) {
-        super(stubbed.getFirstInstruction(), stubbed.getLastInstruction());
+        super(stubbed.getFirstInstructions(), stubbed.getLastInstructions());
         this.stubbed = stubbed;
     }
 
@@ -34,16 +36,6 @@ public class Stub extends Result implements ContextAware, TypeAware {
     @Override
     public boolean isResolved() {
         return false;
-    }
-
-    @Override
-    public InstructionHandle getFirstInstruction() {
-        return stubbed.getFirstInstruction();
-    }
-
-    @Override
-    public InstructionHandle getLastInstruction() {
-        return stubbed.getLastInstruction();
     }
 
     @Override
