@@ -26,7 +26,6 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.Utils.toLinkedHashSet;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.ArithmeticUtils.computeArithmetic;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallContext.newCallContext;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalException.newInvalidEvalException;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalException.newUnsupportedEvalException;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
@@ -46,7 +45,6 @@ import static java.util.stream.IntStream.range;
 import static java.util.stream.Stream.*;
 import static lombok.AccessLevel.PRIVATE;
 import static org.apache.bcel.Const.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.aop.support.AopUtils.getTargetClass;
 import static org.springframework.util.Assert.notEmpty;
 import static org.springframework.util.Assert.state;
@@ -97,79 +95,6 @@ public class Eval {
         this.tree = tree;
         this.arguments = arguments;
         this.argumentVariants = argumentVariants;
-    }
-
-    private static void populateArgumentsResults(List<Result> argumentsResults,
-                                                 Map<CallContext, List<Result>[]> callContexts,
-                                                 Result variant, int i, CallContext callContext) {
-        var results = callContexts.computeIfAbsent(
-                callContext, k -> new List[argumentsResults.size()]
-        );
-        var result = results[i];
-        if (result == null) {
-            result = new ArrayList<>();
-            results[i] = result;
-        }
-        result.add(variant);
-    }
-
-    private static void populateArgumentsResults(List<Result> argumentsResults, @NonNull Result variant, int i,
-                                                 Map<CallContext, List<Result>[]> callContexts,
-                                                 Map<CallContext, Set<CallContext>> childToParentHierarchy) {
-        if (variant instanceof Multiple) {
-            var multiple = (Multiple) variant;
-            //todo
-            var first = multiple.getResults().get(0);
-            populateArgumentsResults(argumentsResults, first, i, callContexts, childToParentHierarchy);
-        } else {
-            var wrapped = getWrapped(variant);
-            if (wrapped != null) {
-                populateArgumentsResults(argumentsResults, wrapped, i, callContexts, childToParentHierarchy);
-            } else {
-                var contextHierarchy = getCallContext(variant);
-                if (contextHierarchy == null) {
-                    //log
-                } else if (!contextHierarchy.parents.isEmpty()) {
-                    for (var parent : contextHierarchy.parents) {
-                        populateArgumentsResults(argumentsResults, callContexts, variant, i, parent.current);
-                    }
-                    populateReverseHierarchy(contextHierarchy, childToParentHierarchy);
-                } else {
-                    populateArgumentsResults(argumentsResults, callContexts, variant, i, contextHierarchy.current);
-                }
-            }
-        }
-    }
-
-    private static void populateReverseHierarchy(ContextHierarchy contextHierarchy,
-                                                 Map<CallContext, Set<CallContext>> childToParentHierarchy) {
-        var current = contextHierarchy.current;
-        if (current != null) {
-            for (var parent : contextHierarchy.parents) {
-                childToParentHierarchy.computeIfAbsent(parent.current, k -> new LinkedHashSet<>()).add(current);
-                populateReverseHierarchy(parent, childToParentHierarchy);
-            }
-        }
-    }
-
-    private static ContextHierarchy getCallContext(Result variant) {
-        var contextAware = (ContextAware) variant;
-        var callContext = newCallContext(contextAware.getComponentKey(), contextAware.getMethod(), variant);
-        if (variant instanceof RelationsAware) {
-            var relationsAware = (RelationsAware) variant;
-            var relations = relationsAware.getRelations();
-            var parentContexts = relations.stream().map(relation -> {
-                return getCallContext(relation);
-            }).filter(c -> c.current != null).flatMap(c -> {
-                return callContext.equals(c.current) ? c.parents.stream() : of(c);
-            }).collect(toMap(c -> c.current, c -> c.parents, (l, r) -> {
-                return concat(l.stream(), r.stream()).filter(h -> h.current != null).collect(toLinkedHashSet());
-            }, LinkedHashMap::new));
-            var parents = parentContexts.entrySet().stream().map(e -> new ContextHierarchy(e.getKey(), e.getValue()))
-                    .collect(toLinkedHashSet());
-            return new ContextHierarchy(callContext, parents);
-        }
-        return new ContextHierarchy(callContext, Set.of());
     }
 
     private static Object convertNumberTo(Number number, Type convertTo) {
@@ -403,53 +328,6 @@ public class Eval {
         }
     }
 
-    static Map<CallContext, List<Result>[]> getCallContexts(List<Result> parameters,
-                                                            List<List<Result>> parameterVariants) {
-        var childToParentHierarchy = new HashMap<CallContext, Set<CallContext>>();
-        var callContexts = new LinkedHashMap<CallContext, List<Result>[]>();
-        for (int i = 0; i < parameters.size(); i++) {
-            var variants = parameterVariants.get(i);
-            for (var variant : variants) {
-                populateArgumentsResults(parameters, variant, i, callContexts, childToParentHierarchy);
-            }
-        }
-        var ignore = new HashSet<CallContext>();
-        for (var callContext : callContexts.keySet()) {
-            var results = callContexts.get(callContext);
-            for (int i = 0; i < results.length; i++) {
-                var result = results[i];
-                if (result == null) {
-                    var variants = parameterVariants.get(i);
-                    if (variants.size() == 1) {
-                        results[i] = variants;
-                    } else {
-                        var parent = childToParentHierarchy.get(callContext);
-                        var firstParent = parent != null ? parent.iterator().next() : null;
-                        var parentResults = firstParent != null ? callContexts.get(firstParent) : null;
-                        if (parentResults != null && parentResults.length > i) {
-                            var parentResult = parentResults[i];
-                            results[i] = parentResult;
-                        } else {
-                            //log
-                            ignore.add(callContext);
-                        }
-                    }
-                }
-            }
-        }
-        for (var callContext : ignore) {
-            callContexts.remove(callContext);
-        }
-        return callContexts;
-    }
-
-    private static boolean isSameLevel(Delay unresolved, Component contextComponent) {
-        var unresolvedComponent = unresolved.getComponent();
-        var components = concat(of(unresolvedComponent), unresolved.getRelations().stream()
-                .map(ContextAware::getComponent)).collect(toSet());
-        return components.size() == 1 && components.contains(contextComponent);
-    }
-
     private static boolean isSameLevel(Variable unresolved, Component contextComponent) {
         return contextComponent.equals(unresolved.getComponent());
     }
@@ -586,7 +464,7 @@ public class Eval {
                                                                             Resolver resolver) {
         var contextArgs = resolveEvalContextArgs(arguments, isStatic, resolver);
         var evalContextArgs = Optional.ofNullable(contextArgs).orElse(Map.of());
-        int dimensions = evalContextArgs.values().stream()
+        int dimensions = evalContextArgs.values().stream().parallel()
                 .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
                 .reduce(1, (l, r) -> l * r);
         var evalContextArgsVariants = new LinkedHashSet<Map<Integer, Result>>();
@@ -727,7 +605,7 @@ public class Eval {
                 var expectedType = Optional.ofNullable(getType(first)).orElse(loadInstructionType);
                 return delayLoadFromStored(description, instructionHandle, expectedType, this,
                         storeInstructions, (thisDelay, eval, resolver) -> {
-                            assertEquals(this, eval);
+                            state(this.equals(eval), "unexpected eval");
                             var resolved = resolveStoreInstructions(thisDelay, eval, resolver);
                             return collapse(resolved, this);
                         });
@@ -852,7 +730,8 @@ public class Eval {
             var relations = List.of(arrayRef);
             return delay(instructionText, instructionHandle, arrayRef.getLastInstruction(), Type.INT, this,
                     relations, (thisDelay, eval, resolver) -> {
-                        assertEquals(this, eval);
+                        state(this.equals(eval), "unexpected eval");
+                        state(this.equals(eval), "unexpected eval");
                         return eval.resolve(arrayRef, resolver);
                     });
         } else if (instruction instanceof NEW) {
@@ -1209,9 +1088,9 @@ public class Eval {
         var lastArgInstruction = evalArguments.getLastArgInstruction();
         var methodName = invokeInstruction.getMethodName(constantPoolGen);
         if (invokeInstruction instanceof INVOKESPECIAL && "<init>".equals(methodName)) {
-            var prev = getPrevFirst(lastArgInstruction);
+            var prev = getPrevs(lastArgInstruction).get(0);
             if (prev.getInstruction() instanceof DUP) {
-                prev = getPrevFirst(prev);
+                prev = getPrevs(prev).get(0);
             }
             if (prev.getInstruction() instanceof NEW) {
                 firstInstruction = prev;
@@ -1244,7 +1123,6 @@ public class Eval {
                 return getResolvedParameters(parameters);
             }
             var allResolved = parameters.stream().allMatch(Result::isResolved);
-
             if (allResolved) {
                 return getResolvedParameters(parameters);
             }
@@ -1260,44 +1138,6 @@ public class Eval {
             unlog("resolveInvokeParameters", invoke, parameters, e);
             throw e;
         }
-
-    }
-
-    private Collection<Map<Integer, List<Result>>> resolveParametersWithContextArgumentVariants(
-            DelayInvoke invoke, List<Result> parameters, Resolver resolver
-    ) {
-        var argumentVariants = this.argumentVariants;
-        log("resolveParametersWithContextArgumentVariants", invoke, "argVariants = " + argumentVariants.size());
-        //todo revert set tot list
-//        var resolvedAll = new ArrayList<Map<Integer, List<Result>>>();
-        var resolvedAll = new LinkedHashSet<Map<Integer, List<Result>>>();
-
-//        var argumentVariants2 = resolveArgumentVariants(argumentVariants, resolver);
-//        for (var arguments : argumentVariants)
-//            for (var variant : getEvalContextArgsVariants(arguments, resolver)) {
-        for (var variant : argumentVariants) {
-            var evalWithArguments = this.withArguments(variant);
-            var resolvedVars = evalWithArguments.resolveParameters(invoke, parameters, resolver);
-            if (resolvedVars != null) {
-                resolvedAll.add(resolvedVars);
-            }
-        }
-        unlog("resolveParametersWithContextArgumentVariants", invoke, parameters, null);
-        return resolvedAll;
-    }
-
-    private ArrayList<List<Result>> getResolvedParamVariants(List<Result> parameters, Collection<Map<Integer, List<Result>>> resolvedAll) {
-        var resolvedParamVariants = new ArrayList<List<Result>>();
-        for (var resolvedVariantMap : resolvedAll) {
-            var parameterVariants = new ArrayList<>(resolvedVariantMap.values());
-            int dimensions = getDimensions(parameterVariants);
-            if (dimensions <= 3) {
-                resolvedParamVariants.addAll(flatResolvedVariants(dimensions, parameterVariants, parameters));
-            } else {
-                populateResolvedParamVariants(parameters, parameterVariants, resolvedParamVariants);
-            }
-        }
-        return resolvedParamVariants;
     }
 
     private void populateResolvedParamVariants(List<Result> parameters, List<List<Result>> parameterVariants,
@@ -1345,7 +1185,7 @@ public class Eval {
             var parameterVariant = parameterVariants.get(index);
             for (var parameter : parameterVariant) {
                 var eval = parameter.getEval();
-                assertEquals(this, eval);
+                state(this.equals(eval), "unexpected eval");
                 var root = eval.getTree();
                 var aClass = eval.getComponent().getType();
                 var method = eval.getMethod();
@@ -1370,7 +1210,7 @@ public class Eval {
                                     var relations = relAware.getRelations();
                                     for (var relation : relations) {
                                         var eval = relation.getEval();
-//                                        assertEquals(this, eval);
+//                                        state(this.equals(eval), "unexpected eval");
                                         var root = eval.getTree();
                                         var aClass1 = eval.getComponent().getType();
                                         var method1 = eval.getMethod();
@@ -1479,50 +1319,17 @@ public class Eval {
                 var varIndex = variable.getIndex();
                 var argResult = arguments.get(varIndex);
                 if (argResult != null) {
+                    state(argResult.isResolved(), "arg must be resolved," + varIndex + ", " + argResult);
                     //log
                     return argResult;
                 } else {
                     return stub(variable, resolver);
                 }
-
-//                var eval = variable.getEval();
-//                assertEquals(this, eval);
-//                var argumentVariants = eval.getArgumentVariants();
-
-//                var valueVariants = argumentVariants.stream().map(variant -> {
-//                    if (varIndex >= variant.size()) {
-//                        //logs
-//                        return stub(variable, resolver);
-//                    } else {
-//                        var result1 = variant.get(varIndex);
-//                        return result1;
-//                    }
-//                }).collect(toList());
-
-//                if (!valueVariants.isEmpty()) {
-//                    var resolvedVariants = valueVariants.stream().map(variant -> {
-//                        if (variant instanceof Stub) {
-//                            return variant;
-//                        }
-//                        try {
-//                            return resolve(variant, resolver);
-//                        } catch (UnresolvedVariableException e) {
-//                            return resolveOrThrow(value, resolver, e);
-//                        }
-//                    }).collect(toList());
-//                    result = collapse(resolvedVariants, variable.getFirstInstruction(), variable.getLastInstruction(), constantPoolGen, eval);
-//                } else {
-//                    if (resolver != null) {
-//                        result = resolver.resolve(value, null);
-//                    } else {
-//                        result = variable;
-//                    }
-//                }
             } else if (value instanceof Delay) {
                 try {
                     var delay = (Delay) value;
                     var delayEval = delay.getEval();
-                    assertEquals(this, delayEval);
+                    state(this.equals(delayEval), "unexpected eval");
                     var delayComponentKey = delayEval.getComponentKey();
                     var delayMethod = delayEval.getMethod();
                     var delayEvalArguments = delayEval.getArguments();
@@ -1536,6 +1343,11 @@ public class Eval {
                 }
             } else if (value instanceof Duplicate) {
                 result = resolve(((Duplicate) value).getOnDuplicate(), resolver);
+            } else if (value instanceof Multiple) {
+                var results = ((Multiple) value).getResults().stream()
+                        .map(r -> resolve(r, resolver))
+                        .collect(toList());
+                result = multiple(results, this);
             } else {
                 result = value;
             }
@@ -1551,6 +1363,10 @@ public class Eval {
     }
 
     private Eval withArguments(Map<Integer, Result> arguments) {
+        var collect = arguments.values().stream().collect(partitioningBy(Result::isResolved));
+        if (!collect.get(false).isEmpty()) {
+            System.out.println(collect);
+        }
         return new Eval(component, javaClass, method, bootstrapMethods, callCache, argumentVariants, arguments, tree);
     }
 
@@ -1576,9 +1392,7 @@ public class Eval {
         var current = instructionHandle;
         for (int i = argumentsAmount; i > 0; i--) {
             var prevs = evalPrevises(current);
-
             var valIndex = i - 1;
-
             var firstPrev = prevs.get(0);
             values[valIndex] = firstPrev;
             if (prevs.size() > 1) {
@@ -1602,12 +1416,6 @@ public class Eval {
         return getPrevious(instructionHandle);
     }
 
-    @Deprecated
-    public InstructionHandle getPrevFirst(InstructionHandle lastArgInstruction) {
-        var prevs = getPrevs(lastArgInstruction);
-        return prevs != null ? prevs.get(0) : null;
-    }
-
     private List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
         var branches = tree.findNextBranchContains(instructionHandle.getPosition());
         state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
@@ -1620,7 +1428,9 @@ public class Eval {
                     if (isGoto) {
                         var target = ((BranchInstruction) instruction).getTarget();
                         //todo need check
-                        assertEquals(instructionHandle, target);
+                        state(instructionHandle.getPosition() == target.getPosition(),
+                                "diff position, expected " + instructionHandle.getPosition() +
+                                        ", actual " + target.getPosition());
                         return Stream.of(prev.getPrev());
                     } else {
                         //if, switch
@@ -1640,7 +1450,9 @@ public class Eval {
     }
 
     private List<InstructionHandle> getPrevious(List<InstructionHandle> instructionHandles) {
-        return instructionHandles.stream().flatMap(c -> getPrevious(c).stream()).collect(toList());
+        return instructionHandles.stream().parallel()
+                .flatMap(c -> getPrevious(c).stream().parallel())
+                .collect(toList());
     }
 
     @Deprecated
