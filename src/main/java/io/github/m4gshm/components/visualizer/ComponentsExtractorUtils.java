@@ -14,6 +14,7 @@ import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
 import io.github.m4gshm.components.visualizer.model.HttpMethod;
 import io.github.m4gshm.components.visualizer.model.Interface;
+import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
@@ -272,6 +273,11 @@ public class ComponentsExtractorUtils {
             type = type.getSuperclass();
         }
         return null;
+    }
+
+    @SneakyThrows
+    public static Object invokeMethod(Object object, String name, Class<?>... argumentTypes) {
+        return getDeclaredMethod(object.getClass(), name, argumentTypes).invoke(object);
     }
 
     public static Object getFieldValue(Object object, String name) {

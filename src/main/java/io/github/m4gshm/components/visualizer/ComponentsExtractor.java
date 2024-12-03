@@ -511,8 +511,8 @@ public class ComponentsExtractor {
                             var hiberMetamodel = (MetamodelImplementor) metamodel;
                             var entityPersisters = hiberMetamodel.entityPersisters();
                             var entityPersister = entityPersisters.get(entityClassName);
-                            if (entityPersister != null) {
-                                var tables = entityPersister.getPropertySpaces();
+                            if (entityPersister != null) try {
+                                var tables = (Object[]) invokeMethod(entityPersister, "getPropertySpaces", new Class[0]);
                                 repositoryEntities.add(Interface.builder()
                                         .name(entityClassName)
                                         .type(storage)
@@ -523,6 +523,8 @@ public class ComponentsExtractor {
                                                 .engine(jpa)
                                                 .build())
                                         .build());
+                            } catch(Exception e) {
+                                log.error("get table info error for entityClass {}", entityClassName, e);
                             } else {
                                 log.warn("null entityPersister for entityClass {}", entityClassName);
                             }
