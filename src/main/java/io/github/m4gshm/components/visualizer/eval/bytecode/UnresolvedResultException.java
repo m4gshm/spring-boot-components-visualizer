@@ -7,7 +7,7 @@ import lombok.Getter;
 public class UnresolvedResultException extends EvalException {
     private final Result result;
 
-    public UnresolvedResultException(String message, Exception cause, Result result) {
+    public UnresolvedResultException(String message, Throwable cause, Result result) {
         super(message, cause);
         this.result = result;
     }

@@ -13,32 +13,32 @@ import static lombok.AccessLevel.PRIVATE;
 @Data
 @FieldDefaults(makeFinal = true, level = PRIVATE)
 public class MethodInfo {
-    Class<?> objectType;
+    String className;
     String name;
     String signature;
     int referenceKind;
 
-    public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool cp) {
-        var constantCP = cp.getConstant(constant.getReferenceIndex(), ConstantCP.class);
+    public static MethodInfo newMethodInfo(ConstantMethodHandle constant, ConstantPool constantPool) {
+        var constantCP = constantPool.getConstant(constant.getReferenceIndex(), ConstantCP.class);
         if (constantCP instanceof ConstantMethodref || constantCP instanceof ConstantInterfaceMethodref) {
-            var constantNameAndType = cp.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
-            var methodName = constantNameAndType.getName(cp);
-            var methodSignature = constantNameAndType.getSignature(cp);
-            var targetClass = getClassByName(constantCP.getClass(cp));
+            var constantNameAndType = constantPool.getConstant(constantCP.getNameAndTypeIndex(), ConstantNameAndType.class);
+            var methodName = constantNameAndType.getName(constantPool);
+            var methodSignature = constantNameAndType.getSignature(constantPool);
+            var className = constantCP.getClass(constantPool);
             var referenceKind = constant.getReferenceKind();
-            return newMethodInfo(targetClass, methodName, methodSignature, referenceKind);
+            return newMethodInfo(className, methodName, methodSignature, referenceKind);
         } else {
             return null;
         }
     }
 
-    public static MethodInfo newMethodInfo(Class<?> objectClass, String methodName, String signature, int referenceKind) {
-        return new MethodInfo(objectClass, methodName, signature, referenceKind);
+    public static MethodInfo newMethodInfo(String className, String methodName, String signature, int referenceKind) {
+        return new MethodInfo(className, methodName, signature, referenceKind);
     }
 
     @Override
     public String toString() {
-        return objectType.getName() + "." + name + "(" + Arrays.stream(Type.getArgumentTypes(signature))
+        return getClassName() + "." + name + "(" + Arrays.stream(Type.getArgumentTypes(signature))
                 .map(Type::getClassName).reduce((l, r) -> l + "," + r).orElse("") + ")";
     }
 }

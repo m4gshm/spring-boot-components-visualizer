@@ -1,15 +1,15 @@
 package io.github.m4gshm.components.visualizer.client;
 
-import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
+import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
-import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
+import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEINTERFACE;
@@ -22,9 +22,9 @@ import java.net.URI;
 import java.util.*;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -33,9 +33,8 @@ import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 @UtilityClass
 public class WebsocketClientUtils {
     public static List<String> extractWebsocketClientUris(Component component,
-                                                          Map<CallCacheKey, Result> callCache,
                                                           EvalContextFactory evalContextFactory, Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+        var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
@@ -50,8 +49,8 @@ public class WebsocketClientUtils {
                     var className = referenceType.getClassName();
 
                     if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        var uri = getDoHandshakeUri(component, instructionHandle, constantPoolGen,
-                                bootstrapMethods, method, callCache, evalContextFactory, resolver);
+                        var uri = getDoHandshakeUri(component, instructionHandle, javaClass, constantPoolGen,
+                                bootstrapMethods, method, evalContextFactory, resolver);
                         return uri;
                     } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
                              IllegalAccessException e) {
@@ -68,9 +67,10 @@ public class WebsocketClientUtils {
     }
 
     private static List<String> getDoHandshakeUri(Component component, InstructionHandle instructionHandle,
-                                                  ConstantPoolGen constantPoolGen, BootstrapMethods bootstrapMethods,
-                                                  Method method, Map<CallCacheKey, Result> callCache,
-                                                  EvalContextFactory evalContextFactory, Resolver resolver
+                                                  JavaClass javaClass, ConstantPoolGen constantPoolGen,
+                                                  BootstrapMethods bootstrapMethods, Method method,
+                                                  EvalContextFactory evalContextFactory,
+                                                  Resolver resolver
     ) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         log.trace("getDoHandshakeUri componentName {}", component.getName());
         var methodName = method.getName();
@@ -79,8 +79,8 @@ public class WebsocketClientUtils {
         if (argumentTypes.length != 3) {
             throw new UnsupportedOperationException("getDoHandshakeUri argumentTypes.length mismatch, " + argumentTypes.length);
         }
-        var eval = evalContextFactory.getEvalContext(component, method, bootstrapMethods);
-        var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
+        var eval = evalContextFactory.getEvalContext(component, javaClass, method, bootstrapMethods);
+        var result = (DelayInvoke) eval.eval(instructionHandle);
         var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
 
         if (URI.class.getName().equals(argumentTypes[2].getClassName())) {
@@ -92,7 +92,7 @@ public class WebsocketClientUtils {
         }
     }
 
-    private static List<String> getUrls(List<List<Result>> variants, int paramIndex, Resolver resolver) {
+    private static List<String> getUrls(Collection<List<Result>> variants, int paramIndex, Resolver resolver) {
         var results = variants.stream().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);

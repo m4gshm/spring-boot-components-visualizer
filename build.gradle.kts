@@ -23,6 +23,7 @@ dependencies {
     api("com.google.guava:guava:33.2.1-jre")
     api("org.apache.bcel:bcel:6.10.0")
     api("org.apache.commons:commons-lang3:3.15.0")
+    api("com.google.jimfs:jimfs:1.3.0")
 
     val springBootVer = "2.7.18"
     implementation("org.springframework.boot:spring-boot:$springBootVer")

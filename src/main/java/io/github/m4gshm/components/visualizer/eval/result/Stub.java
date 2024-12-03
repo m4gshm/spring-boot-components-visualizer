@@ -1,26 +1,31 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
 import io.github.m4gshm.components.visualizer.model.Component;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.Type;
 
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Stub extends Result implements ContextAware {
-    Method method;
-    Component component;
+@EqualsAndHashCode
+public class Stub extends Result implements ContextAware, TypeAware {
     Variable stubbed;
 
-    public Stub(Method method, Component component, Variable stubbed) {
-        super(stubbed.getFirstInstruction(), stubbed.getLastInstruction());
-        this.method = method;
-        this.component = component;
+    public Stub(Variable stubbed) {
+        super(stubbed.getFirstInstructions(), stubbed.getLastInstructions());
         this.stubbed = stubbed;
+    }
+
+    @Override
+    public Eval getEval() {
+        return getStubbed().getEval();
     }
 
     @Override
@@ -34,17 +39,12 @@ public class Stub extends Result implements ContextAware {
     }
 
     @Override
-    public InstructionHandle getFirstInstruction() {
-        return stubbed.getFirstInstruction();
-    }
-
-    @Override
-    public InstructionHandle getLastInstruction() {
-        return stubbed.getLastInstruction();
-    }
-
-    @Override
     public String toString() {
         return "stub(" + stubbed + ")";
+    }
+
+    @Override
+    public Type getType() {
+        return stubbed.getType();
     }
 }

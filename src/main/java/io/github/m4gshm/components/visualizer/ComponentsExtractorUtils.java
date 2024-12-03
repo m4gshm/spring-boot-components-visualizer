@@ -6,8 +6,10 @@ import feign.Target;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.FeignClient;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod;
-import io.github.m4gshm.components.visualizer.ComponentsExtractor.ScheduledMethod.TriggerType;
+import io.github.m4gshm.components.visualizer.client.SchedulingConfigurerUtils;
+import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
+import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.model.Component;
 import io.github.m4gshm.components.visualizer.model.Component.ComponentKey;
 import io.github.m4gshm.components.visualizer.model.HttpMethod;
@@ -40,6 +42,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.Utils.*;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.components.visualizer.model.HttpMethod.ALL;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.in;
@@ -52,20 +56,17 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Map.entry;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
+import static org.apache.bcel.generic.Type.getType;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedRepeatableAnnotations;
 
 @Slf4j
 @UtilityClass
 public class ComponentsExtractorUtils {
-
-    public static boolean isOnlyOneArgStringArray(Method method) {
-        var parameterTypes = method.getParameterTypes();
-        return parameterTypes.length == 1 && String[].class.equals(parameterTypes[0]);
-    }
 
     public static boolean isIncluded(Class<?> type) {
         return !(isSpringBootTest(type) || isProperties(type));
@@ -183,44 +184,15 @@ public class ComponentsExtractorUtils {
                 .collect(toList());
     }
 
-    public static List<ScheduledMethod> extractScheduledMethod(Class<?> beanType, Function<TimeUnit, String> timeUnitStringifier) {
-        var annotationMap = getMergedRepeatableAnnotationsMap(asList(beanType.getMethods()), () -> Scheduled.class);
-        return annotationMap.entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
-                .map(entry -> {
-                    var scheduled = entry.getValue();
-                    var cron = scheduled.cron();
-                    var fixedDelay = scheduled.fixedDelayString();
-                    var fixedDelayLong = scheduled.fixedDelay();
-                    if (fixedDelayLong > -1) {
-                        fixedDelay = String.valueOf(fixedDelayLong);
-                    }
-                    var fixedRate = scheduled.fixedRateString();
-                    long fixedRateLong = scheduled.fixedRate();
-                    if (fixedRateLong > -1) {
-                        fixedRate = String.valueOf(fixedRateLong);
-                    }
-                    var triggerType = !cron.isEmpty() ? TriggerType.cron
-                            : !fixedDelay.isEmpty() ? TriggerType.fixedDelay
-                            : !fixedRate.isEmpty() ? TriggerType.fixedRate
-                            : null;
+    public static List<ScheduledMethod> extractScheduledMethods(Component component, Class<?> componentType,
+                                                                Function<TimeUnit, String> timeUnitStringifier,
+                                                                EvalContextFactory evalContextFactory,
+                                                                Resolver resolver) {
 
-                    var expression = triggerType == TriggerType.cron ? cron
-                            : triggerType == TriggerType.fixedDelay ? fixedDelay + timeUnitStringifier.apply(scheduled.timeUnit())
-                            : triggerType == TriggerType.fixedRate ? fixedRate + timeUnitStringifier.apply(scheduled.timeUnit())
-                            : null;
-
-                    return ScheduledMethod.builder()
-                            .method(entry.getKey())
-                            .triggerType(triggerType)
-                            .expression(expression)
-                            .build();
-                })
-                .filter(scheduledMethod -> {
-                    //log
-                    return scheduledMethod.getTriggerType() != null;
-                })
-                .collect(toList());
+        var scheduledByConfigurerMethods = SchedulingConfigurerUtils.getScheduledByConfigurerMethods(component,
+                componentType, timeUnitStringifier, evalContextFactory, resolver);
+        var scheduledByAnnotationMethods = getScheduledByAnnotationMethods(component.getName(), componentType, timeUnitStringifier);
+        return Stream.concat(scheduledByConfigurerMethods.stream(), scheduledByAnnotationMethods.stream()).collect(toList());
     }
 
     public static FeignClient extractFeignClient(String name, Object object) {
@@ -455,5 +427,58 @@ public class ComponentsExtractorUtils {
 
     public static Package getFieldType(Class<?> type) {
         return type.isArray() ? getFieldType(type.getComponentType()) : type.getPackage();
+    }
+
+    public static List<ScheduledMethod> getScheduledByAnnotationMethods(String name, Class<?> componentType,
+                                                                        Function<TimeUnit, String> timeUnitStringifier) {
+        var scheduledAnnotationMethods = getMergedRepeatableAnnotationsMap(asList(componentType.getMethods()), () -> Scheduled.class);
+        return scheduledAnnotationMethods.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(annotation -> entry(entry.getKey(), annotation)))
+                .map(entry -> {
+                    var scheduled = entry.getValue();
+                    var cron = scheduled.cron();
+                    var fixedDelayLong = scheduled.fixedDelay();
+                    if (fixedDelayLong <= -1) {
+                        var fixedDelay = scheduled.fixedDelayString();
+                        if (!fixedDelay.isEmpty()) {
+                            fixedDelayLong = Long.parseLong(fixedDelay);
+                        }
+                    }
+                    long fixedRateLong = scheduled.fixedRate();
+                    if (fixedRateLong <= -1) {
+                        var fixedRate = scheduled.fixedRateString();
+                        if (!fixedRate.isEmpty()) {
+                            fixedRateLong = Long.parseLong(fixedRate);
+                        }
+                    }
+                    var triggerType = !cron.isEmpty() ? ScheduledMethod.TriggerType.cron
+                            : fixedDelayLong > -1 ? ScheduledMethod.TriggerType.fixedDelay
+                            : fixedRateLong > -1 ? ScheduledMethod.TriggerType.fixedRate
+                            : null;
+                    var timeUnit = scheduled.timeUnit();
+                    var expression = triggerType == ScheduledMethod.TriggerType.cron ? cron
+                            : triggerType == ScheduledMethod.TriggerType.fixedDelay ? getTimeExpression(timeUnitStringifier, fixedDelayLong, timeUnit)
+                            : triggerType == ScheduledMethod.TriggerType.fixedRate ? getTimeExpression(timeUnitStringifier, fixedRateLong, timeUnit)
+                            : null;
+
+                    return ScheduledMethod.builder()
+                            .beanName(name)
+                            .method(newMethodId(entry.getKey()))
+                            .triggerType(triggerType)
+                            .expression(expression)
+                            .build();
+                })
+                .filter(scheduledMethod -> {
+                    //log
+                    return scheduledMethod.getTriggerType() != null;
+                })
+                .collect(toList());
+    }
+
+    private static String getTimeExpression(Function<TimeUnit, String> timeUnitStringifier, long fixedDelayLong,
+                                            TimeUnit timeUnit) {
+        return SchedulingConfigurerUtils.getTimeExpression(fixedDelayLong,
+                MILLISECONDS.equals(timeUnit) ? null : timeUnit,
+                timeUnitStringifier);
     }
 }

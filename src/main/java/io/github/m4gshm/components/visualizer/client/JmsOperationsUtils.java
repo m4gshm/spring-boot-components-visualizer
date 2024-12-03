@@ -1,7 +1,6 @@
 package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
-import io.github.m4gshm.components.visualizer.eval.bytecode.CallCacheKey;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
@@ -18,12 +17,11 @@ import org.springframework.jms.core.JmsOperations;
 import org.springframework.jms.core.JmsTemplate;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.ComponentsExtractor.getClassHierarchy;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
@@ -45,10 +43,8 @@ public class JmsOperationsUtils {
     private static final Set<String> jmsTopicClassNames = Set.of("javax.jms.Topic", "jakarta.jms.Topic");
 
     public static List<JmsService> extractJmsClients(Component component,
-                                                     Map<CallCacheKey, Result> callCache,
-                                                     EvalContextFactory evalContextFactory,
-                                                     Resolver resolver) {
-        var javaClasses = getClassHierarchy(component.getType());
+                                                     EvalContextFactory evalContextFactory, Resolver resolver) {
+        var javaClasses = getClassSources(component.getType());
         return javaClasses.stream().flatMap(javaClass -> {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
@@ -60,7 +56,7 @@ public class JmsOperationsUtils {
                 var match = expectedType != null && isClass(expectedType, ((InvokeInstruction) instruction), constantPoolGen);
                 return match
                         ? extractJmsClients(component, instructionHandle,
-                        constantPoolGen, callCache, evalContextFactory.getEvalContext(component, javaClass, method), resolver).stream()
+                        constantPoolGen, evalContextFactory.getEvalContext(component, javaClass, method), resolver).stream()
                         : Stream.of();
             }).filter(Objects::nonNull));
         }).collect(toList());
@@ -68,7 +64,7 @@ public class JmsOperationsUtils {
 
     private static List<JmsService> extractJmsClients(
             Component component, InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen,
-            Map<CallCacheKey, Result> callCache, Eval eval, Resolver resolver) {
+            Eval eval, Resolver resolver) {
         log.trace("extractJmsClients, componentName {}", component.getName());
         var instruction = (InvokeInstruction) instructionHandle.getInstruction();
 
@@ -77,7 +73,7 @@ public class JmsOperationsUtils {
         if (direction == undefined) {
             return List.of();
         } else {
-            var result = (DelayInvoke) eval.eval(instructionHandle, callCache);
+            var result = (DelayInvoke) eval.eval(instructionHandle);
             var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
             var results = variants.stream().flatMap(paramVariant -> {
                 return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);

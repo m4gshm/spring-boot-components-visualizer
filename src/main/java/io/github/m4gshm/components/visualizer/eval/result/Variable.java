@@ -2,35 +2,33 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.UnresolvedVariableException;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
+
+import java.util.Objects;
 
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @FieldDefaults(makeFinal = true, level = PRIVATE)
-public class Variable extends Result implements ContextAware {
+public class Variable extends Result implements ContextAware, TypeAware {
     VarType varType;
-    Eval evalContext;
+    Eval eval;
     int index;
     String name;
     Type type;
-    Result prev;
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
-                    Eval evalContext, int index, String name, Type type, Result prev) {
+                    Eval eval, int index, String name, Type type) {
         super(firstInstruction, lastInstruction);
         this.varType = varType;
-        this.evalContext = evalContext;
+        this.eval = eval;
         this.index = index;
         this.name = name;
         this.type = type;
-        this.prev = prev;
     }
 
     @Override
@@ -46,23 +44,24 @@ public class Variable extends Result implements ContextAware {
     @Override
     public String toString() {
         var methodName = getMethod().getName();
-        var className = evalContext.getComponent().getType().getName();
+        var className = getComponentType();
         return varType.code + "(" + className + "." + methodName + "(" + getIndex() + " " + getName() + "))";
     }
 
     @Override
-    public Method getMethod() {
-        return evalContext.getMethod();
+    public boolean equals(Object object) {
+        if (object == null || getClass() != object.getClass()) return false;
+        if (!super.equals(object)) return false;
+        var variable = (Variable) object;
+        return index == variable.index && varType == variable.varType
+                && Objects.equals(eval, variable.eval)
+                && Objects.equals(name, variable.name)
+                && Objects.equals(type, variable.type);
     }
 
     @Override
-    public Component getComponent() {
-        return evalContext.getComponent();
-    }
-
-    @Override
-    public Class<?> getComponentType() {
-        return evalContext.getComponent().getType();
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), varType, eval, index, name, type);
     }
 
     @RequiredArgsConstructor

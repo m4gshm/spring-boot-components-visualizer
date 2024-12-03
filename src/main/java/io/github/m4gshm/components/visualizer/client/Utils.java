@@ -10,22 +10,29 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.toParameters;
+import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
 
 @Slf4j
 public class Utils {
-    static List<List<Result>> resolveInvokeParameters(Eval eval, DelayInvoke invoke, Component component,
-                                                      String methodName, Resolver resolver) {
+    static Collection<List<Result>> resolveInvokeParameters(Eval eval, DelayInvoke invoke, Component component,
+                                                            String methodName, Resolver resolver) {
+
         var parameters = toParameters(invoke.getObject(), invoke.getArguments());
-        try {
-            return eval.resolveInvokeParameters(invoke, parameters, resolver);
-        } catch (NotInvokedException e) {
-            log.info("no call variants for {} inside {}", eval.getMethod().getName(), component.getName());
-            return List.of();
-        }
+        var resolvedVariant = eval.withArgumentsStream().map(eval2 -> {
+            try {
+                return eval2.resolveInvokeParameters(invoke, parameters, resolver);
+            } catch (NotInvokedException e) {
+                log.info("no call variants for {} inside {}", eval.getMethod().getName(), component.getName());
+                return List.<List<Result>>of();
+            }
+        }).flatMap(Collection::stream).collect(toList());
+        return resolvedVariant;
     }
 
     public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {

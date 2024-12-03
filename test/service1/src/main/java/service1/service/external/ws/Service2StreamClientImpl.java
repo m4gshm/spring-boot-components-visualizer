@@ -91,17 +91,35 @@ public class Service2StreamClientImpl implements AutoCloseable {
         var servUrl = "ws://service3";
         var headers = new WebSocketHttpHeaders();
         Supplier<URI> s = () -> currentURI("ws://currentURI-supplier");
-        return List.of(
-                webSocketClient.doHandshake(webSocketHandler, "ws://service-template"),
-                webSocketClient.doHandshake(webSocketHandler, "ws://service-template/{id}/", "id", "1"),
-                webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),
-                webSocketClient.doHandshake(webSocketHandler, headers, URI.create(servUrl)),
-                webSocketClient.doHandshake(webSocketHandler, headers, uri),
-                webSocketClient.doHandshake(webSocketHandler, headers, defaultURI("ws://defaultURI-static")),
-                webSocketClient.doHandshake(webSocketHandler, headers, currentURI("ws://currentURI-method")),
-                webSocketClient.doHandshake(webSocketHandler, headers, s.get()),
-                webSocketClient.doHandshake(webSocketHandler, headers, URI.create(properties.serviceUrl))
-        );
+        switch (service2Url) {
+            case "ws://service2-value-inject":
+                return List.of(
+                        webSocketClient.doHandshake(webSocketHandler, "ws://service-template"),
+                        webSocketClient.doHandshake(webSocketHandler, "ws://service-template/{id}/", "id", "1"),
+                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),
+                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create(servUrl)),
+                        webSocketClient.doHandshake(webSocketHandler, headers, uri)//,
+//                        webSocketClient.doHandshake(webSocketHandler, headers, defaultURI("ws://defaultURI-static")),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, currentURI("ws://currentURI-method")),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, s.get()),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create(properties.serviceUrl))
+                );
+            case "wss://service2-value-inject":
+                return List.of(
+//                        webSocketClient.doHandshake(webSocketHandler, "ws://service-template"),
+//                        webSocketClient.doHandshake(webSocketHandler, "ws://service-template/{id}/", "id", "1"),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create("ws://service2")),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create(servUrl)),
+//                        webSocketClient.doHandshake(webSocketHandler, headers, uri),
+                        webSocketClient.doHandshake(webSocketHandler, headers, defaultURI("ws://defaultURI-static")),
+                        webSocketClient.doHandshake(webSocketHandler, headers, currentURI("ws://currentURI-method")),
+                        webSocketClient.doHandshake(webSocketHandler, headers, s.get())//,
+//                        webSocketClient.doHandshake(webSocketHandler, headers, URI.create(properties.serviceUrl))
+                );
+        }
+        return List.of(webSocketClient.doHandshake(webSocketHandler, headers, URI.create(properties.serviceUrl)));
+
+
     }
 
     @Override

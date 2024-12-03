@@ -25,7 +25,10 @@ public class SchemaGeneratorTest2 {
 
     @Test
     public void generatePlantUml() {
-        var extractor = new ComponentsExtractor(context, ComponentsExtractor.Options.builder().failFast(true).stringifyLevel(full).build());
+        var extractor = new ComponentsExtractor(context, ComponentsExtractor.Options.builder()
+                .failFast(true)
+                .stringifyLevel(full)
+                .build());
 
         var schema = schemaFactory.create(extractor.getComponents(), schemaFactory.getOptions().toBuilder()
                 .concatenateInterfaces(PlantUmlTextFactory.Options.ConcatenateInterfacesOptions.builder()

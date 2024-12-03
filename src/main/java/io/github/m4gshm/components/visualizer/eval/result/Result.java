@@ -5,16 +5,15 @@ import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.InvokeObject;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
+import io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.Delay.DelayFunction;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.apache.bcel.classfile.LocalVariable;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.Instruction;
 import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.ObjectType;
 import org.apache.bcel.generic.Type;
 
 import java.util.*;
@@ -29,69 +28,102 @@ import static io.github.m4gshm.components.visualizer.eval.result.Variable.VarTyp
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PROTECTED;
-import static org.apache.bcel.generic.Type.getType;
 
 @Data
-@RequiredArgsConstructor
 @FieldDefaults(level = PROTECTED, makeFinal = true)
 public abstract class Result implements ContextAware {
-    InstructionHandle firstInstruction;
-    InstructionHandle lastInstruction;
+    List<InstructionHandle> firstInstructions;
+    List<InstructionHandle> lastInstructions;
 
-    public static Constant invoked(Object value, InstructionHandle invokeInstruction, InstructionHandle lastInstruction,
-                                   Component component, Method method, List<ParameterValue> parameters) {
+    @Deprecated
+    public Result(InstructionHandle firstInstruction, InstructionHandle lastInstruction) {
+        this(
+                getInstructions(firstInstruction),
+                getInstructions(lastInstruction)
+        );
+    }
+
+    public Result(List<InstructionHandle> firstInstructions, List<InstructionHandle> lastInstructions) {
+        this.firstInstructions = firstInstructions;
+        this.lastInstructions = lastInstructions;
+    }
+
+    public static List<InstructionHandle> getInstructions(InstructionHandle firstInstruction) {
+        return firstInstruction != null ? List.of(firstInstruction) : List.of();
+    }
+
+    public static InstructionHandle getFirst(List<InstructionHandle> value) {
+        return value.isEmpty() ? null : value.get(0);
+    }
+
+    public static Constant invoked(Object value, Type type, InstructionHandle invokeInstruction,
+                                   InstructionHandle lastInstruction, Object resolvedBy, Eval eval,
+                                   List<ParameterValue> parameters) {
         var params = parameters.stream().map(ParameterValue::getParameter).collect(toList());
-        return constant(value, invokeInstruction, lastInstruction, component, method, params);
+        return constant(value, type, Result.getInstructions(invokeInstruction), Result.getInstructions(lastInstruction), resolvedBy, eval, params);
     }
 
-    public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    Component component, Method method, List<Result> relations) {
-        return constant(value, firstInstruction, lastInstruction, component, method, null, relations);
+    public static Constant constant(Object value, Type type, InstructionHandle firstInstruction,
+                                    InstructionHandle lastInstruction, Eval eval, List<Result> relations) {
+        return constant(value, type, Result.getInstructions(firstInstruction), Result.getInstructions(lastInstruction), null, eval, relations);
     }
 
-    public static Constant constant(Object value, InstructionHandle firstInstruction, InstructionHandle lastInstruction,
-                                    Component component, Method method, Object resolvedBy, List<Result> relations) {
+    public static Constant constant(Object value, List<InstructionHandle> firstInstruction, List<InstructionHandle> lastInstruction,
+                                    Eval eval, Object resolvedBy, List<Result> relations) {
+        return constant(value, getType(value), firstInstruction, lastInstruction, resolvedBy, eval, relations);
+    }
+
+    public static Type getType(Object value) {
+        return value != null ? ObjectType.getType(value.getClass()) : null;
+    }
+
+    public static Constant constant(Object value, Type type, List<InstructionHandle> firstInstruction,
+                                    List<InstructionHandle> lastInstruction, Object resolvedBy, Eval eval, List<Result> relations) {
         var notNullRelations = relations.stream().filter(Objects::nonNull).collect(toList());
-        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, component, method, resolvedBy);
+        return new Constant(firstInstruction, lastInstruction, value, notNullRelations, eval, resolvedBy, type);
     }
 
     public static DelayLoadFromStore delayLoadFromStored(String description, InstructionHandle instructionHandle,
-                                                         Eval evalContext, Result parent,
-                                                         List<Result> storeInstructions,
-                                                         DelayFunction<DelayLoadFromStore> delayFunction) {
+                                                         Type type, Eval evalContext, List<Result> storeInstructions,
+                                                         DelayFunction<DelayLoadFromStore> delayFunction
+    ) {
         if (storeInstructions.isEmpty()) {
             throw new IllegalArgumentException("No store instructions found");
         }
-        return new DelayLoadFromStore(instructionHandle, instructionHandle, evalContext, description, delayFunction, parent,
-                storeInstructions);
+        var instructions = Result.getInstructions(instructionHandle);
+        return new DelayLoadFromStore(instructions, instructions, evalContext, description, delayFunction, storeInstructions, type);
     }
 
-    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction, Result onDuplicate) {
-        return new Duplicate(instructionHandle, lastInstruction, onDuplicate);
+    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction,
+                                      Result onDuplicate, Eval eval) {
+        return new Duplicate(instructionHandle, lastInstruction, onDuplicate, eval);
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle,
-                              InstructionHandle lastInstruction, Eval evalContext,
-                              Result parent, List<Result> relations,
-                              DelayFunction<Delay> delayFunction) {
-        return new Delay(instructionHandle, lastInstruction, evalContext, description, delayFunction, parent,
-                relations, null);
+                              InstructionHandle lastInstruction, Type expectedType, Eval evalContext,
+                              List<Result> relations, DelayFunction<Delay> delayFunction) {
+        return new Delay(getInstructions(instructionHandle),
+                getInstructions(lastInstruction),
+                evalContext, description, delayFunction,
+                relations, expectedType, null);
     }
 
-    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Eval evalContext,
-                                          Result parent, InvokeObject invokeObject, EvalArguments arguments,
+    public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Type expectedType, Eval evalContext,
+                                          InvokeObject invokeObject, String className, String methodName, EvalArguments arguments,
                                           DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
                 ? invokeObject.getLastInstruction()
                 : arguments.getLastArgInstruction();
         var object = invokeObject != null ? invokeObject.getObject() : null;
+
         var description = getInstructionString(instructionHandle, evalContext.getConstantPoolGen());
-        return new DelayInvoke(instructionHandle, lastInstruction, evalContext, description,
-                delayFunction, parent, object, arguments.getArguments());
+        var delayInvoke = new DelayInvoke(List.of(instructionHandle), List.of(lastInstruction), evalContext, description,
+                delayFunction, expectedType, object, className, methodName, arguments.getArguments());
+        return delayInvoke;
     }
 
     public static Variable methodArg(Eval evalContext, LocalVariable localVariable,
-                                     InstructionHandle lastInstruction, Result parent) {
+                                     InstructionHandle lastInstruction) {
         int startPC = localVariable.getStartPC();
         if (startPC > 0) {
             var componentType = evalContext.getComponent().getType();
@@ -100,40 +132,39 @@ public abstract class Result implements ContextAware {
                     localVariable.getName() + ", " + componentType.getName() + "." +
                     method.getName() + method.getSignature());
         }
-        var type = getType(localVariable.getSignature());
+        var type = ObjectType.getType(localVariable.getSignature());
         int index = localVariable.getIndex();
         var name = localVariable.getName();
-        return methodArg(evalContext, index, name, type, lastInstruction, parent);
+        return methodArg(evalContext, index, name, type, lastInstruction);
     }
 
     public static Variable methodArg(Eval evalContext, int index, String name,
-                                     Type type, InstructionHandle lastInstruction, Result parent) {
-        return new Variable(lastInstruction, lastInstruction, MethodArg, evalContext, index, name, type, parent);
+                                     Type type, InstructionHandle lastInstruction) {
+        return new Variable(lastInstruction, lastInstruction, MethodArg, evalContext, index, name, type);
     }
 
     public static Variable variable(Eval evalContext, LocalVariable localVariable,
-                                    InstructionHandle lastInstruction, Result parent) {
-        var type = getType(localVariable.getSignature());
+                                    InstructionHandle lastInstruction) {
+        var type = ObjectType.getType(localVariable.getSignature());
         int index = localVariable.getIndex();
         var name = localVariable.getName();
-        return variable(evalContext, index, name, type, lastInstruction, parent);
+        return variable(evalContext, index, name, type, lastInstruction);
     }
 
     public static Variable variable(Eval evalContext, int index, String name, Type type,
-                                    InstructionHandle lastInstruction, Result parent) {
-        return new Variable(lastInstruction, lastInstruction, LocalVar, evalContext, index, name, type, parent);
+                                    InstructionHandle lastInstruction) {
+        return new Variable(lastInstruction, lastInstruction, LocalVar, evalContext, index, name, type);
     }
 
-    public static Illegal notAccessible(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notAccessible), element, source);
+    public static Illegal notAccessible(Object element, InstructionHandle callInstruction, Result source, Eval eval) {
+        return new Illegal(callInstruction, callInstruction, Set.of(notAccessible), element, source, eval);
     }
 
-    public static Illegal notFound(Object element, InstructionHandle callInstruction, Result source) {
-        return new Illegal(callInstruction, callInstruction, Set.of(notFound), element, source);
+    public static Illegal notFound(Object element, InstructionHandle callInstruction, Result source, Eval eval) {
+        return new Illegal(callInstruction, callInstruction, Set.of(notFound), element, source, eval);
     }
 
-    public static Result multiple(List<? extends Result> values, InstructionHandle firstInstruction,
-                                  InstructionHandle lastInstruction, Component component, Method method) {
+    public static Result multiple(List<? extends Result> values, Eval eval) {
         var flatValues = values.stream().flatMap(v -> v instanceof Multiple
                 ? ((Multiple) v).getResults().stream()
                 : Stream.of(v)).distinct().collect(toList());
@@ -147,16 +178,16 @@ public abstract class Result implements ContextAware {
                     .flatMap(Collection::stream)
                     .distinct()
                     .collect(toLinkedHashSet());
-            return new Multiple(firstInstruction, lastInstruction, flatValues, component, method, new ArrayList<>(relations));
+            return new Multiple(flatValues, eval, new ArrayList<>(relations));
         }
     }
 
-    public static Result stub(Variable value, Component component, Method method, Resolver resolver) {
+    public static Result stub(Variable value, Resolver resolver) {
         if (resolver != null) {
             //log
             return resolver.resolve(value, null);
         }
-        return new Stub(method, component, value);
+        return new Stub(value);
     }
 
     public static Result getWrapped(Result result) {
@@ -177,15 +208,30 @@ public abstract class Result implements ContextAware {
         return null;
     }
 
+    @Deprecated
+    public InstructionHandle getFirstInstruction() {
+        return getFirst(getFirstInstructions());
+    }
+
+    @Deprecated
+    public InstructionHandle getLastInstruction() {
+        return getFirst(getLastInstructions());
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         var that = (Result) o;
-        return Objects.equals(getComponentKey(), that.getComponentKey())
-                && Objects.equals(getMethod(), that.getMethod())
-                && Objects.equals(getInstruction(firstInstruction), getInstruction(that.firstInstruction))
-                && Objects.equals(getInstruction(lastInstruction), getInstruction(that.lastInstruction));
+        if (!Objects.equals(getComponentKey(), that.getComponentKey())
+                || !Objects.equals(getMethod(), that.getMethod())
+                || !InstructionUtils.equals(getInstructions(firstInstructions), getInstructions(that.firstInstructions)))
+            return false;
+        return getInstructions(lastInstructions).equals(getInstructions(that.lastInstructions));
+    }
+
+    private Set<Instruction> getInstructions(Collection<InstructionHandle> firstInstruction) {
+        return firstInstruction.stream().map(this::getInstruction).collect(toLinkedHashSet());
     }
 
     private Instruction getInstruction(InstructionHandle instruction) {
@@ -194,7 +240,7 @@ public abstract class Result implements ContextAware {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getComponentKey(), getMethod(), getInstruction(firstInstruction), getInstruction(lastInstruction));
+        return Objects.hash(getComponentKey(), getMethod(), getInstructions(firstInstructions), getInstructions(lastInstructions));
     }
 
     public List<Object> getValue(Resolver resolver) {

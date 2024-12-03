@@ -23,12 +23,15 @@ public class JmsQueueService extends AbstractJmsQueueService {
             jmsTemplate.sendAndReceive(jmsQueue2, session -> session.createTextMessage(message3 != null ? message3 : message2));
         jmsTemplate.send(new StringBuilder("jmsQueueEvents").toString(), session -> getMessage(message3, session));
         String jmsQueueEvents2;
+        String m;
         if (message2 != null) {
+            m = "message3forQueueEvents3";
             jmsQueueEvents2 = wrap("QueueEvents3");
         } else {
+            m = "message3forQueueEvents2";
             jmsQueueEvents2 = super.getJmsQueueEvents2();
         }
-        jmsTemplate.send(jmsQueueEvents2, session -> getMessage(message3, session));
+        jmsTemplate.send(jmsQueueEvents2, session -> getMessage(m, session));
         jmsTemplate.send(new PrivateQueueFactory().getQueue(), session -> getMessage(message3, session));
     }
 

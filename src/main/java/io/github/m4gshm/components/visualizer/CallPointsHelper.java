@@ -50,9 +50,7 @@ public class CallPointsHelper {
             //log
             return null;
         }
-        var code = method.getCode();
-        var instructionHandles = instructionHandleStream(code).collect(toList());
-
+        var instructionHandles = instructionHandleStream(method.getCode()).collect(toList());
         var callPoints = new ArrayList<CallPoint>();
         for (var instructionHandle1 : instructionHandles) {
             var instruction = instructionHandle1.getInstruction();
@@ -84,7 +82,7 @@ public class CallPointsHelper {
             if (methodInfo != null) {
                 var argumentTypes = Type.getArgumentTypes(methodInfo.getSignature());
                 var methodName = methodInfo.getName();
-                var ownerClassName = methodInfo.getObjectType().getName();
+                var ownerClassName = methodInfo.getClassName();
                 var referenceKind = methodInfo.getReferenceKind();
                 return CallPoint.builder()
                         .methodName(methodName)
@@ -111,7 +109,7 @@ public class CallPointsHelper {
                 .build();
     }
 
-    public interface CallPointsProvider extends Function<Component, List<CallPoint>> {
+    public interface CallPointsProvider extends Function<Class<?>, List<CallPoint>> {
 
     }
 
