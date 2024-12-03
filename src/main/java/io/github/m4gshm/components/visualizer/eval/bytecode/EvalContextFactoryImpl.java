@@ -30,7 +30,7 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.concat;
 import static lombok.AccessLevel.PROTECTED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.util.Assert.state;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -134,12 +134,11 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
                     var variable = (Variable) result;
-                    var evalContext = variable.getEval();
-                    assertEquals(eval, evalContext);
-                    var variableMethod = evalContext.getMethod();
+                    state(eval.equals(variable.getEval()));
+                    var variableMethod = eval.getMethod();
                     log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", "evalCallPointArgumentVariants",
                             variable.getName(), variableMethod.getName(),
-                            variableMethod.getSignature(), evalContext.getComponent().getType()
+                            variableMethod.getSignature(), eval.getComponent().getType()
                     );
                 } else if (result != null) {
                     log.info("{} is aborted, cannot evaluate result '{}'", "evalCallPointArgumentVariants", result);

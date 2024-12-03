@@ -65,13 +65,9 @@ public class Eval {
     @Getter
     @EqualsAndHashCode.Include
     JavaClass javaClass;
-    //    @With
     @Getter
-//    @EqualsAndHashCode.Include
-            Map<Integer, Result> arguments;
+    Map<Integer, Result> arguments;
     @Getter
-//    @EqualsAndHashCode.Include
-//    @With
     Collection<Map<Integer, Result>> argumentVariants;
     //for debug
     Code methodCode;
@@ -190,39 +186,19 @@ public class Eval {
     }
 
     public static List<Result> expand(Result result) {
-        return result instanceof Multiple ? ((Multiple) result).getResults()
-                : result instanceof Delay && result.isResolved()
-                ? expand(((Delay) result).getResult())
-                : List.of(result);
+        return result instanceof Multiple ? ((Multiple) result).getResults() : List.of(result);
     }
 
     public static Result collapse(Collection<? extends Result> values, Eval eval) {
-        if (values.isEmpty()) {
-            throw new IllegalArgumentException("Empty collection");
-//            var instruction = instructionHandle != null ? instructionHandle.getInstruction() : null;
-//            throw newInvalidEvalException("empty results", instruction, eval.getConstantPoolGen().getConstantPool());
-        }
-        if (values.size() > 1) {
-            var newValues = values.stream().flatMap(v -> {
-                return v instanceof Multiple ? ((Multiple) v).getResults().stream() : of(v);
-            }).collect(toList());
-            return multiple(newValues, eval);
-        }
-        var first = values.iterator().next();
-        return first;
+        state(!values.isEmpty(), "no results for collapse");
+        return values.size() > 1
+                ? multiple(values.stream().map(Eval::expand).flatMap(Collection::stream).collect(toList()), eval)
+                : values.iterator().next();
     }
 
     private static Result resolveOrThrow(Result result, Resolver resolver, EvalException e) {
         if (resolver != null) {
-            try {
-                return resolver.resolve(result, e);
-            } catch (NotInvokedException ee) {
-                //todo bad case
-                //log.error
-                throw ee;
-            } catch (Exception ee) {
-                throw ee;
-            }
+            return resolver.resolve(result, e);
         } else {
             throw e;
         }
@@ -230,7 +206,7 @@ public class Eval {
 
     private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
                                List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                               ConstantPoolGen constantPoolGen, Eval eval) throws NotInvokedException {
+                               Eval eval) throws NotInvokedException {
 
         var values = new ArrayList<Result>();
         var unresolvedVars = new ArrayList<UnresolvedVariableException>();
@@ -350,7 +326,6 @@ public class Eval {
                 .filter(si -> si.getPosition() <= loadInstructionPosition)
                 .reduce((l, r) -> r).orElse(null);
         return last;
-//       return !storeInstructionsIntoVar.isEmpty() ? storeInstructionsIntoVar.get(storeInstructionsIntoVar.size() - 1) : null;
     }
 
     private static Set<InstructionHandle> getLastStoreInstructionPerBranch(List<InvokeBranch> branches,
@@ -385,10 +360,6 @@ public class Eval {
                 var existed = firstVariant[index];
                 var exists = existed != null;
                 var same = existed == result;
-                if (!cloned) {
-                    var problem = exists && !same;
-//                state(!problem, index + " parameter must be null or the same");
-                }
                 if (!(cloned && exists && same)) {
                     firstVariant[index] = result;
                     popMask.set(index);
@@ -497,18 +468,15 @@ public class Eval {
             try {
                 resolved = eval.resolve(argument, resolver);
             } catch (NotInvokedException e) {
-//                var unresolved = e.getResult();
-//                var sameLevel = isSameLevel(unresolved, eval.getComponent());
-                //log
-//                if (!sameLevel && resolver != null) {
-                resolved = resolver.resolve(argument, e);
-//                } else {
-//                    return null;
-//                }
+                if (resolver != null)
+                    resolved = resolver.resolve(argument, e);
+                else {
+                    //log
+                    return null;
+                }
             } catch (EvalException e) {
                 //log
                 return null;
-//                resolved = resolver.resolve(argument, e);
             }
             evalContextArgs.put(isStatic ? i : i + 1, resolved);
         }
@@ -525,32 +493,8 @@ public class Eval {
         return expand(eval.resolve(storeResult, resolver));
     }
 
-    private static boolean isEquals(List<InstructionHandle> prevs, ArrayList<InstructionHandle> prevs2) {
-        if (prevs.size() != prevs2.size()) {
-            return false;
-        }
-        var instructions = prevs.stream().map(InstructionHandle::getInstruction).collect(toList());
-        var instructions2 = prevs2.stream().map(InstructionHandle::getInstruction).collect(toList());
-        return instructions.equals(instructions2);
-    }
-
     public ComponentKey getComponentKey() {
         return newComponentKey(getComponent());
-    }
-
-    private Map<Integer, List<Result>> resolveParameters(DelayInvoke invoke, List<Result> parameters, Resolver resolver) {
-        var resolvedParameters = new HashMap<Integer, List<Result>>();
-        for (int i = 0; i < parameters.size(); i++) {
-            try {
-                var parameterResult = parameters.get(i);
-                var results = resolveExpand(parameterResult, resolver);
-                resolvedParameters.put(i, results);
-            } catch (NotInvokedException e) {
-                //log
-                return null;
-            }
-        }
-        return resolvedParameters;
     }
 
     public String getComponentName() {
@@ -1010,7 +954,7 @@ public class Eval {
 
         Result callResult;
         try {
-            callResult = call(current, lastInstruction, resolver, callParameters, call, getConstantPoolGen(), this);
+            callResult = call(current, lastInstruction, resolver, callParameters, call, this);
             if (callCache != null) {
                 log.trace("no cached call result, call '{}', result '{}'", key, callResult);
                 callCache.put(key, callResult);
@@ -1212,8 +1156,6 @@ public class Eval {
                     for (var index : new ArrayList<>(params.keySet())) {
                         var variants = params.get(index);
                         if (variants.size() > 1) {
-//                            var vRoots = new HashMap<Class<?>, Map<Method, Set<InvokeBranch>>>();
-//                            var vGrouped = new HashMap<Class<?>, Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>>>();
                             for (var variant : variants) {
                                 if (variant instanceof RelationsAware) {
                                     var relAware = (RelationsAware) variant;
@@ -1224,11 +1166,6 @@ public class Eval {
                                         var root = eval.getTree();
                                         var aClass1 = eval.getComponent().getType();
                                         var method1 = eval.getMethod();
-
-//                                        vRoots.computeIfAbsent(aClass1, k -> new HashMap<>())
-//                                                .computeIfAbsent(method1, k -> new LinkedHashSet<>())
-//                                                .add(root);
-
                                         roots.computeIfAbsent(aClass1, k -> new HashMap<>())
                                                 .computeIfAbsent(method1, k -> new LinkedHashSet<>())
                                                 .add(root);
@@ -1241,14 +1178,12 @@ public class Eval {
                                         if (!branches1.isEmpty()) {
                                             params.remove(index);
                                             populateBranches(variant, grouped, aClass1, method1, index, branches1);
-//                                            populateBranches(variant, vGrouped, aClass1, method1, index, branches1);
                                         }
                                     }
                                 } else {
                                     throw new UnsupportedOperationException("TODO");
                                 }
                             }
-//                            System.out.println(vRoots);
                         }
                     }
                 }
@@ -1401,7 +1336,7 @@ public class Eval {
         var result = new ArrayList<EvalArguments>();
         var current = instructionHandle;
         for (int i = argumentsAmount; i > 0; i--) {
-            var prevs = evalPrevises(current);
+            var prevs = evalPrevs(current);
             var valIndex = i - 1;
             var firstPrev = prevs.get(0);
             values[valIndex] = firstPrev;
@@ -1427,11 +1362,7 @@ public class Eval {
     }
 
     public List<InstructionHandle> getPrevs(InstructionHandle instructionHandle) {
-        return getPrevious(instructionHandle);
-    }
-
-    private List<InstructionHandle> getPrevious(InstructionHandle instructionHandle) {
-        var prevs2 = new ArrayList<InstructionHandle>();
+        var prevs = new ArrayList<InstructionHandle>();
         var prev1 = instructionHandle.getPrev();
         var targeterRequired = false;
         if (prev1 != null) {
@@ -1444,35 +1375,8 @@ public class Eval {
                     //go back, loop
                     prev1 = prev1.getPrev();
                 } else if (targetPosition > instructionHandle.getPosition()) {
-                    //no prev in this branch must be targeter
                     targeterRequired = true;
                     prev1 = null;
-//                    var skip = 0;
-//                    var next = instructionHandle;
-//                    while (next.getPosition() <= targetPosition) {
-//                        skip++;
-//                        next = next.getNext();
-//                    }
-//                    var skipped = skip;
-//                    while (skipped > 0) {
-//                        prev1 = prev1.getPrev();
-//                        skipped--;
-//                    }
-                } else if (targetPosition > prev1.getPosition()) {
-                    targeterRequired = true;
-                    prev1 = null;
-                    //calc skip steps
-//                    var skip = 0;
-//                    var next = prev1;
-//                    while (next.getPosition() <= targetPosition) {
-//                        skip++;
-//                        next = next.getNext();
-//                    }
-//                    var skipped = skip;
-//                    while (skipped > 0) {
-//                        prev1 = prev1.getPrev();
-//                        skipped--;
-//                    }
                 }
             } else if (prevInstruction instanceof BranchInstruction) {
                 //if switch
@@ -1491,13 +1395,13 @@ public class Eval {
                 }
             }
             if (prev1 != null) {
-                prevs2.add(prev1);
+                prevs.add(prev1);
             }
         }
 
         var targeters = instructionHandle.getTargeters();
         var fork = targeters.length > 0;
-        state(!targeterRequired || fork);
+        state(!targeterRequired || fork, "targeter required for " + instructionHandle + ", " + method.getName() + "\n" + method.getCode());
         if (fork) {
             for (var targeter : targeters) {
                 if (targeter instanceof BranchInstruction) {
@@ -1522,66 +1426,25 @@ public class Eval {
                                 skipped += plus;
                                 skipped--;
                             }
-                            prevs2.add(prev2);
+                            prevs.add(prev2);
                         }
                     }
                 }
             }
         }
 
-        prevs2.sort(comparingInt(InstructionHandle::getPosition));
+        prevs.sort(comparingInt(InstructionHandle::getPosition));
 
-        return prevs2;
-
-//        var branches = tree.findNextBranchContains(instructionHandle.getPosition());
-//        state(!branches.isEmpty(), "no branch for instruction " + instructionHandle.getInstruction());
-//
-//        var prevs = branches.stream().flatMap(branch -> {
-//            var prevInstructions = branch.getPrevInstructions(instructionHandle);
-//            return prevInstructions.stream().flatMap(prev -> {
-//                var instruction = prev.getInstruction();
-//                if (instruction instanceof BranchInstruction) {
-//                    var isGoto = instruction instanceof GotoInstruction;
-//                    if (isGoto) {
-//                        var target = ((BranchInstruction) instruction).getTarget();
-//                        //todo need check
-//                        state(instructionHandle.getPosition() == target.getPosition(),
-//                                "diff position, expected " + instructionHandle.getPosition() +
-//                                        ", actual " + target.getPosition());
-//                        return of(prev.getPrev());
-//                    } else {
-//                        //if, switch
-//                        var skipCount = instruction.consumeStack(constantPoolGen);
-//                        var condition = List.of(prev);
-//                        while (skipCount > 0) {
-//                            condition = getPrevious(condition);
-//                            skipCount--;
-//                        }
-//                        var prevs1 = getPrevious(condition);
-//                        return prevs1.stream();
-//                    }
-//                }
-//                return of(prev);
-//            });
-//        }).distinct().sorted(comparingInt(InstructionHandle::getPosition)).collect(toList());
-//        boolean equals = isEquals(prevs, prevs2);
-//        state(equals);
-//        return prevs;
-    }
-
-    private List<InstructionHandle> getPrevious(List<InstructionHandle> instructionHandles) {
-        return instructionHandles.stream().parallel()
-                .flatMap(c -> getPrevious(c).stream().parallel())
-                .collect(toList());
+        return prevs;
     }
 
     @Deprecated
     public Result evalPrev(InstructionHandle instructionHandle) {
-        var collect = evalPrevises(instructionHandle);
+        var collect = evalPrevs(instructionHandle);
         return collapse(collect, this);
     }
 
-    public List<Result> evalPrevises(InstructionHandle instructionHandle) {
+    public List<Result> evalPrevs(InstructionHandle instructionHandle) {
         return getPrevs(instructionHandle).stream().map(this::eval).collect(toList());
     }
 

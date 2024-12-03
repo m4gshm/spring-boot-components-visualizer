@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static lombok.AccessLevel.PROTECTED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.util.Assert.state;
 
 @Getter
 @FieldDefaults(level = PROTECTED)
@@ -22,9 +22,8 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
     final DelayFunction<Delay> evaluator;
     final List<Result> relations;
     final Type type;
-    Result result;
 
-    public Delay(List<InstructionHandle> firstInstruction, List<InstructionHandle>  lastInstruction,
+    public Delay(List<InstructionHandle> firstInstruction, List<InstructionHandle> lastInstruction,
                  Eval eval, String description, DelayFunction<? extends Delay> evaluator,
                  List<Result> relations, Type type, Result result) {
         super(firstInstruction, lastInstruction);
@@ -33,7 +32,6 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
         this.evaluator = (DelayFunction<Delay>) evaluator;
         this.relations = relations;
         this.type = type;
-        this.result = result;
     }
 
     @Override
@@ -47,20 +45,12 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
     }
 
     public Result getDelayed(Eval eval, Resolver resolver) {
-        assertEquals(this.getEval(), eval);
-        var result = this.result;
-        if (!isResolved()) {
-            result = evaluator.call(this, eval, resolver);
-            if (result == this) {
-                throw new EvalException("looped delay 1");
-            }
-//            this.result = result;
+        state(this.getEval().equals(eval));
+        var result = evaluator.call(this, eval, resolver);
+        if (result == this) {
+            throw new EvalException("looped delay 1");
         }
         return result;
-    }
-
-    public Delay withEval(Eval eval) {
-        return new Delay(firstInstructions, lastInstructions, eval, description, evaluator, relations, type, null);
     }
 
     @Override
@@ -71,12 +61,7 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
 
     @Override
     public boolean isResolved() {
-        return result != null && result.isResolved();
-    }
-
-    @FunctionalInterface
-    public interface DelayFunction<T extends Delay> {
-        Result call(T delay, Eval eval, Resolver resolver);
+        return false;
     }
 
     @Override
@@ -88,19 +73,17 @@ public class Delay extends Result implements ContextAware, RelationsAware, TypeA
         if (!super.equals(object)) return false;
         Delay delay = (Delay) object;
         return Objects.equals(eval, delay.eval)
-//                && Objects.equals(description, delay.description)
-//                && Objects.equals(evaluator, delay.evaluator)
                 && Objects.equals(relations, delay.relations)
-                && Objects.equals(type, delay.type)
-                && Objects.equals(result, delay.result)
-                ;
+                && Objects.equals(type, delay.type);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), eval,
-//                description,
-//                evaluator,
-                relations, type, result);
+        return Objects.hash(super.hashCode(), eval, relations, type);
+    }
+
+    @FunctionalInterface
+    public interface DelayFunction<T extends Delay> {
+        Result call(T delay, Eval eval, Resolver resolver);
     }
 }

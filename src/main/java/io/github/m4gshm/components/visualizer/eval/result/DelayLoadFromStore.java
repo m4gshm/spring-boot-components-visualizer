@@ -22,9 +22,4 @@ public class DelayLoadFromStore extends Delay {
         this.storeInstructions = storeInstructions;
     }
 
-    @Override
-    public Delay withEval(Eval eval) {
-        return new DelayLoadFromStore(firstInstructions, lastInstructions, eval, description,
-                (DelayFunction<DelayLoadFromStore>) (Object) evaluator, storeInstructions, type);
-    }
 }
