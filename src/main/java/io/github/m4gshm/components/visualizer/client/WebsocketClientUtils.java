@@ -1,6 +1,7 @@
 package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
+import io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
@@ -24,7 +25,7 @@ import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -39,7 +40,7 @@ public class WebsocketClientUtils {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
+            return stream(methods).flatMap(method -> EvalUtils.instructions(method.getCode()).map(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 if (instruction instanceof INVOKEINTERFACE) {
                     var invoke = (InvokeInstruction) instruction;

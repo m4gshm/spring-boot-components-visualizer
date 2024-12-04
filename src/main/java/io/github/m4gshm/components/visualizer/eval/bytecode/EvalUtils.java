@@ -22,8 +22,11 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
@@ -33,7 +36,7 @@ import static io.github.m4gshm.components.visualizer.Utils.loadedClass;
 import static io.github.m4gshm.components.visualizer.eval.result.Result.*;
 import static java.util.Arrays.asList;
 import static java.util.Map.entry;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
 import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
@@ -203,15 +206,15 @@ public class EvalUtils {
         return instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
     }
 
-    public static Stream<InstructionHandle> instructionHandleStream(Method method) {
-        return instructionHandleStream(method.getCode());
+    public static Stream<InstructionHandle> instructions(Method method) {
+        return instructions(method.getCode());
     }
 
-    public static Stream<InstructionHandle> instructionHandleStream(Code code) {
-        return ofNullable(code).map(Code::getCode).flatMap(bc -> instructionHandleStream(new InstructionList(bc)));
+    public static Stream<InstructionHandle> instructions(Code code) {
+        return ofNullable(code).map(Code::getCode).flatMap(bc -> instructions(new InstructionList(bc)));
     }
 
-    public static Stream<InstructionHandle> instructionHandleStream(InstructionList instructionHandles) {
+    public static Stream<InstructionHandle> instructions(InstructionList instructionHandles) {
         return stream(instructionHandles.spliterator(), false);
     }
 
@@ -258,13 +261,15 @@ public class EvalUtils {
     }
 
     public static Entry<JavaClass, Method> getClassAndMethodSource(Class<?> type, String methodName, Type[] argTypes) {
-        var javaClasses = getClassSources(type);
-        var filter = byNameAndArgs(methodName, argTypes);
-        return javaClasses.stream().map(javaClass -> {
+        return getClassAndMethodSources(type, byNameAndArgs(methodName, argTypes)).findFirst().orElse(null);
+    }
+
+    public static Stream<Entry<JavaClass, Method>> getClassAndMethodSources(Class<?> type, Predicate<Method> filter) {
+        return getClassSources(type).stream().map(javaClass -> {
             var filteredMethods = getMethodStream(javaClass, filter);
             var method = filteredMethods.findFirst().orElse(null);
             return method != null ? entry(javaClass, method) : null;
-        }).filter(Objects::nonNull).findFirst().orElse(null);
+        }).filter(Objects::nonNull);
     }
 
     public static List<Method> getMethodsSource(JavaClass javaClass, Predicate<Method> filter) {

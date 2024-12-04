@@ -1,7 +1,6 @@
 package io.github.m4gshm.components.visualizer;
 
 import io.github.m4gshm.components.visualizer.model.CallPoint;
-import io.github.m4gshm.components.visualizer.model.Component;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
@@ -13,7 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static java.util.stream.Collectors.toList;
 
@@ -50,14 +49,14 @@ public class CallPointsHelper {
             //log
             return null;
         }
-        var instructionHandles = instructionHandleStream(method.getCode()).collect(toList());
+        var instructions = instructions(method.getCode()).collect(toList());
         var callPoints = new ArrayList<CallPoint>();
-        for (var instructionHandle1 : instructionHandles) {
-            var instruction = instructionHandle1.getInstruction();
+        for (var handle : instructions) {
+            var instruction = handle.getInstruction();
             var callPoint = (instruction instanceof INVOKEDYNAMIC)
-                    ? newInvokeDynamicCallPoint(instructionHandle1, bootstrapMethods, constantPoolGen)
+                    ? newInvokeDynamicCallPoint(handle, bootstrapMethods, constantPoolGen)
                     : instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE
-                    ? newInvokeCallPoint(instructionHandle1, (InvokeInstruction) instruction, constantPoolGen)
+                    ? newInvokeCallPoint(handle, (InvokeInstruction) instruction, constantPoolGen)
                     : null;
             if (callPoint != null) {
                 callPoints.add(callPoint);

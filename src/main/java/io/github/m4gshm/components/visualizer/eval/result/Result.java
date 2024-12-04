@@ -109,8 +109,8 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Type expectedType, Eval evalContext,
-                                          InvokeObject invokeObject, String className, String methodName, EvalArguments arguments,
-                                          DelayFunction<DelayInvoke> delayFunction) {
+                                          InvokeObject invokeObject, String className, String methodName,
+                                          EvalArguments arguments, DelayFunction<DelayInvoke> delayFunction) {
         var lastInstruction = invokeObject != null
                 ? invokeObject.getLastInstruction()
                 : arguments.getLastArgInstruction();

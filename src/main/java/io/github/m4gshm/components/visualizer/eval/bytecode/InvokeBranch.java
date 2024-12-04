@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PRIVATE;
@@ -32,7 +32,7 @@ public class InvokeBranch {
     List<InvokeBranch> next = new ArrayList<>();
 
     public static InvokeBranch newTree(Class<?> aClass, Method method) {
-        var instructionHandleStream = instructionHandleStream(method.getCode());
+        var instructionHandleStream = EvalUtils.instructions(method.getCode());
         var cursor = instructionHandleStream.findFirst().orElse(null);
         return newTree(aClass, method, null, cursor, List.of());
     }

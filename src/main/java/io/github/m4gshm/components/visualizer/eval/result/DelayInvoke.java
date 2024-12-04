@@ -6,6 +6,7 @@ import lombok.experimental.FieldDefaults;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.Type;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -32,4 +33,12 @@ public class DelayInvoke extends Delay {
         this.arguments = arguments;
     }
 
+    public List<Result> getParameters() {
+        var parameters = new ArrayList<Result>(arguments.size() + 1);
+        if (object != null) {
+            parameters.add(object);
+        }
+        parameters.addAll(arguments);
+        return parameters;
+    }
 }

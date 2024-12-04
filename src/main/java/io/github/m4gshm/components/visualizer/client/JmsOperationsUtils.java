@@ -3,6 +3,7 @@ package io.github.m4gshm.components.visualizer.client;
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
+import io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils;
 import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
@@ -25,7 +26,7 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.get
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
@@ -49,7 +50,7 @@ public class JmsOperationsUtils {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
 
-            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
+            return stream(methods).flatMap(method -> EvalUtils.instructions(method.getCode()).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;

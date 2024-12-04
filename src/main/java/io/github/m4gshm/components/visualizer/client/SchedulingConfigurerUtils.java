@@ -62,7 +62,7 @@ public class SchedulingConfigurerUtils {
                 var method = configureTasksMethodClassPair.getValue();
                 var source = configureTasksMethodClassPair.getKey();
                 var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-                return instructionHandleStream(method).flatMap(instructionHandle -> {
+                return instructions(method).flatMap(instructionHandle -> {
                     var instruction = instructionHandle.getInstruction();
                     if (instruction instanceof INVOKEVIRTUAL) {
                         var invokevirtual = (INVOKEVIRTUAL) instruction;
@@ -227,7 +227,7 @@ public class SchedulingConfigurerUtils {
             var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1)
                     .withArguments(0, delayInvokeExpr.getArguments());
 
-            var instructionHandles = instructionHandleStream(method1).collect(toList());
+            var instructionHandles = instructions(method1).collect(toList());
 
             var last1 = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
 
@@ -336,7 +336,7 @@ public class SchedulingConfigurerUtils {
         var bootstrapMethods = getBootstrapMethods(source);
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
-        return instructionHandleStream(method.getCode())
+        return instructions(method.getCode())
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETFIELD))
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETSTATIC))
                 .map(instructionHandle -> {
