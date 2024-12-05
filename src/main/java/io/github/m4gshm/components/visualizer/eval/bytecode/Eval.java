@@ -177,7 +177,9 @@ public class Eval {
         return resolvedVariants;
     }
 
-    private static List<Map<Integer, List<Result>>> flatResolvedVariants(int dimensions, Map<Integer, List<Result>> paramIndexToVariantsMap) {
+    private static List<Map<Integer, List<Result>>> flatResolvedParamsVariants(
+            int dimensions, Map<Integer, List<Result>> paramIndexToVariantsMap
+    ) {
         var resolvedVariants = new ArrayList<Map<Integer, List<Result>>>();
         for (var d = 1; d <= dimensions; d++) {
             var paramIndexToVariantMap = new HashMap<Integer, List<Result>>();
@@ -272,8 +274,10 @@ public class Eval {
         }).collect(toLinkedHashSet());
     }
 
-    private static void populateVariant(Result[] firstVariant, boolean cloned,
-                                        Map<Integer, List<Result>> resolvedVariant, BitSet popMask) {
+    private static List<Result[]> populateVariants(Result[] firstVariant, boolean canOverwrite,
+                                                   Map<Integer, List<Result>> resolvedVariant, BitSet popMask) {
+        var results = new ArrayList<Result[]>();
+        results.add(firstVariant);
         for (var paramIndex : resolvedVariant.keySet()) {
             var variants = resolvedVariant.get(paramIndex);
             //todo must be one parameter variant per branch
@@ -282,11 +286,19 @@ public class Eval {
             var existed = firstVariant[paramIndex];
             var exists = existed != null;
             var same = existed == result;
-            if (!(cloned && exists && same)) {
-                firstVariant[paramIndex] = result;
+            if (!exists || canOverwrite) {
+                for (var variant : results) {
+                    variant[paramIndex] = result;
+                }
+                popMask.set(paramIndex);
+            } else if (!same) {
+                var nextVariant = firstVariant.clone();
+                nextVariant[paramIndex] = result;
+                results.add(nextVariant);
                 popMask.set(paramIndex);
             }
         }
+        return results;
     }
 
     private static BitSet initPopulationMask(Result[] firstVariant) {
@@ -430,47 +442,43 @@ public class Eval {
         return results;
     }
 
-    private Stream<List<Result>> combineVariants(DelayInvoke invoke, Set<InvokeBranch> branches, Result[] firstVariant,
-                                                 Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
-    ) {
-        return branches.stream().flatMap(branch -> {
-            return combineVariants(invoke, branch, firstVariant.clone(), false, groupedParamsByBranch).stream();
-        }).filter(r -> !r.isEmpty());
-    }
-
-    private Set<List<Result>> combineVariants(DelayInvoke invoke, InvokeBranch branch, Result[] firstVariant, boolean cloned,
-                                              Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
+    private Set<List<Result>> combineVariants(DelayInvoke invoke, InvokeBranch branch, Result[] firstVariant,
+                                              boolean canOverwrite, Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
     ) {
         var popMask = initPopulationMask(firstVariant);
+//        int cardinality = popMask.cardinality();
+//        var full = cardinality == firstVariant.length;
+//        if (full) {
+//            return Set.of(Arrays.asList(firstVariant));
+//        }
 
         var allVariants = new LinkedHashSet<List<Result>>();
         var paramIndexToVariantsMap = groupedParamsByBranch.getOrDefault(branch, Map.of());
         int dimensions = getDimensions(paramIndexToVariantsMap.values());
-        var resolvedVariants = flatResolvedVariants(dimensions, paramIndexToVariantsMap);
-        for (var resolvedVariant : resolvedVariants) {
-            populateVariant(firstVariant, cloned, resolvedVariant, popMask);
+        var resolvedParamsVariants = flatResolvedParamsVariants(dimensions, paramIndexToVariantsMap);
+        for (var resolvedParamsVariant : resolvedParamsVariants) {
+            var variants = populateVariants(firstVariant, canOverwrite, resolvedParamsVariant, popMask);
 
-            int cardinality = popMask.cardinality();
-            var full = cardinality == firstVariant.length;
-            var partial = !full && cardinality > 0;
+//            cardinality = popMask.cardinality();
+//            full = cardinality == firstVariant.length;
+//            var partial = !full && cardinality > 0;
+
+
+//            if (full) {
+//            allVariants.addAll(variants.stream().map(a -> new ArrayList<>(Arrays.asList(a))).collect(toLinkedHashSet()));
+//            } else if (partial && nextSize == 0) {
+            allVariants.addAll(variants.stream().map(a -> new ArrayList<>(Arrays.asList(a))).collect(toLinkedHashSet()));
+//            }
             var next = branch.getNext();
             int nextSize = next.size();
-
-            if (full) {
-                allVariants.add(asList(firstVariant));
-                firstVariant = firstVariant.clone();
-            } else if (partial && nextSize == 0) {
-                allVariants.add(asList(firstVariant));
-                firstVariant = firstVariant.clone();
-            }
             for (int i = 0; i < nextSize; i++) {
-                var clone = i > 0;
-                var nextVariant = clone ? firstVariant.clone() : firstVariant;
-                var nextBranch = next.get(i);
-                var variants = combineVariants(invoke, nextBranch, nextVariant, clone, groupedParamsByBranch);
-                if (!variants.isEmpty()) {
-                    allVariants.addAll(variants);
-                }
+                var invokeBranch = next.get(i);
+                boolean firstBranch = i == 0;
+                var nextVariants = variants.stream().flatMap(v -> combineVariants(invoke, invokeBranch, v.clone(),
+                                true, groupedParamsByBranch).stream())
+                        .collect(toLinkedHashSet());
+//                var nextVariants = combineVariants(invoke, invokeBranch, firstVariant, groupedParamsByBranch);
+                allVariants.addAll(nextVariants);
             }
         }
         return allVariants;
@@ -1125,6 +1133,10 @@ public class Eval {
             case 7:
             case 11:
             case 13:
+                List<List<Result>> groupedVariants1;
+                if ("exchange".equals(invoke.getMethodName())) {
+                    groupedVariants1 = groupByInvokeBranchResolvedParamVariants(invoke, parameterVariants, parameters);
+                }
                 var resolvedVariants = flatResolvedVariants(dimensions, parameterVariants, parameters);
                 return resolvedVariants;
             default:
@@ -1176,7 +1188,7 @@ public class Eval {
                             var firstVariant1 = firstVariant.toArray(new Result[0]);
                             var groupedParamsByMethodBranch = groupedParamsByClassMethodBranch.get(externalClass);
                             var groupedParamsByBranch = groupedParamsByMethodBranch.get(externalMethod);
-                            var resultsVariants = combineVariants(invoke, externalBranch, firstVariant1, true, groupedParamsByBranch);
+                            var resultsVariants = combineVariants(invoke, externalBranch, firstVariant1, false, groupedParamsByBranch);
                             if (!resultsVariants.isEmpty()) {
                                 iterator.remove();
                                 for (var resultsVariant : resultsVariants) {

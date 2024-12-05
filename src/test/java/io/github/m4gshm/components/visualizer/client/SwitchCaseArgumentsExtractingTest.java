@@ -63,10 +63,12 @@ public class SwitchCaseArgumentsExtractingTest {
 
         assertExpectedVariant(expected(service, "arg13", 22, 3L), 0, valueVariants);
         assertExpectedVariant(expected(service, "arg11", 22, 3L), 1, valueVariants);
+//        assertExpectedVariant(expected(service, "arg12", 22, 3L), 2, valueVariants);
         assertExpectedVariant(expected(service, "arg12", 22, 32L), 2, valueVariants);
 
         assertExpectedVariant(expected(service, "arg13", 2, 3L), 0, valueVariants2);
         assertExpectedVariant(expected(service, "arg11", 2, 3L), 1, valueVariants2);
+//        assertExpectedVariant(expected(service, "arg12", 2, 3L), 2, valueVariants2);
         assertExpectedVariant(expected(service, "arg12", 2, 32L), 2, valueVariants2);
     }
 
