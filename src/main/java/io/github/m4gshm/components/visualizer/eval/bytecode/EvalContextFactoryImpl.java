@@ -30,7 +30,6 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Stream.concat;
 import static lombok.AccessLevel.PROTECTED;
-import static org.springframework.util.Assert.state;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -42,17 +41,17 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     CallPointsProvider callPointsProvider;
     Resolver resolver;
 
-    public static List<List<Result>> computeArgumentVariants(Component component, Method method,
-                                                             EvalContextFactory evalContextFactory,
-                                                             DependentProvider dependentProvider,
-                                                             CallPointsProvider callPointsProvider) {
+    public static List<EvalArguments> computeArgumentVariants(Component component, Method method,
+                                                              EvalContextFactory evalContextFactory,
+                                                              DependentProvider dependentProvider,
+                                                              CallPointsProvider callPointsProvider) {
         var methodCallPoints = getCallPoints(component, method.getName(), method.getArgumentTypes(),
                 dependentProvider, callPointsProvider);
         var methodArgumentVariants = getEvalCallPointVariants(component, method, methodCallPoints, evalContextFactory);
-        var variants = methodArgumentVariants.values().stream().parallel()
+        var variants = methodArgumentVariants.values().stream()/*.parallel()*/
                 .map(Map::entrySet)
                 .flatMap(Collection::stream)
-                .flatMap(e -> e.getValue().stream()).map(EvalArguments::getArguments)
+                .flatMap(e -> e.getValue().stream())
                 .distinct()
                 .collect(toList());
         return variants;
@@ -74,7 +73,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             Class<?> declaringClass, String methodName, Type[] argumentTypes,
             List<Component> dependentOnThisComponent, CallPointsProvider callPointsProvider
     ) {
-        return dependentOnThisComponent.stream().parallel().map(dependentComponent -> {
+        return dependentOnThisComponent.stream()/*.parallel()*/.map(dependentComponent -> {
             var dependentComponentType = dependentComponent.getType();
             var callPoints = callPointsProvider.apply(dependentComponentType);
             var callersWithVariants = callPoints.stream().map(dependentMethod -> {
@@ -104,10 +103,10 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             Component component, Method method, Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
             EvalContextFactory evalContextFactory
     ) {
-        return callPoints.entrySet().stream().parallel().map(e -> {
+        return callPoints.entrySet().stream()/*.parallel()*/.map(e -> {
             var dependentComponent = e.getKey();
             var callPointListMap = e.getValue();
-            var variants = callPointListMap.entrySet().stream().parallel().map(ee -> {
+            var variants = callPointListMap.entrySet().stream()/*.parallel()*/.map(ee -> {
                 return getCallPointListEntry(component, method, evalContextFactory, ee.getKey(), dependentComponent, ee.getValue());
             }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
                     warnDuplicated(), LinkedHashMap::new));
@@ -129,16 +128,16 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
     ) {
         var argVariants = matchedCallPoints.stream().map(callPoint -> {
             try {
-                return Eval.evalArguments(eval, callPoint);
+                return eval.evalArguments(callPoint);
             } catch (EvalException e) {
                 var result = (e instanceof UnresolvedResultException) ? ((UnresolvedResultException) e).getResult() : null;
                 if (result instanceof Variable) {
                     var variable = (Variable) result;
-                    state(eval.equals(variable.getEval()));
-                    var variableMethod = eval.getMethod();
+                    var variableEval = variable.getEval();
+                    var variableMethod = variableEval.getMethod();
                     log.info("{} is aborted, cannot evaluate variable {}, in method {} {} of {}", "evalCallPointArgumentVariants",
                             variable.getName(), variableMethod.getName(),
-                            variableMethod.getSignature(), eval.getComponent().getType()
+                            variableMethod.getSignature(), variableEval.getComponent().getType()
                     );
                 } else if (result != null) {
                     log.info("{} is aborted, cannot evaluate result '{}'", "evalCallPointArgumentVariants", result);
@@ -189,7 +188,7 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
 
     protected Eval withArgumentsVariants(Component component, Method method, Eval emptyEval) {
         var argumentVariants = component != null ? computeArgumentVariants(component, method, this,
-                dependentProvider, callPointsProvider) : List.<List<Result>>of();
+                dependentProvider, callPointsProvider) : List.<EvalArguments>of();
         var resolveArgumentVariants = resolveArgumentVariants(component, method, argumentVariants, method.isStatic(), resolver);
         return emptyEval.withArgumentVariants(resolveArgumentVariants);
     }

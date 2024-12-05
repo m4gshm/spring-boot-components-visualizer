@@ -84,7 +84,7 @@ public class RestOperationsUtils {
             String path;
         }
 
-        var methods = variants.stream().map(variant -> {
+        var methods = variants.stream().parallel().map(variant -> {
             var pathArg = variant.get(1);
             var httpMethodArg = "exchange".equals(methodName) ? variant.get(2) : null;
             return new ArgVariant(pathArg, httpMethodArg);

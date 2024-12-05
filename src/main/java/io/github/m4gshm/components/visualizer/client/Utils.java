@@ -21,15 +21,14 @@ public class Utils {
     static Collection<List<Result>> resolveInvokeParameters(Eval eval, DelayInvoke invoke, Component component,
                                                             String methodName, Resolver resolver) {
 
-        var resolvedVariant = eval.withArgumentsStream().map(eval2 -> {
+        return eval.withArgumentsStream().map(evalWithArgs -> {
             try {
-                return eval2.resolveInvokeParameters(invoke, resolver);
+                return evalWithArgs.resolveInvokeParameters(invoke, resolver);
             } catch (NotInvokedException e) {
                 log.info("no call variants for {} inside {}", eval.getMethod().getName(), component.getName());
                 return List.<List<Result>>of();
             }
         }).flatMap(Collection::stream).collect(toList());
-        return resolvedVariant;
     }
 
     public static BootstrapMethods getBootstrapMethods(JavaClass javaClass) {

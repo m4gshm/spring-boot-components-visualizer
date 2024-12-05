@@ -36,6 +36,7 @@ import static io.github.m4gshm.components.visualizer.eval.result.TypeAware.getTy
 import static io.github.m4gshm.components.visualizer.eval.result.Variable.VarType.MethodArg;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
 import static java.lang.invoke.MethodType.fromMethodDescriptorString;
+import static java.lang.reflect.Modifier.STATIC;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 import static java.util.Collections.singletonList;
@@ -147,7 +148,15 @@ public class Eval {
     }
 
     private static <T> int getDimensions(Collection<List<T>> variantOfVariantOfParameters) {
-        return variantOfVariantOfParameters.stream().parallel().map(Collection::size).reduce((l, r) -> l * r).orElse(1);
+        return getDimensions(variantOfVariantOfParameters.stream());
+    }
+
+    private static int getDimensions(List<ParameterVariants> parameterVariants) {
+        return getDimensions(parameterVariants.stream().map(p -> p.values).filter(Objects::nonNull));
+    }
+
+    private static <T> Integer getDimensions(Stream<List<T>> stream) {
+        return stream.parallel().map(Collection::size).reduce(1, (l, r) -> l * r);
     }
 
     private static List<List<Result>> flatResolvedVariants(
@@ -230,35 +239,6 @@ public class Eval {
         return eval.callWithParameterVariants(invoke, argumentClasses, throwNoCall, resolver, call);
     }
 
-    static List<EvalArguments> evalArguments(Eval eval, CallPoint calledMethod) {
-        var instructionHandle = calledMethod.getInstruction();
-        var instruction = instructionHandle.getInstruction();
-
-        var invokeInstruction = (InvokeInstruction) instruction;
-        var constantPoolGen = eval.getConstantPoolGen();
-        if (calledMethod.isInvokeDynamic()) {
-            var invokeDynamicArgumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-            var referenceKind = calledMethod.getReferenceKind();
-            var removeCallObjectArg = referenceKind == REF_invokeSpecial
-                    || referenceKind == REF_invokeVirtual
-                    || referenceKind == REF_invokeInterface;
-            var arguments = eval.evalArguments(instructionHandle, invokeDynamicArgumentTypes.length);
-            if (removeCallObjectArg) {
-                arguments = arguments.stream().map(a -> {
-                    var withoutCallObject = new ArrayList<>(a.getArguments());
-                    withoutCallObject.remove(0);
-                    a = new EvalArguments(withoutCallObject, a.getLastArgInstruction());
-                    return a;
-                }).collect(toList());
-            }
-            return arguments;
-        } else {
-            var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-            var arguments = eval.evalArguments(instructionHandle, argumentTypes.length);
-            return (arguments);
-        }
-    }
-
     private static boolean isSameLevel(Variable unresolved, Component contextComponent) {
         return contextComponent.equals(unresolved.getComponent());
     }
@@ -284,7 +264,7 @@ public class Eval {
 
     private static Set<InstructionHandle> getLastStoreInstructionPerBranch(List<InvokeBranch> branches,
                                                                            int variableIndex, int loadInstructionPosition) {
-        return branches.stream().parallel().flatMap(branch -> {
+        return branches.stream()/*.parallel()*/.flatMap(branch -> {
             var storeInstruction = getLastStoreInstructionOfBranch(branch, variableIndex, loadInstructionPosition);
             var prev = branch.getPrev();
             var nextStore = getLastStoreInstructionPerBranch(prev, variableIndex, loadInstructionPosition);
@@ -320,25 +300,35 @@ public class Eval {
     }
 
     protected static Set<Map<Integer, Result>> resolveArgumentVariants(Component component, @NonNull Method method,
-                                                                       Collection<List<Result>> argumentVariants,
+                                                                       List<EvalArguments> argumentVariants,
                                                                        boolean isStatic, Resolver resolver) {
-        return argumentVariants.stream().parallel().map(arguments -> {
+        return argumentVariants.stream()/*.parallel()*/.map(arguments -> {
             var evalContextArgsVariants = resolveEvalContextArgsVariants(component, method, arguments, isStatic, resolver);
             return evalContextArgsVariants;
         }).flatMap(Collection::stream).collect(toLinkedHashSet());
     }
 
     private static Set<Map<Integer, Result>> resolveEvalContextArgsVariants(Component component, @NonNull Method method,
-                                                                            List<Result> arguments, boolean isStatic,
+                                                                            EvalArguments arguments, boolean isStatic,
                                                                             Resolver resolver) {
-        var contextArgs = resolveEvalContextArgs(arguments, isStatic, resolver);
-        var evalContextArgs = Optional.ofNullable(contextArgs).orElse(Map.of());
-        int dimensions = evalContextArgs.values().stream().parallel()
-                .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
-                .reduce(1, (l, r) -> l * r);
+        var argVariants = resolveEvalContextArgs(arguments, isStatic, resolver).stream().flatMap(evalContextArgs -> {
+            int dimensions = evalContextArgs.values().stream()/*.parallel()*/
+                    .map(r -> r instanceof Multiple ? ((Multiple) r).getResults().size() : 1)
+                    .reduce(1, (l, r) -> l * r);
+            if (dimensions == 1) {
+                return of(evalContextArgs);
+            } else {
+                var evalContextArgsVariants = flatArgVariants(evalContextArgs, dimensions);
+                return evalContextArgsVariants.stream();
+            }
+        }).collect(toLinkedHashSet());
+        return argVariants;
+    }
+
+    private static Set<Map<Integer, Result>> flatArgVariants(Map<Integer, Result> evalContextArgs, int dimensions) {
         var evalContextArgsVariants = new LinkedHashSet<Map<Integer, Result>>();
         for (var d = 1; d <= dimensions; d++) {
-            var variant = new HashMap<Integer, Result>();
+            var variant = new LinkedHashMap<Integer, Result>();
             for (var paramIndex : evalContextArgs.keySet()) {
                 var arg = evalContextArgs.get(paramIndex);
                 if (arg instanceof Multiple) {
@@ -356,32 +346,34 @@ public class Eval {
         return evalContextArgsVariants;
     }
 
-    private static Map<Integer, Result> resolveEvalContextArgs(List<Result> arguments, boolean isStatic, Resolver resolver) {
-        var evalContextArgs = new HashMap<Integer, Result>();
-        for (int i = 0; i < arguments.size(); i++) {
-            var argument = arguments.get(i);
-            var eval = argument.getEval();
-            Result resolved;
-            try {
-                resolved = eval.resolve(argument, resolver);
-            } catch (NotInvokedException e) {
-                if (resolver != null)
-                    resolved = resolver.resolve(argument, e, eval);
-                else {
+    private static Set<Map<Integer, Result>> resolveEvalContextArgs(EvalArguments arguments, boolean isStatic, Resolver resolver) {
+        return arguments.getArguments().isEmpty() ? Set.of() : arguments.getEval().withArgumentsStream().map(eval -> {
+            var evalContextArgs = new HashMap<Integer, Result>();
+            var args = arguments.getArguments();
+            for (int i = 0; i < args.size(); i++) {
+                var argument = args.get(i);
+                Result resolved;
+                try {
+                    resolved = eval.resolve(argument, resolver);
+                } catch (NotInvokedException e) {
+                    if (resolver != null)
+                        resolved = resolver.resolve(argument, e, eval);
+                    else {
+                        //log
+                        return null;
+                    }
+                } catch (EvalException e) {
                     //log
                     return null;
                 }
-            } catch (EvalException e) {
-                //log
-                return null;
+                evalContextArgs.put(isStatic ? i : i + 1, resolved);
             }
-            evalContextArgs.put(isStatic ? i : i + 1, resolved);
-        }
-        return evalContextArgs;
+            return evalContextArgs;
+        }).collect(toLinkedHashSet());
     }
 
     private static List<Result> resolveStoreInstructions(DelayLoadFromStore delay, Eval eval, Resolver resolver) {
-        return delay.getStoreInstructions().stream().parallel()
+        return delay.getStoreInstructions().stream()/*.parallel()*/
                 .flatMap(storeResult -> resolveExpand(storeResult, eval, resolver).stream())
                 .collect(toList());
     }
@@ -400,6 +392,33 @@ public class Eval {
         return withoutNulls;
     }
 
+    List<EvalArguments> evalArguments(CallPoint calledMethod) {
+        var instructionHandle = calledMethod.getInstruction();
+        var instruction = instructionHandle.getInstruction();
+
+        var invokeInstruction = (InvokeInstruction) instruction;
+        var constantPoolGen = this.getConstantPoolGen();
+        if (calledMethod.isInvokeDynamic()) {
+            var invokeDynamicArgumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+            var referenceKind = calledMethod.getReferenceKind();
+            var removeCallObjectArg = referenceKind == REF_invokeSpecial
+                    || referenceKind == REF_invokeVirtual
+                    || referenceKind == REF_invokeInterface;
+            var arguments = this.evalArguments(instructionHandle, invokeDynamicArgumentTypes.length);
+            if (removeCallObjectArg) {
+                arguments = arguments.stream().map(a -> {
+                    var withoutCallObject = new ArrayList<>(a.getArguments());
+                    withoutCallObject.remove(0);
+                    return new EvalArguments(a.getEval(), withoutCallObject, a.getLastArgInstruction());
+                }).collect(toList());
+            }
+            return arguments;
+        } else {
+            var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
+            var arguments = evalArguments(instructionHandle, argumentTypes.length);
+            return arguments;
+        }
+    }
 
     private List<List<Result>> combineVariants(DelayInvoke invoke, List<Result> parameters,
                                                Set<InvokeBranch> thisMethodsBranches,
@@ -572,6 +591,7 @@ public class Eval {
             var fieldType = getField.getFieldType(constantPoolGen);
             return delay(instructionText, instructionHandle, lastInstruction, fieldType, this, relations,
                     (thisDelay, eval, unevaluatedHandler) -> {
+                        //todo: must be touched all, not only the first one
                         var object = evalFieldOwnedObject.getValue(unevaluatedHandler, eval).get(0);
                         return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName,
                                 instructionHandle, lastInstruction, thisDelay, this);
@@ -980,7 +1000,6 @@ public class Eval {
         }
     }
 
-
     private List<List<ParameterValue>> resolveCallParameters(Delay current, List<Result> parameters,
                                                              Class<?>[] parameterClasses, Resolver resolver) {
         var size = parameters.size();
@@ -1013,8 +1032,7 @@ public class Eval {
         }
 
         var parameterVariants = asList(variants);
-        int dimensions = parameterVariants.stream().map(p -> p.values).filter(Objects::nonNull)
-                .map(List::size).reduce(1, (l, r) -> l * r);
+        int dimensions = getDimensions(parameterVariants);
 
         return range(1, dimensions + 1).mapToObj(d -> parameterVariants.stream().map(parameterVariant -> {
             var exception = parameterVariant.exception;
@@ -1097,11 +1115,25 @@ public class Eval {
         var parameterVariants = parameters.stream().map(parameter -> {
             return resolveExpand(parameter, resolver);
         }).collect(toList());
-        var resolvedParamVariants = populateResolvedParamVariants(invoke, parameterVariants, parameters);
-        return resolvedParamVariants;
+
+        int dimensions = getDimensions(parameterVariants);
+        switch (dimensions) {
+            case 1:
+            case 2:
+            case 3:
+            case 5:
+            case 7:
+            case 11:
+            case 13:
+                var resolvedVariants = flatResolvedVariants(dimensions, parameterVariants, parameters);
+                return resolvedVariants;
+            default:
+                var groupedVariants = groupByInvokeBranchResolvedParamVariants(invoke, parameterVariants, parameters);
+                return groupedVariants;
+        }
     }
 
-    private List<List<Result>> populateResolvedParamVariants(DelayInvoke invoke, List<List<Result>> parameterVariants, List<Result> parameters) {
+    private List<List<Result>> groupByInvokeBranchResolvedParamVariants(DelayInvoke invoke, List<List<Result>> parameterVariants, List<Result> parameters) {
         var resolvedParamVariants = new ArrayList<List<Result>>();
         var roots = new HashMap<Class<?>, Map<Method, Set<InvokeBranch>>>();
         var groupedParamsByClassMethodBranch = groupParamsByClassMethodBranch(parameterVariants, roots);
@@ -1122,7 +1154,7 @@ public class Eval {
         var groupedParamsByThisClassMethodBranch = groupedParamsByClassMethodBranch.getOrDefault(aClass1, Map.of());
         var groupedParamsByThisMethodBranch = groupedParamsByThisClassMethodBranch.getOrDefault(method, Map.of());
 
-        List<List<Result>> results = combineVariants(invoke, parameters, thisMethodsBranches, groupedParamsByThisMethodBranch);
+        var results = combineVariants(invoke, parameters, thisMethodsBranches, groupedParamsByThisMethodBranch);
 
         if (externalRoots.isEmpty()) {
             var withoutNulls = getWithoutNulls(results);
@@ -1275,6 +1307,11 @@ public class Eval {
                     EvalUtils.toString(invokeInstruction, constantPoolGen));
             return notAccessible(declaredMethod, invokeInstruction, invoke, eval);
         }
+        var isStatic = (declaredMethod.getModifiers() & STATIC) > 0;
+        if (!isStatic && object == null) {
+            throw new IllegalInvokeException(new NullPointerException("callable object is null"),
+                    new MethodInvokeContext(declaredMethod, object, args), invokeInstruction, invoke);
+        }
         Object result;
         try {
             result = declaredMethod.invoke(object, args);
@@ -1326,13 +1363,6 @@ public class Eval {
                     var delay = (Delay) value;
                     var delayEval = delay.getEval();
                     state(this.equals(delayEval), "unexpected eval");
-                    var delayComponentKey = delayEval.getComponentKey();
-                    var delayMethod = delayEval.getMethod();
-                    var delayEvalArguments = delayEval.getArguments();
-                    var componentKey = this.getComponentKey();
-//                    if (componentKey.equals(delayComponentKey) && method.equals(delayMethod) && delayEvalArguments == null) {
-//                        delay = delay;// delay.withEval(this);
-//                    }
                     result = delay.getDelayed(this, resolver);
                 } catch (UnresolvedVariableException e) {
                     result = resolveOrThrow(value, resolver, e, this);
@@ -1355,7 +1385,7 @@ public class Eval {
         var argumentVariants = getArgumentVariants();
         return argumentVariants.isEmpty()
                 ? Stream.of(this.withArguments(Map.of()))
-                : argumentVariants.stream().parallel().map(this::withArguments);
+                : argumentVariants.stream()/*.parallel()*/.map(this::withArguments);
     }
 
     private Eval withArguments(Map<Integer, Result> arguments) {
@@ -1379,8 +1409,7 @@ public class Eval {
     }
 
     public List<EvalArguments> evalArguments(InstructionHandle instructionHandle, int argumentsAmount) {
-        var values = new Result[argumentsAmount];
-        return evalArguments(instructionHandle, argumentsAmount, values);
+        return evalArguments(instructionHandle, argumentsAmount, new Result[argumentsAmount]);
     }
 
     private List<EvalArguments> evalArguments(InstructionHandle instructionHandle, int argumentsAmount, Result[] values) {
@@ -1408,7 +1437,7 @@ public class Eval {
             current = firstPrevLastInstructions.get(0);
         }
 
-        result.add(new EvalArguments(asList(values), current));
+        result.add(new EvalArguments(this, asList(values), current));
         return result;
     }
 
@@ -1637,6 +1666,7 @@ public class Eval {
     @Data
     @FieldDefaults(makeFinal = true, level = PRIVATE)
     public static class EvalArguments {
+        Eval eval;
         List<Result> arguments;
         //todo incompatibility with Duplicated result
         @Deprecated

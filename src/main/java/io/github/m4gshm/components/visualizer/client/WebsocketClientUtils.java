@@ -94,10 +94,10 @@ public class WebsocketClientUtils {
     }
 
     private static List<String> getUrls(Collection<List<Result>> variants, int paramIndex, Resolver resolver) {
-        var results = variants.stream().flatMap(paramVariant -> {
+        var results = variants.stream().parallel().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);
-                return url.getValue(resolver).stream();
+                return url.getValue(resolver).stream().parallel();
             } catch (NotInvokedException e) {
                 //log
                 return Stream.empty();

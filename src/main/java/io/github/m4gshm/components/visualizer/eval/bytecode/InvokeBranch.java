@@ -289,7 +289,7 @@ public class InvokeBranch {
             return Stream.of(this);
         } else {
             var prev = selector.apply(this);
-            return prev == null ? Stream.of() : prev.stream().parallel().flatMap(b -> {
+            return prev == null ? Stream.of() : prev.stream()/*.parallel()*/.flatMap(b -> {
                 return b.findContains(position, selector);
             }).filter(Objects::nonNull).distinct();
         }

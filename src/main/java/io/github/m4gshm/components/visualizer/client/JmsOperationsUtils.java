@@ -22,11 +22,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
@@ -76,7 +75,7 @@ public class JmsOperationsUtils {
         } else {
             var result = (DelayInvoke) eval.eval(instructionHandle);
             var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
-            var results = variants.stream().flatMap(paramVariant -> {
+            var results = variants.stream().parallel().flatMap(paramVariant -> {
                 return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);
             }).collect(toList());
             return results;
