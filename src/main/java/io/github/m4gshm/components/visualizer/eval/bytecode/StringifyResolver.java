@@ -47,7 +47,7 @@ public class StringifyResolver implements Resolver {
         return parameterValues;
     }
 
-    public Result stringifyUnresolved(Result current, EvalException ex) {
+    public Result stringifyUnresolved(Result current, EvalException ex, Eval eval) {
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
@@ -55,23 +55,22 @@ public class StringifyResolver implements Resolver {
         if (current instanceof Stub) {
             var s = (Stub) current;
             var stubbed = s.getStubbed();
-            return stringifyUnresolved(stubbed, ex);
+            return stringifyUnresolved(stubbed, ex, eval);
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
             return stringifyVariable(variable);
         } else if (current instanceof Delay) {
-            return stringifyDelay((Delay) current, ex);
+            return stringifyDelay((Delay) current, ex, eval);
         } else if (current instanceof Constant) {
             return current;
         } else if (current instanceof Duplicate) {
-            return stringifyUnresolved(((Duplicate) current).getOnDuplicate(), ex);
+            return stringifyUnresolved(((Duplicate) current).getOnDuplicate(), ex, eval);
         }
         throw new UnresolvedResultException("bad stringify", current);
     }
 
-    private Result stringifyDelay(Delay delay, EvalException ex) {
+    private Result stringifyDelay(Delay delay, EvalException ex, Eval eval) {
         var instructionHandles = delay.getFirstInstructions();
-        var eval = delay.getEval();
         var constantPoolGen = eval.getConstantPoolGen();
         var component = eval.getComponent();
         var method = eval.getMethod();
@@ -80,7 +79,8 @@ public class StringifyResolver implements Resolver {
         }).collect(toList()), eval);
     }
 
-    private Result stringifyDelay(Delay delay, EvalException ex, InstructionHandle instructionHandle, Eval eval, ConstantPoolGen constantPoolGen, Method method) {
+    private Result stringifyDelay(Delay delay, EvalException ex, InstructionHandle instructionHandle, Eval eval,
+                                  ConstantPoolGen constantPoolGen, Method method) {
         var instruction = instructionHandle.getInstruction();
         if (instruction instanceof INVOKEDYNAMIC) {
             var invokedynamic = (INVOKEDYNAMIC) instruction;
@@ -110,7 +110,7 @@ public class StringifyResolver implements Resolver {
             } else {
                 var result = callInvokeDynamic((DelayInvoke) delay, argumentClasses, eval, true,
                         this, (parameters, parent) -> {
-                            var values = getParameterValues(parameters, this);
+                            var values = getParameterValues(parameters, this, eval);
                             var string = Stream.of(values).map(String::valueOf).reduce(String::concat).orElse("");
                             var lastInstruction = delay.getLastInstruction();
                             return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, parameters);
@@ -171,9 +171,9 @@ public class StringifyResolver implements Resolver {
                         });
             } else {
                 if (instruction instanceof ArithmeticInstruction) {
-                    var first = resolve(eval.evalPrev(instructionHandle), ex);
+                    var first = resolve(eval.evalPrev(instructionHandle), ex, eval);
                     var second = instruction.consumeStack(constantPoolGen) == 2
-                            ? resolve(eval.evalPrev(first), ex) : null;
+                            ? resolve(eval.evalPrev(first), ex, eval) : null;
 
                     List<String> arithmeticString;
                     try {
@@ -190,7 +190,7 @@ public class StringifyResolver implements Resolver {
                     var element = eval.evalPrev(instructionHandle);
                     var index = eval.evalPrev(element);
                     var array = eval.evalPrev(index);
-                    var result = stringifyValue(array);
+                    var result = stringifyValue(array, eval);
                     var lastInstruction = array.getLastInstructions();
                     return constant(result, lastInstruction, lastInstruction, eval, this, asList(delay, element, index, array));
                 } else if (instruction instanceof LoadInstruction) {
@@ -207,7 +207,7 @@ public class StringifyResolver implements Resolver {
 
                     var storeResults = eval.getStoreInstructionResults(instructionHandle, aloadIndex);
 
-                    var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult).stream()
+                    var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult, eval).stream()
                                     .map(String::valueOf)
                                     .map(s -> constant(s, Result.getInstructions(instructionHandle), Result.getInstructions(instructionHandle), eval, this, asList(delay, storeResult))))
                             .collect(toList());
@@ -225,8 +225,8 @@ public class StringifyResolver implements Resolver {
 
     private Constant stringifyInvokeResult(Delay delay, Class<?> objectClass, String methodName,
                                            ParameterValue object, List<ParameterValue> resolvedArguments, Eval eval) {
-        var argValues = getArgValues(resolvedArguments);
-        var objectValue = object != null ? getParameterValue(object, this) : null;
+        var argValues = getArgValues(resolvedArguments, eval);
+        var objectValue = object != null ? getParameterValue(object, this, eval) : null;
         final String stringValue;
         if (objectValue instanceof String)
             stringValue = (String) objectValue;
@@ -242,13 +242,13 @@ public class StringifyResolver implements Resolver {
     }
 
     private Constant stringifyInvokeNew(Delay delay, Class<?> objectClass, List<ParameterValue> resolvedArguments, Eval eval) {
-        var argValues = getArgValues(resolvedArguments);
+        var argValues = getArgValues(resolvedArguments, eval);
         var string = stringifyNewCall(objectClass, argValues);
         var lastInstruction = delay.getLastInstruction();
         return invoked(string, getType(string), lastInstruction, lastInstruction, this, eval, resolvedArguments);
     }
 
-    private Object[] getArgValues(List<ParameterValue> resolvedArguments) {
+    private Object[] getArgValues(List<ParameterValue> resolvedArguments, Eval eval) {
         var notStringVariables = resolvedArguments.stream().filter(arg -> {
                     var variable = arg.getParameter() instanceof Variable;
                     var string = arg.getValue() instanceof String;
@@ -256,21 +256,21 @@ public class StringifyResolver implements Resolver {
                 })
                 .collect(toList());
         var args = !notStringVariables.isEmpty() ? notStringVariables : resolvedArguments;
-        return getParameterValues(args, this);
+        return getParameterValues(args, this, eval);
     }
 
-    private Object[] getParameterValues(List<ParameterValue> parameterValues, Resolver resolver) {
-        return parameterValues.stream().map(parameterValue -> getParameterValue(parameterValue, resolver))
+    private Object[] getParameterValues(List<ParameterValue> parameterValues, Resolver resolver, Eval eval) {
+        return parameterValues.stream().map(parameterValue -> getParameterValue(parameterValue, resolver, eval))
                 .toArray(Object[]::new);
     }
 
-    private Object getParameterValue(ParameterValue pv, Resolver resolver) {
+    private Object getParameterValue(ParameterValue pv, Resolver resolver, Eval eval) {
         var exception = pv.getException();
         var parameter = pv.getParameter();
         if (exception instanceof NotInvokedException) {
             throw exception;
         } else if (exception != null) {
-            var resolved = resolver.resolve(parameter, exception);
+            var resolved = resolver.resolve(parameter, exception, eval);
             return resolved.getValue();
         }
         var value = pv.getValue();
@@ -356,38 +356,38 @@ public class StringifyResolver implements Resolver {
             case FADD:
             case IADD:
             case LADD:
-                return invoke(first, second, (a, b) -> a + "+" + b);
+                return invoke(first, second, (a, b) -> a + "+" + b, eval);
             case DDIV:
             case FDIV:
             case IDIV:
             case LDIV:
-                return invoke(first, second, (a, b) -> a + "/" + b);
+                return invoke(first, second, (a, b) -> a + "/" + b, eval);
             case DMUL:
             case FMUL:
             case IMUL:
             case LMUL:
-                return invoke(first, second, (a, b) -> a + "*" + b);
+                return invoke(first, second, (a, b) -> a + "*" + b, eval);
             case DNEG:
             case INEG:
             case FNEG:
             case LNEG:
-                return neg(first);
+                return neg(first, eval);
             case DREM:
             case FREM:
             case IREM:
             case LREM:
-                return invoke(first, second, (a, b) -> a + "%" + b);
+                return invoke(first, second, (a, b) -> a + "%" + b, eval);
             case DSUB:
             case FSUB:
             case ISUB:
             case LSUB:
-                return invoke(first, second, (a, b) -> a + "-" + b);
+                return invoke(first, second, (a, b) -> a + "-" + b, eval);
             case IAND:
             case LAND:
-                return invoke(first, second, (a, b) -> a + "&" + b);
+                return invoke(first, second, (a, b) -> a + "&" + b, eval);
             case IOR:
             case LOR:
-                return invoke(first, second, (a, b) -> a + "|" + b);
+                return invoke(first, second, (a, b) -> a + "|" + b, eval);
             case ISHL:
             case LSHL:
                 return shiftLeft(first, second, eval);
@@ -399,38 +399,38 @@ public class StringifyResolver implements Resolver {
                 return unsignedShiftRight(first, second, eval);
             case IXOR:
             case LXOR:
-                return invoke(first, second, (a, b) -> a + "^" + b);
+                return invoke(first, second, (a, b) -> a + "^" + b, eval);
             default:
                 throw new IllegalStateException("unsupported arithmetic op " + opcode);
         }
     }
 
-    private List<String> neg(Result result) {
-        return expand(result).stream().flatMap(f -> stringifyValue(f).stream())
+    private List<String> neg(Result result, Eval eval) {
+        return expand(result).stream().flatMap(f -> stringifyValue(f, eval).stream())
                 .map(v -> (level == full ? "-" : "") + v).collect(toList());
     }
 
     private List<String> unsignedShiftRight(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b, eval);
     }
 
     private List<String> shiftRight(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b, eval);
     }
 
     private List<String> shiftLeft(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b);
+        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b, eval);
     }
 
-    private List<String> invoke(Result first, Result second, BiFunction<String, String, String> op) {
+    private List<String> invoke(Result first, Result second, BiFunction<String, String, String> op, Eval eval) {
         if (level == full) {
-            return invokeVariants(expand(first), expand(second), op);
+            return invokeVariants(expand(first), expand(second), op, eval);
         } else if (resolvedBy(first, this, loopControl())) {
-            return stringifyValue(first).stream().map(o -> o + "").collect(toList());
+            return stringifyValue(first, eval).stream().map(o -> o + "").collect(toList());
         } else if (resolvedBy(second, this, loopControl())) {
-            return stringifyValue(second).stream().map(o -> o + "").collect(toList());
+            return stringifyValue(second, eval).stream().map(o -> o + "").collect(toList());
         } else {
-            return invokeVariants(expand(first), expand(second), op);
+            return invokeVariants(expand(first), expand(second), op, eval);
         }
     }
 
@@ -459,23 +459,23 @@ public class StringifyResolver implements Resolver {
         return false;
     }
 
-    private List<String> invokeVariants(List<Result> firstVariants, List<Result> secondVariants,
-                                        BiFunction<String, String, String> op) {
+    private List<String> invokeVariants(Collection<Result> firstVariants, Collection<Result> secondVariants,
+                                        BiFunction<String, String, String> op, Eval eval) {
         return secondVariants.stream().flatMap(s -> firstVariants.stream().flatMap(f -> {
-            var values1 = stringifyValue(s);
-            var values2 = stringifyValue(f);
+            var values1 = stringifyValue(s, eval);
+            var values2 = stringifyValue(f, eval);
             return values1.stream().flatMap(value1 -> values2.stream().map(value2 -> op.apply(value1 + "", value2 + "")));
         })).collect(toList());
     }
 
-    private List<Object> stringifyValue(Result result) {
+    private List<Object> stringifyValue(Result result, Eval eval) {
         if (result instanceof Multiple) {
             var multiple = (Multiple) result;
-            return multiple.getResults().stream().map(this::stringifyValue).filter(Objects::nonNull)
+            return multiple.getResults().stream().map(result1 -> stringifyValue(result1, eval)).filter(Objects::nonNull)
                     .flatMap(Collection::stream).collect(toList());
         }
         try {
-            return result.getValue(this);
+            return result.getValue(this, eval);
         } catch (NotInvokedException e) {
             //log
             throw e;
@@ -491,7 +491,7 @@ public class StringifyResolver implements Resolver {
     private List<Result> s(Result result, Eval eval) {
         var value2Variants = expand(result);
         return value2Variants.stream()
-                .flatMap(resultVariant -> stringifyValue(resultVariant).stream()
+                .flatMap(resultVariant -> stringifyValue(resultVariant, eval).stream()
                         .map(value -> value instanceof Number
                                 ? (((Number) value).longValue() & 0X1f) + ""
                                 : value + "")
@@ -504,8 +504,8 @@ public class StringifyResolver implements Resolver {
     }
 
     @Override
-    public Result resolve(Result unresolved, EvalException cause) {
-        return stringifyUnresolved(unresolved, cause);
+    public Result resolve(Result unresolved, EvalException cause, Eval eval) {
+        return stringifyUnresolved(unresolved, cause, eval);
     }
 
     public enum Level {

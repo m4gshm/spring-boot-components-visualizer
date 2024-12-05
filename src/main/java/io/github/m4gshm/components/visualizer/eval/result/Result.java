@@ -182,10 +182,10 @@ public abstract class Result implements ContextAware {
         }
     }
 
-    public static Result stub(Variable value, Resolver resolver) {
+    public static Result stub(Variable value, Resolver resolver, Eval eval) {
         if (resolver != null) {
             //log
-            return resolver.resolve(value, null);
+            return resolver.resolve(value, null, eval);
         }
         return new Stub(value);
     }
@@ -244,13 +244,17 @@ public abstract class Result implements ContextAware {
     }
 
     public List<Object> getValue(Resolver resolver) {
+        return getValue(resolver, getEval());
+    }
+
+    public List<Object> getValue(Resolver resolver, Eval eval) {
         try {
             return singletonList(getValue());
         } catch (EvalException e) {
             if (resolver != null) {
                 Result resolved;
                 try {
-                    resolved = resolver.resolve(this, e);
+                    resolved = resolver.resolve(this, e, eval);
                 } catch (NotInvokedException ee) {
                     throw e;
                 }

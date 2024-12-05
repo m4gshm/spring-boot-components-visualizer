@@ -285,7 +285,7 @@ public class SchedulingConfigurerUtils {
                                                              Result triggerExpr, Component component,
                                                              Class<?> componentType, JavaClass source,
                                                              Runnable runnable, Result runnableExpr,
-                                                             Eval evalContext, Resolver resolver
+                                                             Eval eval, Resolver resolver
     ) {
         final Stream<MethodId> methodIdStream;
         if (component.getBean().equals(runnable)) {
@@ -296,7 +296,7 @@ public class SchedulingConfigurerUtils {
             List<MethodId> scheduledMethodIds;
             if (isLambda(runnableClass)) {
                 scheduledMethodIds = getMethodIds(componentType, runnableExpr.getFirstInstruction(),
-                        evalContext.getConstantPoolGen(), source, getBootstrapMethods(source), touched);
+                        eval.getConstantPoolGen(), source, getBootstrapMethods(source), touched);
                 if (scheduledMethodIds.isEmpty()) {
                     //unnamed methods
                     //log
@@ -309,7 +309,7 @@ public class SchedulingConfigurerUtils {
             methodIdStream = scheduledMethodIds.stream();
         }
 
-        var triggerValues = evalContext.resolve(triggerExpr, resolver).getValue(resolver);
+        var triggerValues = eval.resolve(triggerExpr, resolver).getValue(resolver);
         var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
                 resolver, timeUnitStringifier);
 

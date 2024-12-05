@@ -104,10 +104,10 @@ public class EvalContextFactoryImpl implements EvalContextFactory {
             Component component, Method method, Map<Component, Map<CallPoint, List<CallPoint>>> callPoints,
             EvalContextFactory evalContextFactory
     ) {
-        return callPoints.entrySet().stream().map(e -> {
+        return callPoints.entrySet().stream().parallel().map(e -> {
             var dependentComponent = e.getKey();
             var callPointListMap = e.getValue();
-            var variants = callPointListMap.entrySet().stream().map(ee -> {
+            var variants = callPointListMap.entrySet().stream().parallel().map(ee -> {
                 return getCallPointListEntry(component, method, evalContextFactory, ee.getKey(), dependentComponent, ee.getValue());
             }).filter(Objects::nonNull).collect(toMap(Map.Entry::getKey, Map.Entry::getValue,
                     warnDuplicated(), LinkedHashMap::new));

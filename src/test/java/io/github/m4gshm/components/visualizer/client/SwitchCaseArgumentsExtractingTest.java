@@ -56,21 +56,18 @@ public class SwitchCaseArgumentsExtractingTest {
         var delayInvoke2 = (DelayInvoke) eval.getResults().get(1);
 
         var parameterVariants = evalContext.resolveInvokeParameters(delayInvoke, null);
-
         var valueVariants = getValueVariants(parameterVariants);
-
-        assertExpectedVariant(expected(service, "arg13", 22, 3L), 0, valueVariants);
-        assertExpectedVariant(expected(service, "arg11", 22, 3L), 1, valueVariants);
-        assertExpectedVariant(expected(service, "arg12", 22, 3L), 2, valueVariants);
-        assertExpectedVariant(expected(service, "arg12", 22, 32L), 3, valueVariants);
 
         var parameterVariants2 = evalContext.resolveInvokeParameters(delayInvoke2, null);
         var valueVariants2 = getValueVariants(parameterVariants2);
 
+        assertExpectedVariant(expected(service, "arg13", 22, 3L), 0, valueVariants);
+        assertExpectedVariant(expected(service, "arg11", 22, 3L), 1, valueVariants);
+        assertExpectedVariant(expected(service, "arg12", 22, 32L), 2, valueVariants);
+
         assertExpectedVariant(expected(service, "arg13", 2, 3L), 0, valueVariants2);
         assertExpectedVariant(expected(service, "arg11", 2, 3L), 1, valueVariants2);
-        assertExpectedVariant(expected(service, "arg12", 2, 3L), 2, valueVariants2);
-        assertExpectedVariant(expected(service, "arg12", 2, 32L), 3, valueVariants2);
+        assertExpectedVariant(expected(service, "arg12", 2, 32L), 2, valueVariants2);
     }
 
     private void assertExpectedVariant(List<Object> expected, int i, List<List<Object>> valueVariants) {

@@ -17,7 +17,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
@@ -148,11 +147,11 @@ public class Eval {
     }
 
     private static <T> int getDimensions(Collection<List<T>> variantOfVariantOfParameters) {
-        return variantOfVariantOfParameters.stream().map(List::size).reduce((l, r) -> l * r).orElse(1);
+        return variantOfVariantOfParameters.stream().parallel().map(Collection::size).reduce((l, r) -> l * r).orElse(1);
     }
 
     private static List<List<Result>> flatResolvedVariants(
-            int dimensions, List<List<Result>> parameterVariants, List<Result> parameters) {
+            int dimensions, Collection<List<Result>> parameterVariants, Collection<Result> parameters) {
         var resolvedVariants = new ArrayList<List<Result>>();
         for (var d = 1; d <= dimensions; d++) {
             var variantOfParameters = new ArrayList<Result>();
@@ -196,47 +195,11 @@ public class Eval {
                 : values.iterator().next();
     }
 
-    private static Result resolveOrThrow(Result result, Resolver resolver, EvalException e) {
+    private static Result resolveOrThrow(Result result, Resolver resolver, EvalException e, Eval eval) {
         if (resolver != null) {
-            return resolver.resolve(result, e);
+            return resolver.resolve(result, e, eval);
         } else {
             throw e;
-        }
-    }
-
-    private static Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
-                               List<List<ParameterValue>> parametersVariants, BiFunction<List<ParameterValue>, InstructionHandle, Result> call,
-                               Eval eval) throws NotInvokedException {
-
-        var values = new ArrayList<Result>();
-        var unresolvedVars = new ArrayList<UnresolvedVariableException>();
-        var errors = new ArrayList<EvalException>();
-
-        for (var parameterValues : parametersVariants) {
-            try {
-                var apply = call.apply(parameterValues, lastInstruction);
-                values.add(apply);
-            } catch (UnresolvedVariableException e) {
-                unresolvedVars.add(e);
-                errors.add(e);
-            } catch (EvalException e) {
-                errors.add(e);
-            }
-        }
-
-        if (!values.isEmpty()) {
-            return collapse(values, eval);
-        } else {
-            var unresolvedVarsEmpty = unresolvedVars.isEmpty();
-            var reason = unresolvedVarsEmpty ? badEval : unresolvedVariables;
-            var notCallException = new NotInvokedException(reason, errors, invoke);
-            if (!errors.isEmpty() && resolver != null) {
-                log.trace("call error of {}", invoke, notCallException);
-                return resolver.resolve(invoke, notCallException);
-            } else {
-                //log
-                throw notCallException;
-            }
         }
     }
 
@@ -321,83 +284,39 @@ public class Eval {
 
     private static Set<InstructionHandle> getLastStoreInstructionPerBranch(List<InvokeBranch> branches,
                                                                            int variableIndex, int loadInstructionPosition) {
-        return branches.stream().parallel().map(branch -> {
+        return branches.stream().parallel().flatMap(branch -> {
             var storeInstruction = getLastStoreInstructionOfBranch(branch, variableIndex, loadInstructionPosition);
-            return storeInstruction != null ? List.of(storeInstruction) : getLastStoreInstructionPerBranch(branch.getPrev(),
-                    variableIndex, loadInstructionPosition);
-        }).flatMap(Collection::stream).collect(toLinkedHashSet());
+            var prev = branch.getPrev();
+            var nextStore = getLastStoreInstructionPerBranch(prev, variableIndex, loadInstructionPosition);
+            return concat(Stream.ofNullable(storeInstruction), nextStore.stream());
+        }).collect(toLinkedHashSet());
     }
 
-    private static Set<List<Result>> combineVariants(InvokeBranch branch, Result[] firstVariant, boolean cloned,
-                                                     Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
-    ) {
+    private static void populateVariant(Result[] firstVariant, boolean cloned,
+                                        Map<Integer, List<Result>> resolvedVariant, BitSet popMask) {
+        for (var paramIndex : resolvedVariant.keySet()) {
+            var variants = resolvedVariant.get(paramIndex);
+            //todo must be one parameter variant per branch
+            state(variants.size() == 1, "variants must be exactly one " + variants);
+            var result = variants.stream().findFirst().get();
+            var existed = firstVariant[paramIndex];
+            var exists = existed != null;
+            var same = existed == result;
+            if (!(cloned && exists && same)) {
+                firstVariant[paramIndex] = result;
+                popMask.set(paramIndex);
+            }
+        }
+    }
+
+    private static BitSet initPopulationMask(Result[] firstVariant) {
         var popMask = new BitSet(firstVariant.length);
         for (int i = 0; i < firstVariant.length; i++) {
             if (firstVariant[i] != null) {
                 popMask.set(i);
             }
         }
-
-        var allVariants = new LinkedHashSet<List<Result>>();
-        var paramIndexToVariantsMap = groupedParamsByBranch.getOrDefault(branch, Map.of());
-        int dimensions = getDimensions(paramIndexToVariantsMap.values());
-        var resolvedVariants = flatResolvedVariants(dimensions, paramIndexToVariantsMap);
-        for (var resolvedVariant : resolvedVariants) {
-            for (var paramIndex : resolvedVariant.keySet()) {
-                var variants = resolvedVariant.get(paramIndex);
-                //todo must be one parameter variant per branch
-                state(variants.size() == 1, "variants must be exactly one " + variants);
-                var result = variants.stream().findFirst().get();
-                var existed = firstVariant[paramIndex];
-                var exists = existed != null;
-                var same = existed == result;
-                if (!(cloned && exists && same)) {
-                    firstVariant[paramIndex] = result;
-                    popMask.set(paramIndex);
-                }
-            }
-
-            int cardinality = popMask.cardinality();
-            var full = cardinality == firstVariant.length;
-            var partial = !full && cardinality > 0;
-            var next = branch.getNext();
-            int nextSize = next.size();
-
-            if (full) {
-                allVariants.add(asList(firstVariant));
-                firstVariant = firstVariant.clone();
-            } else if (partial && nextSize == 0) {
-                allVariants.add(asList(firstVariant));
-                firstVariant = firstVariant.clone();
-            }
-            for (int i = 0; i < nextSize; i++) {
-                var clone = i > 0;
-                var nextVariant = clone ? firstVariant.clone() : firstVariant;
-                var nextBranch = next.get(i);
-                var variants = combineVariants(nextBranch, nextVariant, clone, groupedParamsByBranch);
-                if (!variants.isEmpty()) {
-                    allVariants.addAll(variants);
-                }
-            }
-        }
-        return allVariants;
-    }
-
-    private static Stream<List<Result>> combineVariants(
-            Entry<Method, Set<InvokeBranch>> methodBranches,
-            Result[] firstVariant, Map<Method, Map<InvokeBranch, Map<Integer, List<Result>>>> groupedParamsByMethodBranch
-    ) {
-        var method = methodBranches.getKey();
-        var branches = methodBranches.getValue();
-        return combineVariants(branches, firstVariant, groupedParamsByMethodBranch.get(method));
-    }
-
-    private static Stream<List<Result>> combineVariants(Set<InvokeBranch> branches, Result[] firstVariant,
-                                                        Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
-    ) {
-        return branches.stream().flatMap(branch -> {
-            return combineVariants(branch, firstVariant.clone(), false, groupedParamsByBranch).stream();
-        }).filter(r -> !r.isEmpty());
+        return popMask;
     }
 
     protected static Set<Map<Integer, Result>> resolveArgumentVariants(Component component, @NonNull Method method,
@@ -447,7 +366,7 @@ public class Eval {
                 resolved = eval.resolve(argument, resolver);
             } catch (NotInvokedException e) {
                 if (resolver != null)
-                    resolved = resolver.resolve(argument, e);
+                    resolved = resolver.resolve(argument, e, eval);
                 else {
                     //log
                     return null;
@@ -479,6 +398,63 @@ public class Eval {
             //log
         }
         return withoutNulls;
+    }
+
+
+    private List<List<Result>> combineVariants(DelayInvoke invoke, List<Result> parameters,
+                                               Set<InvokeBranch> thisMethodsBranches,
+                                               Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByThisMethodBranch) {
+        var results = ofNullable(thisMethodsBranches).flatMap(Collection::stream).flatMap(methodBranch -> {
+            var lists = combineVariants(invoke, methodBranch, new Result[parameters.size()], false, groupedParamsByThisMethodBranch);
+            return lists.stream();
+        }).collect(toList());
+        return results;
+    }
+
+    private Stream<List<Result>> combineVariants(DelayInvoke invoke, Set<InvokeBranch> branches, Result[] firstVariant,
+                                                 Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
+    ) {
+        return branches.stream().flatMap(branch -> {
+            return combineVariants(invoke, branch, firstVariant.clone(), false, groupedParamsByBranch).stream();
+        }).filter(r -> !r.isEmpty());
+    }
+
+    private Set<List<Result>> combineVariants(DelayInvoke invoke, InvokeBranch branch, Result[] firstVariant, boolean cloned,
+                                              Map<InvokeBranch, Map<Integer, List<Result>>> groupedParamsByBranch
+    ) {
+        var popMask = initPopulationMask(firstVariant);
+
+        var allVariants = new LinkedHashSet<List<Result>>();
+        var paramIndexToVariantsMap = groupedParamsByBranch.getOrDefault(branch, Map.of());
+        int dimensions = getDimensions(paramIndexToVariantsMap.values());
+        var resolvedVariants = flatResolvedVariants(dimensions, paramIndexToVariantsMap);
+        for (var resolvedVariant : resolvedVariants) {
+            populateVariant(firstVariant, cloned, resolvedVariant, popMask);
+
+            int cardinality = popMask.cardinality();
+            var full = cardinality == firstVariant.length;
+            var partial = !full && cardinality > 0;
+            var next = branch.getNext();
+            int nextSize = next.size();
+
+            if (full) {
+                allVariants.add(asList(firstVariant));
+                firstVariant = firstVariant.clone();
+            } else if (partial && nextSize == 0) {
+                allVariants.add(asList(firstVariant));
+                firstVariant = firstVariant.clone();
+            }
+            for (int i = 0; i < nextSize; i++) {
+                var clone = i > 0;
+                var nextVariant = clone ? firstVariant.clone() : firstVariant;
+                var nextBranch = next.get(i);
+                var variants = combineVariants(invoke, nextBranch, nextVariant, clone, groupedParamsByBranch);
+                if (!variants.isEmpty()) {
+                    allVariants.addAll(variants);
+                }
+            }
+        }
+        return allVariants;
     }
 
     public ComponentKey getComponentKey() {
@@ -596,7 +572,7 @@ public class Eval {
             var fieldType = getField.getFieldType(constantPoolGen);
             return delay(instructionText, instructionHandle, lastInstruction, fieldType, this, relations,
                     (thisDelay, eval, unevaluatedHandler) -> {
-                        var object = evalFieldOwnedObject.getValue(unevaluatedHandler).get(0);
+                        var object = evalFieldOwnedObject.getValue(unevaluatedHandler, eval).get(0);
                         return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName,
                                 instructionHandle, lastInstruction, thisDelay, this);
                     });
@@ -729,7 +705,7 @@ public class Eval {
             var relations = List.of(convertedValueResult);
             return delay(instructionText, instructionHandle, lastInstruction, convertTo, this, relations,
                     (thisDelay, eval, resolver) -> {
-                        var values = convertedValueResult.getValue(resolver);
+                        var values = convertedValueResult.getValue(resolver, eval);
                         var results = values.stream()
                                 .map(value -> (Number) value)
                                 .map(number -> convertNumberTo(number, convertTo))
@@ -750,10 +726,10 @@ public class Eval {
             return delay(instructionText, instructionHandle, lastInstruction, arithType, this, relations,
                     (thisDelay, eval, resolver) -> {
                         try {
-                            var computed = computeArithmetic(arith, first, second, resolver);
+                            var computed = computeArithmetic(arith, first, second, resolver, eval);
                             return constant(computed, arithType, instructionHandle, lastInstruction, this, asList(first, second));
                         } catch (EvalException e) {
-                            return resolveOrThrow(thisDelay, resolver, e);
+                            return resolveOrThrow(thisDelay, resolver, e, eval);
                         }
                     });
         } else if (instruction instanceof ARETURN) {
@@ -941,10 +917,21 @@ public class Eval {
 
         Result callResult;
         try {
-            callResult = call(current, lastInstruction, resolver, callParameters, call, this);
+            callResult = call(current, lastInstruction, resolver, callParameters, call);
             if (callCache != null) {
                 log.trace("no cached call result, call '{}', result '{}'", key, callResult);
-                callCache.put(key, callResult);
+                var exists = callCache.get(key);
+                if (exists == null || callResult != exists) {
+                    if (exists instanceof Multiple) {
+                        var multiple = (Multiple) exists;
+                        var results = new ArrayList<>(multiple.getResults());
+                        results.add(callResult);
+                        callResult = multiple(results, multiple.getEval());
+                    } else if (exists != null && !exists.equals(callResult)) {
+                        callResult = multiple(List.of(exists, callResult), callResult.getEval());
+                    }
+                    callCache.put(key, callResult);
+                }
             }
         } catch (RuntimeException e) {
             if (callCache != null) {
@@ -955,6 +942,44 @@ public class Eval {
         }
         return callResult;
     }
+
+    private Result call(Delay invoke, InstructionHandle lastInstruction, Resolver resolver,
+                        List<List<ParameterValue>> parametersVariants,
+                        BiFunction<List<ParameterValue>, InstructionHandle, Result> call
+    ) throws NotInvokedException {
+
+        var values = new ArrayList<Result>();
+        var unresolvedVars = new ArrayList<UnresolvedVariableException>();
+        var errors = new ArrayList<EvalException>();
+
+        for (var parameterValues : parametersVariants) {
+            try {
+                var apply = call.apply(parameterValues, lastInstruction);
+                values.add(apply);
+            } catch (UnresolvedVariableException e) {
+                unresolvedVars.add(e);
+                errors.add(e);
+            } catch (EvalException e) {
+                errors.add(e);
+            }
+        }
+
+        if (!values.isEmpty()) {
+            return collapse(values, this);
+        } else {
+            var unresolvedVarsEmpty = unresolvedVars.isEmpty();
+            var reason = unresolvedVarsEmpty ? badEval : unresolvedVariables;
+            var notCallException = new NotInvokedException(reason, errors, invoke);
+            if (!errors.isEmpty() && resolver != null) {
+                log.trace("call error of {}", invoke, notCallException);
+                return resolver.resolve(invoke, notCallException, this);
+            } else {
+                //log
+                throw notCallException;
+            }
+        }
+    }
+
 
     private List<List<ParameterValue>> resolveCallParameters(Delay current, List<Result> parameters,
                                                              Class<?>[] parameterClasses, Resolver resolver) {
@@ -1010,7 +1035,7 @@ public class Eval {
     private ParameterVariants resolveParameter(int i, Result parameter, Class<?> parameterClass,
                                                UnresolvedResultException e, Resolver resolver) {
         ParameterVariants parameterVariants;
-        var resolved = resolver.resolve(parameter, e);
+        var resolved = resolver.resolve(parameter, e, this);
         if (resolved.isResolved()) {
             var resolvedVariants = resolved.getValue(resolver);
             var normalizedClassVariants = normalizeClassOfObjects(resolvedVariants, parameterClass);
@@ -1072,11 +1097,11 @@ public class Eval {
         var parameterVariants = parameters.stream().map(parameter -> {
             return resolveExpand(parameter, resolver);
         }).collect(toList());
-        var resolvedParamVariants = populateResolvedParamVariants(parameterVariants, parameters);
+        var resolvedParamVariants = populateResolvedParamVariants(invoke, parameterVariants, parameters);
         return resolvedParamVariants;
     }
 
-    private List<List<Result>> populateResolvedParamVariants(List<List<Result>> parameterVariants, List<Result> parameters) {
+    private List<List<Result>> populateResolvedParamVariants(DelayInvoke invoke, List<List<Result>> parameterVariants, List<Result> parameters) {
         var resolvedParamVariants = new ArrayList<List<Result>>();
         var roots = new HashMap<Class<?>, Map<Method, Set<InvokeBranch>>>();
         var groupedParamsByClassMethodBranch = groupParamsByClassMethodBranch(parameterVariants, roots);
@@ -1097,10 +1122,7 @@ public class Eval {
         var groupedParamsByThisClassMethodBranch = groupedParamsByClassMethodBranch.getOrDefault(aClass1, Map.of());
         var groupedParamsByThisMethodBranch = groupedParamsByThisClassMethodBranch.getOrDefault(method, Map.of());
 
-        var results = ofNullable(thisMethodsBranches).flatMap(Collection::stream).flatMap(methodBranch -> {
-            var lists = combineVariants(methodBranch, new Result[parameters.size()], false, groupedParamsByThisMethodBranch);
-            return lists.stream();
-        }).collect(toList());
+        List<List<Result>> results = combineVariants(invoke, parameters, thisMethodsBranches, groupedParamsByThisMethodBranch);
 
         if (externalRoots.isEmpty()) {
             var withoutNulls = getWithoutNulls(results);
@@ -1110,17 +1132,49 @@ public class Eval {
                 //no results it this method
                 results = List.of(asList(new Result[parameters.size()]));
             }
-            var combinedVariants = results.stream().flatMap(firstVariant -> {
-                return externalRoots.entrySet().stream().flatMap(e -> {
-                    var aClass = e.getKey();
-                    var methodsBranches = e.getValue();
-                    return methodsBranches.entrySet().stream().flatMap(methodBranches -> {
-                        return combineVariants(methodBranches, firstVariant.toArray(new Result[0]),
-                                groupedParamsByClassMethodBranch.get(aClass));
-                    });
-                });
-            }).collect(toLinkedHashSet());
-            var withoutNulls = getWithoutNulls(combinedVariants);
+
+            for (var externalClass : externalRoots.keySet()) {
+                var externalMethodsBranches = externalRoots.get(externalClass);
+                for (var externalMethod : externalMethodsBranches.keySet()) {
+                    var externalMethodBranches = externalMethodsBranches.get(externalMethod);
+                    for (var externalBranch : externalMethodBranches) {
+                        results = results instanceof LinkedList ? results : new LinkedList<List<Result>>(results);
+                        for (var iterator = results.listIterator(); iterator.hasNext(); ) {
+                            var firstVariant = iterator.next();
+                            var firstVariant1 = firstVariant.toArray(new Result[0]);
+                            var groupedParamsByMethodBranch = groupedParamsByClassMethodBranch.get(externalClass);
+                            var groupedParamsByBranch = groupedParamsByMethodBranch.get(externalMethod);
+                            var resultsVariants = combineVariants(invoke, externalBranch, firstVariant1, true, groupedParamsByBranch);
+                            if (!resultsVariants.isEmpty()) {
+                                iterator.remove();
+                                for (var resultsVariant : resultsVariants) {
+                                    iterator.add(resultsVariant);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            var withoutNulls = getWithoutNulls(results);
+//            resolvedParamVariants.addAll(withoutNulls);
+
+//            var combinedVariants = results.stream().flatMap(firstVariant -> {
+//                return externalRoots.entrySet().stream().flatMap(e -> {
+//                    var aClass = e.getKey();
+//                    var methodsBranches = e.getValue();
+//                    return methodsBranches.entrySet().stream().flatMap(methodBranches -> {
+//                        var firstVariant1 = firstVariant.toArray(new Result[0]);
+//                        var groupedParamsByMethodBranch = groupedParamsByClassMethodBranch.get(aClass);
+//                        var groupedParamsByBranch = groupedParamsByMethodBranch.get(methodBranches.getKey());
+//                        Stream<List<Result>> listStream = combineVariants(methodBranches.getValue(), firstVariant1, groupedParamsByBranch);
+//                        return listStream;
+//                    });
+//                });
+//            }).collect(toLinkedHashSet());
+//
+//            var withoutNulls2 = getWithoutNulls(combinedVariants);
+
             resolvedParamVariants.addAll(withoutNulls);
         }
         return resolvedParamVariants;
@@ -1230,6 +1284,8 @@ public class Eval {
         } catch (InvocationTargetException e) {
             //log
             throw new IllegalInvokeException(e.getCause(), new MethodInvokeContext(declaredMethod, object, args), invokeInstruction, invoke);
+        } catch (NullPointerException e) {
+            throw e;
         }
         if (log.isDebugEnabled()) {
             log.debug("{}, success, method '{}.{}', result: {}, instruction {}", msg, objectClass.getName(), methodName,
@@ -1263,7 +1319,7 @@ public class Eval {
                     //log
                     return argResult;
                 } else {
-                    return stub(variable, resolver);
+                    return stub(variable, resolver, this);
                 }
             } else if (value instanceof Delay) {
                 try {
@@ -1274,12 +1330,12 @@ public class Eval {
                     var delayMethod = delayEval.getMethod();
                     var delayEvalArguments = delayEval.getArguments();
                     var componentKey = this.getComponentKey();
-                    if (componentKey.equals(delayComponentKey) && method.equals(delayMethod) && delayEvalArguments == null) {
-                        delay = delay;// delay.withEval(this);
-                    }
+//                    if (componentKey.equals(delayComponentKey) && method.equals(delayMethod) && delayEvalArguments == null) {
+//                        delay = delay;// delay.withEval(this);
+//                    }
                     result = delay.getDelayed(this, resolver);
                 } catch (UnresolvedVariableException e) {
-                    result = resolveOrThrow(value, resolver, e);
+                    result = resolveOrThrow(value, resolver, e, this);
                 }
             } else if (value instanceof Duplicate) {
                 result = resolve(((Duplicate) value).getOnDuplicate(), resolver);
@@ -1299,7 +1355,7 @@ public class Eval {
         var argumentVariants = getArgumentVariants();
         return argumentVariants.isEmpty()
                 ? Stream.of(this.withArguments(Map.of()))
-                : argumentVariants.stream().map(this::withArguments);
+                : argumentVariants.stream().parallel().map(this::withArguments);
     }
 
     private Eval withArguments(Map<Integer, Result> arguments) {
@@ -1439,6 +1495,10 @@ public class Eval {
         return collapse(collect, this);
     }
 
+    public List<Result> evalPrevs(Collection<InstructionHandle> instructionHandles) {
+        return instructionHandles.stream().map(this::evalPrevs).flatMap(Collection::stream).collect(toList());
+    }
+
     public List<Result> evalPrevs(InstructionHandle instructionHandle) {
         return getPrevs(instructionHandle).stream().map(this::eval).collect(toList());
     }
@@ -1448,7 +1508,7 @@ public class Eval {
         if (result instanceof Duplicate) {
             return ((Duplicate) result).getOnDuplicate();
         } else {
-            return evalPrev(result.getLastInstruction());
+            return multiple(evalPrevs(result.getLastInstruction()), result.getEval());
         }
     }
 
@@ -1473,8 +1533,7 @@ public class Eval {
             };
         }
 
-        static CallCache newCallCache(final Map<CallCacheKey, Result> success,
-                                      final Map<CallCacheKey, RuntimeException> error) {
+        static CallCache newCallCache() {
             var grainedCache = new ConcurrentHashMap<ComponentKey, Map<Method, Map<Instruction, Map<CallCacheKey, Result>>>>();
             return new CallCache() {
                 @Override
@@ -1514,7 +1573,6 @@ public class Eval {
 
                 @Override
                 public void put(CallCacheKey key, RuntimeException exception) {
-                    error.put(key, exception);
                 }
             };
         }

@@ -9,7 +9,6 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PRIVATE;
@@ -88,7 +87,7 @@ public class InvokeBranch {
                     if (goForward) {
                         //no loop
                         //split sibling
-                        var jumpToSibling = getJumpToSibling(jumpToPosition, siblings);
+                        var jumpToSibling = getJumpToSiblingOrPrev(jumpToPosition, siblings);
                         InvokeBranch tail;
                         if (jumpToSibling != null) {
                             //todo the jumpToSibling must be same as the jumpTo
@@ -113,10 +112,12 @@ public class InvokeBranch {
         return branch;
     }
 
-    private static InvokeBranch getJumpToSibling(int jumpToPosition, Collection<InvokeBranch> siblings) {
-        return siblings.stream().filter(sibling -> {
-            return sibling.ops.get(jumpToPosition) != null;
-        }).findFirst().orElse(null);
+    private static InvokeBranch getJumpToSiblingOrPrev(int jumpToPosition, Collection<InvokeBranch> siblings) {
+        return siblings.stream().map(sibling -> {
+            var jumpTo = sibling.ops.get(jumpToPosition);
+            var hasJumpPosition = jumpTo != null;
+            return hasJumpPosition ? sibling : getJumpToSiblingOrPrev(jumpToPosition, sibling.getNext());
+        }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     private static InvokeBranch witTail(InvokeBranch branch, InvokeBranch tail) {
@@ -217,11 +218,13 @@ public class InvokeBranch {
 
         for (var index : ops.keySet()) {
             var thisOp = ops.get(index);
-            var thatOp = that.ops.get(index);
-            if (thatOp == null) {
+            if (!that.ops.containsKey(index)) {
                 return false;
             }
-            if (InstructionUtils.equals(thisOp, thatOp)) return false;
+            var thatOp = that.ops.get(index);
+            if (!InstructionUtils.equals(thisOp, thatOp)) {
+                return false;
+            }
         }
         return true;
     }
@@ -242,8 +245,15 @@ public class InvokeBranch {
         var remindedHead = new TreeMap<>(ops.headMap(splitPosition));
         var tailOps = new TreeMap<>(ops.tailMap(splitPosition));
         if (!remindedHead.isEmpty() && !tailOps.isEmpty()) {
+            var next = this.next;
             var tail = new InvokeBranch(null, null, tailOps, newOpsGroups(tailOps),
-                    new ArrayList<>(List.of(this)), this.next);
+                    new ArrayList<>(List.of(this)), next);
+            for (var oneNext : next) {
+                var prev = oneNext.prev;
+                prev.add(tail);
+                prev.remove(this);
+            }
+
             this.next = new ArrayList<>(List.of(tail));
             this.ops = remindedHead;
             this.opsGroups = newOpsGroups(remindedHead);

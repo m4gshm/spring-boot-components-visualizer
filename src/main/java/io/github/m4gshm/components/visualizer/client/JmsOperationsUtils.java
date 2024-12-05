@@ -92,7 +92,7 @@ public class JmsOperationsUtils {
             } else {
                 var first = paramVariant.get(1);
                 var destinations = eval.resolveExpand(first, resolver);
-                return destinations.stream().flatMap(result -> result.getValue(resolver).stream()
+                return destinations.stream().flatMap(result -> result.getValue(resolver, eval).stream()
                         .map(rawDestination -> newJmsClient(getDestination(rawDestination), direction, methodName, ref, result)));
             }
         } catch (NotInvokedException e) {
