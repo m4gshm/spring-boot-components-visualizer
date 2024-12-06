@@ -1,8 +1,9 @@
 package io.github.m4gshm.components.visualizer.eval.bytecode;
 
 import io.github.m4gshm.components.visualizer.eval.result.*;
-import lombok.AccessLevel;
+import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
+import lombok.With;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.Method;
@@ -22,19 +23,24 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyReso
 import static io.github.m4gshm.components.visualizer.eval.result.Result.*;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
+import static lombok.AccessLevel.PROTECTED;
 import static org.apache.bcel.Const.*;
 
 @Slf4j
 @RequiredArgsConstructor
-@FieldDefaults(makeFinal = true, level = AccessLevel.PROTECTED)
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@FieldDefaults(makeFinal = true, level = PROTECTED)
 public class StringifyResolver implements Resolver {
 
     public static final String THIS = "this";
+    @EqualsAndHashCode.Include
     Level level;
     boolean failFast;
+    @With
+    Eval eval;
 
     public static StringifyResolver newStringify(Level level, boolean failFast) {
-        return new StringifyResolver(level, failFast);
+        return new StringifyResolver(level, failFast, null);
     }
 
     private static List<ParameterValue> concatCallParameters(ParameterValue object, List<ParameterValue> arguments) {
@@ -47,7 +53,7 @@ public class StringifyResolver implements Resolver {
         return parameterValues;
     }
 
-    public Result stringifyUnresolved(Result current, EvalException ex, Eval eval) {
+    public Result stringifyUnresolved(Result current, EvalException ex) {
         var wrapped = getWrapped(current);
         if (wrapped != null) {
             current = wrapped;
@@ -55,24 +61,23 @@ public class StringifyResolver implements Resolver {
         if (current instanceof Stub) {
             var s = (Stub) current;
             var stubbed = s.getStubbed();
-            return stringifyUnresolved(stubbed, ex, eval);
+            return stringifyUnresolved(stubbed, ex);
         } else if (current instanceof Variable) {
             var variable = (Variable) current;
             return stringifyVariable(variable);
         } else if (current instanceof Delay) {
-            return stringifyDelay((Delay) current, ex, eval);
+            return stringifyDelay((Delay) current, ex);
         } else if (current instanceof Constant) {
             return current;
         } else if (current instanceof Duplicate) {
-            return stringifyUnresolved(((Duplicate) current).getOnDuplicate(), ex, eval);
+            return stringifyUnresolved(((Duplicate) current).getOnDuplicate(), ex);
         }
         throw new UnresolvedResultException("bad stringify", current);
     }
 
-    private Result stringifyDelay(Delay delay, EvalException ex, Eval eval) {
+    private Result stringifyDelay(Delay delay, EvalException ex) {
         var instructionHandles = delay.getFirstInstructions();
         var constantPoolGen = eval.getConstantPoolGen();
-        var component = eval.getComponent();
         var method = eval.getMethod();
         return collapse(instructionHandles.stream().map(instructionHandle -> {
             return stringifyDelay(delay, ex, instructionHandle, eval, constantPoolGen, method);
@@ -190,7 +195,7 @@ public class StringifyResolver implements Resolver {
                     var element = eval.evalPrev(instructionHandle);
                     var index = eval.evalPrev(element);
                     var array = eval.evalPrev(index);
-                    var result = stringifyValue(array, eval);
+                    var result = stringifyValue(array);
                     var lastInstruction = array.getLastInstructions();
                     return constant(result, lastInstruction, lastInstruction, eval, this, asList(delay, element, index, array));
                 } else if (instruction instanceof LoadInstruction) {
@@ -207,7 +212,7 @@ public class StringifyResolver implements Resolver {
 
                     var storeResults = eval.getStoreInstructionResults(instructionHandle, aloadIndex);
 
-                    var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult, eval).stream()
+                    var strings = storeResults.stream().flatMap(storeResult -> stringifyValue(storeResult).stream()
                                     .map(String::valueOf)
                                     .map(s -> constant(s, Result.getInstructions(instructionHandle), Result.getInstructions(instructionHandle), eval, this, asList(delay, storeResult))))
                             .collect(toList());
@@ -356,81 +361,81 @@ public class StringifyResolver implements Resolver {
             case FADD:
             case IADD:
             case LADD:
-                return invoke(first, second, (a, b) -> a + "+" + b, eval);
+                return invoke(first, second, (a, b) -> a + "+" + b);
             case DDIV:
             case FDIV:
             case IDIV:
             case LDIV:
-                return invoke(first, second, (a, b) -> a + "/" + b, eval);
+                return invoke(first, second, (a, b) -> a + "/" + b);
             case DMUL:
             case FMUL:
             case IMUL:
             case LMUL:
-                return invoke(first, second, (a, b) -> a + "*" + b, eval);
+                return invoke(first, second, (a, b) -> a + "*" + b);
             case DNEG:
             case INEG:
             case FNEG:
             case LNEG:
-                return neg(first, eval);
+                return neg(first);
             case DREM:
             case FREM:
             case IREM:
             case LREM:
-                return invoke(first, second, (a, b) -> a + "%" + b, eval);
+                return invoke(first, second, (a, b) -> a + "%" + b);
             case DSUB:
             case FSUB:
             case ISUB:
             case LSUB:
-                return invoke(first, second, (a, b) -> a + "-" + b, eval);
+                return invoke(first, second, (a, b) -> a + "-" + b);
             case IAND:
             case LAND:
-                return invoke(first, second, (a, b) -> a + "&" + b, eval);
+                return invoke(first, second, (a, b) -> a + "&" + b);
             case IOR:
             case LOR:
-                return invoke(first, second, (a, b) -> a + "|" + b, eval);
+                return invoke(first, second, (a, b) -> a + "|" + b);
             case ISHL:
             case LSHL:
-                return shiftLeft(first, second, eval);
+                return shiftLeft(first, second);
             case ISHR:
             case LSHR:
-                return shiftRight(first, second, eval);
+                return shiftRight(first, second);
             case IUSHR:
             case LUSHR:
-                return unsignedShiftRight(first, second, eval);
+                return unsignedShiftRight(first, second);
             case IXOR:
             case LXOR:
-                return invoke(first, second, (a, b) -> a + "^" + b, eval);
+                return invoke(first, second, (a, b) -> a + "^" + b);
             default:
                 throw new IllegalStateException("unsupported arithmetic op " + opcode);
         }
     }
 
-    private List<String> neg(Result result, Eval eval) {
-        return expand(result).stream().flatMap(f -> stringifyValue(f, eval).stream())
+    private List<String> neg(Result result) {
+        return expand(result).stream().flatMap(f -> stringifyValue(f).stream())
                 .map(v -> (level == full ? "-" : "") + v).collect(toList());
     }
 
-    private List<String> unsignedShiftRight(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>>" + b, eval);
+    private List<String> unsignedShiftRight(Result first, Result second) {
+        return invokeVariants(s(first), expand(second), (a, b) -> a + ">>>" + b);
     }
 
-    private List<String> shiftRight(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + ">>" + b, eval);
+    private List<String> shiftRight(Result first, Result second) {
+        return invokeVariants(s(first), expand(second), (a, b) -> a + ">>" + b);
     }
 
-    private List<String> shiftLeft(Result first, Result second, Eval eval) {
-        return invokeVariants(s(first, eval), expand(second), (a, b) -> a + "<<" + b, eval);
+    private List<String> shiftLeft(Result first, Result second) {
+        return invokeVariants(s(first), expand(second), (a, b) -> a + "<<" + b);
     }
 
-    private List<String> invoke(Result first, Result second, BiFunction<String, String, String> op, Eval eval) {
+    private List<String> invoke(Result first, Result second, BiFunction<String, String, String> op) {
         if (level == full) {
-            return invokeVariants(expand(first), expand(second), op, eval);
+            return invokeVariants(expand(first), expand(second), op);
         } else if (resolvedBy(first, this, loopControl())) {
-            return stringifyValue(first, eval).stream().map(o -> o + "").collect(toList());
+            return stringifyValue(first).stream().map(o -> o + "").collect(toList());
         } else if (resolvedBy(second, this, loopControl())) {
-            return stringifyValue(second, eval).stream().map(o -> o + "").collect(toList());
+            return stringifyValue(second).stream().map(o -> o + "").collect(toList());
         } else {
-            return invokeVariants(expand(first), expand(second), op, eval);
+            return invokeVariants(expand(first), expand(second), op);
         }
     }
 
@@ -448,7 +453,7 @@ public class StringifyResolver implements Resolver {
             var constant = (Constant) result;
             var resolvedBy = constant.getResolvedBy();
             if (resolvedBy != null) {
-                return resolvedBy == resolver;
+                return resolver.equals(resolvedBy);
             } else {
                 return constant.getRelations().stream().anyMatch(r -> resolvedBy(r, resolver, touched));
             }
@@ -460,18 +465,18 @@ public class StringifyResolver implements Resolver {
     }
 
     private List<String> invokeVariants(Collection<Result> firstVariants, Collection<Result> secondVariants,
-                                        BiFunction<String, String, String> op, Eval eval) {
+                                        BiFunction<String, String, String> op) {
         return secondVariants.stream().flatMap(s -> firstVariants.stream().flatMap(f -> {
-            var values1 = stringifyValue(s, eval);
-            var values2 = stringifyValue(f, eval);
+            var values1 = stringifyValue(s);
+            var values2 = stringifyValue(f);
             return values1.stream().flatMap(value1 -> values2.stream().map(value2 -> op.apply(value1 + "", value2 + "")));
         })).collect(toList());
     }
 
-    private List<Object> stringifyValue(Result result, Eval eval) {
+    private List<Object> stringifyValue(Result result) {
         if (result instanceof Multiple) {
             var multiple = (Multiple) result;
-            return multiple.getResults().stream().map(result1 -> stringifyValue(result1, eval)).filter(Objects::nonNull)
+            return multiple.getResults().stream().map(result1 -> stringifyValue(result1)).filter(Objects::nonNull)
                     .flatMap(Collection::stream).collect(toList());
         }
         try {
@@ -488,10 +493,10 @@ public class StringifyResolver implements Resolver {
         }
     }
 
-    private List<Result> s(Result result, Eval eval) {
+    private List<Result> s(Result result) {
         var value2Variants = expand(result);
         return value2Variants.stream()
-                .flatMap(resultVariant -> stringifyValue(resultVariant, eval).stream()
+                .flatMap(resultVariant -> stringifyValue(resultVariant).stream()
                         .map(value -> value instanceof Number
                                 ? (((Number) value).longValue() & 0X1f) + ""
                                 : value + "")
@@ -504,8 +509,8 @@ public class StringifyResolver implements Resolver {
     }
 
     @Override
-    public Result resolve(Result unresolved, EvalException cause, Eval eval) {
-        return stringifyUnresolved(unresolved, cause, eval);
+    public Result resolve(Result unresolved, EvalException cause) {
+        return stringifyUnresolved(unresolved, cause);
     }
 
     public enum Level {
