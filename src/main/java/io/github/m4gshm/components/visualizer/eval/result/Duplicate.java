@@ -23,8 +23,8 @@ public class Duplicate extends Result implements ContextAware {
     }
 
     @Override
-    public List<Object> getValue(Resolver resolver, Eval eval) {
-        return onDuplicate.getValue(resolver, eval);
+    public List<Object> getValue(Resolver resolver) {
+        return onDuplicate.getValue(resolver);
     }
 
     @Override

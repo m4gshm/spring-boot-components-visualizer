@@ -236,17 +236,13 @@ public abstract class Result implements ContextAware {
     }
 
     public List<Object> getValue(Resolver resolver) {
-        return getValue(resolver, getEval());
-    }
-
-    public List<Object> getValue(Resolver resolver, Eval eval) {
         try {
             return singletonList(getValue());
         } catch (EvalException e) {
             if (resolver != null) {
                 Result resolved;
                 try {
-                    resolved = resolver.resolve(this, e, eval);
+                    resolved = resolver.resolve(this, e);
                 } catch (NotInvokedException ee) {
                     throw e;
                 }

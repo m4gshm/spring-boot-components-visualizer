@@ -31,6 +31,7 @@ import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.LocalVariableUtils.*;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException.Reason.*;
+import static io.github.m4gshm.components.visualizer.eval.result.Resolver.withEval;
 import static io.github.m4gshm.components.visualizer.eval.result.Result.*;
 import static io.github.m4gshm.components.visualizer.eval.result.TypeAware.getType;
 import static io.github.m4gshm.components.visualizer.eval.result.Variable.VarType.MethodArg;
@@ -206,9 +207,9 @@ public class Eval {
                 : values.iterator().next();
     }
 
-    private static Result resolveOrThrow(Result result, Resolver resolver, EvalException e, Eval eval) {
+    private static Result resolveOrThrow(Result result, Resolver resolver, EvalException e) {
         if (resolver != null) {
-            return resolver.resolve(result, e, eval);
+            return resolver.resolve(result, e);
         } else {
             throw e;
         }
@@ -599,7 +600,7 @@ public class Eval {
             return delay(instructionText, instructionHandle, lastInstruction, fieldType, this, relations,
                     (thisDelay, eval, unevaluatedHandler) -> {
                         //todo: must be touched all, not only the first one
-                        var object = evalFieldOwnedObject.getValue(unevaluatedHandler, eval).get(0);
+                        var object = evalFieldOwnedObject.getValue(withEval(unevaluatedHandler, eval)).get(0);
                         return getFieldValue(getTargetObject(object), getTargetClass(object), fieldName,
                                 instructionHandle, lastInstruction, thisDelay, this);
                     });
@@ -732,7 +733,7 @@ public class Eval {
             var relations = List.of(convertedValueResult);
             return delay(instructionText, instructionHandle, lastInstruction, convertTo, this, relations,
                     (thisDelay, eval, resolver) -> {
-                        var values = convertedValueResult.getValue(resolver, eval);
+                        var values = convertedValueResult.getValue(withEval(resolver, eval));
                         var results = values.stream()
                                 .map(value -> (Number) value)
                                 .map(number -> convertNumberTo(number, convertTo))
@@ -753,10 +754,10 @@ public class Eval {
             return delay(instructionText, instructionHandle, lastInstruction, arithType, this, relations,
                     (thisDelay, eval, resolver) -> {
                         try {
-                            var computed = computeArithmetic(arith, first, second, resolver, eval);
+                            var computed = computeArithmetic(arith, first, second, withEval(resolver, eval));
                             return constant(computed, arithType, instructionHandle, lastInstruction, this, asList(first, second));
                         } catch (EvalException e) {
-                            return resolveOrThrow(thisDelay, resolver, e, eval);
+                            return resolveOrThrow(thisDelay, withEval(resolver, eval), e);
                         }
                     });
         } else if (instruction instanceof ARETURN) {
@@ -792,7 +793,7 @@ public class Eval {
                 return Stream.of(evalInvokeStatic(instructionHandle, instruction, argumentTypes, arguments));
             } else if (instruction instanceof INVOKESPECIAL) {
                 var evalInvokeObjects = evalInvokeObject(instruction, arguments);
-                return evalInvokeObjects.stream().map(evalInvokeObject->evalInvokeSpecial(
+                return evalInvokeObjects.stream().map(evalInvokeObject -> evalInvokeSpecial(
                         instructionHandle, instruction, this.constantPoolGen, evalInvokeObject, argumentTypes, arguments));
             }
             throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
@@ -1367,7 +1368,7 @@ public class Eval {
                     state(this.equals(delayEval), "unexpected eval");
                     result = delay.getDelayed(this, resolver);
                 } catch (UnresolvedVariableException e) {
-                    result = resolveOrThrow(value, resolver, e, this);
+                    result = resolveOrThrow(value, resolver, e);
                 }
             } else if (value instanceof Duplicate) {
                 result = resolve(((Duplicate) value).getOnDuplicate(), resolver);

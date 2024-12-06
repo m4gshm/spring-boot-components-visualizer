@@ -11,4 +11,8 @@ public interface Resolver {
     Resolver withEval(Eval eval);
 
     Result resolve(Result unresolved, EvalException cause);
+
+     static Resolver withEval(Resolver resolver, Eval eval) {
+        return resolver!= null? resolver.withEval(eval): null;
+    }
 }

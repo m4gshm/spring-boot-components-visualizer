@@ -480,7 +480,7 @@ public class StringifyResolver implements Resolver {
                     .flatMap(Collection::stream).collect(toList());
         }
         try {
-            return result.getValue(this, eval);
+            return result.getValue(this);
         } catch (NotInvokedException e) {
             //log
             throw e;
