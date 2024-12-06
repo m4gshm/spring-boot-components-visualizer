@@ -1,28 +1,40 @@
 package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
+import java.util.List;
+
 @Getter
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = true)
 public class Duplicate extends Result implements ContextAware {
-
     private final Result onDuplicate;
-    private final Eval eval;
 
-    public Duplicate(InstructionHandle firstInstruction, InstructionHandle lastInstruction, Result onDuplicate, Eval eval) {
+    public Duplicate(List<InstructionHandle> firstInstruction, List<InstructionHandle> lastInstruction, Result onDuplicate) {
         super(firstInstruction, lastInstruction);
         this.onDuplicate = onDuplicate;
-        this.eval = eval;
     }
 
     @Override
     public Object getValue() {
         return onDuplicate.getValue();
+    }
+
+    @Override
+    public List<Object> getValue(Resolver resolver, Eval eval) {
+        return onDuplicate.getValue(resolver, eval);
+    }
+
+    @Override
+    public List<InstructionHandle> getLastInstructions() {
+        return onDuplicate.getLastInstructions();
+    }
+
+    @Override
+    public Eval getEval() {
+        return onDuplicate.getEval();
     }
 
     @Override

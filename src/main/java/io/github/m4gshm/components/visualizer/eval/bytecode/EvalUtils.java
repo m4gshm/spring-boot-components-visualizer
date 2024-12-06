@@ -7,7 +7,6 @@ import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.Repository;
-import org.apache.bcel.classfile.Code;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.classfile.Utility;
@@ -38,7 +37,6 @@ import static java.util.Arrays.asList;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.of;
-import static java.util.stream.Stream.ofNullable;
 import static java.util.stream.StreamSupport.stream;
 
 @Slf4j
@@ -204,18 +202,6 @@ public class EvalUtils {
 
     public static String toString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {
         return instructionHandle.getInstruction().toString(constantPoolGen.getConstantPool());
-    }
-
-    public static Stream<InstructionHandle> instructions(Method method) {
-        return instructions(method.getCode());
-    }
-
-    public static Stream<InstructionHandle> instructions(Code code) {
-        return ofNullable(code).map(Code::getCode).flatMap(bc -> instructions(new InstructionList(bc)));
-    }
-
-    public static Stream<InstructionHandle> instructions(InstructionList instructionHandles) {
-        return stream(instructionHandles.spliterator(), false);
     }
 
     public static String getInstructionString(InstructionHandle instructionHandle, ConstantPoolGen constantPoolGen) {

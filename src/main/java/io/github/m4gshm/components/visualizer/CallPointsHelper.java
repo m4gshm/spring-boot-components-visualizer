@@ -12,7 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructions;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static java.util.stream.Collectors.toList;
 
@@ -49,7 +49,7 @@ public class CallPointsHelper {
             //log
             return null;
         }
-        var instructions = instructions(method.getCode()).collect(toList());
+        var instructions = instructions(method).collect(toList());
         var callPoints = new ArrayList<CallPoint>();
         for (var handle : instructions) {
             var instruction = handle.getInstruction();

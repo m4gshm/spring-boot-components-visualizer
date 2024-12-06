@@ -1,6 +1,7 @@
 package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl;
+import io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Multiple;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCache.noCallCache;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.Filter.byType;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -40,16 +43,11 @@ public class SwitchCaseArgumentsExtractingTest {
         var evalContext = evalContextFactory.getEvalContext(Component.builder().bean(this).build(), classMethod.getKey(), method);
         var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
 
-        var handle = instructions(method).filter(h -> {
-            var instruction = h.getInstruction();
-            if (instruction instanceof INVOKEINTERFACE) {
-                var invokeVirtual = (INVOKEINTERFACE) instruction;
-                var name = invokeVirtual.getName(constantPoolGen);
-                var className = invokeVirtual.getClassName(constantPoolGen);
-                return "anyMethod".equals(name) && className.equals(Service.class.getName());
-            }
-            return false;
-        }).findFirst().get();
+        var handle = instructions(method).filter(byType(INVOKEINTERFACE.class, (h, instruction) -> {
+            var name = instruction.getName(constantPoolGen);
+            var className = instruction.getClassName(constantPoolGen);
+            return "anyMethod".equals(name) && className.equals(Service.class.getName());
+        })).findFirst().get();
 
         var eval = (Multiple) evalContext.eval(handle);
         var delayInvoke = (DelayInvoke) eval.getResults().get(0);
@@ -63,12 +61,10 @@ public class SwitchCaseArgumentsExtractingTest {
 
         assertExpectedVariant(expected(service, "arg13", 22, 3L), 0, valueVariants);
         assertExpectedVariant(expected(service, "arg11", 22, 3L), 1, valueVariants);
-//        assertExpectedVariant(expected(service, "arg12", 22, 3L), 2, valueVariants);
         assertExpectedVariant(expected(service, "arg12", 22, 32L), 2, valueVariants);
 
         assertExpectedVariant(expected(service, "arg13", 2, 3L), 0, valueVariants2);
         assertExpectedVariant(expected(service, "arg11", 2, 3L), 1, valueVariants2);
-//        assertExpectedVariant(expected(service, "arg12", 2, 3L), 2, valueVariants2);
         assertExpectedVariant(expected(service, "arg12", 2, 32L), 2, valueVariants2);
     }
 

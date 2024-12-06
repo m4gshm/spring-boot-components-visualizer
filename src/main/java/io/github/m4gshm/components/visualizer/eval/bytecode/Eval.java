@@ -421,14 +421,13 @@ public class Eval {
                 arguments = arguments.stream().map(a -> {
                     var withoutCallObject = new ArrayList<>(a.getArguments());
                     withoutCallObject.remove(0);
-                    return new EvalArguments(a.getEval(), withoutCallObject, a.getLastArgInstruction());
+                    return new EvalArguments(a.getEval(), withoutCallObject, a.getLastInstructions());
                 }).collect(toList());
             }
             return arguments;
         } else {
             var argumentTypes = invokeInstruction.getArgumentTypes(constantPoolGen);
-            var arguments = evalArguments(instructionHandle, argumentTypes.length);
-            return arguments;
+            return evalArguments(instructionHandle, argumentTypes.length);
         }
     }
 
@@ -691,7 +690,7 @@ public class Eval {
                     });
         } else if (instruction instanceof DUP) {
             var dup = evalPrev(instructionHandle);
-            return duplicate(instructionHandle, dup.getLastInstruction(), dup, this);
+            return duplicate(instructionHandle, dup.getLastInstructions(), dup);
         } else if (instruction instanceof DUP2) {
 //            return evalPrev(instructionHandle, resolver);
         } else if (instruction instanceof POP) {
@@ -779,27 +778,31 @@ public class Eval {
         var argumentTypes = instruction.getArgumentTypes(constantPoolGen);
         var evalArguments = evalArguments(instructionHandle, argumentTypes.length);
 
-        return evalArguments.stream().map(arguments -> {
+        return evalArguments.stream().flatMap(arguments -> {
             if (log.isTraceEnabled()) {
                 log.trace("eval {}", getInstructionString(instructionHandle, constantPoolGen));
             }
             if (instruction instanceof INVOKEVIRTUAL || instruction instanceof INVOKEINTERFACE) {
-                return evalInvokeVirtual(instructionHandle, instruction, argumentTypes, arguments);
+                var evalInvokeObjects = evalInvokeObject(instruction, arguments);
+                return evalInvokeObjects.stream().map(evalInvokeObject -> evalInvokeVirtual(
+                        instructionHandle, instruction, evalInvokeObject, argumentTypes, arguments));
             } else if (instruction instanceof INVOKEDYNAMIC) {
-                return evalInvokeDynamic(instructionHandle, instruction, argumentTypes, arguments);
+                return Stream.of(evalInvokeDynamic(instructionHandle, instruction, argumentTypes, arguments));
             } else if (instruction instanceof INVOKESTATIC) {
-                return evalInvokeStatic(instructionHandle, instruction, argumentTypes, arguments);
+                return Stream.of(evalInvokeStatic(instructionHandle, instruction, argumentTypes, arguments));
             } else if (instruction instanceof INVOKESPECIAL) {
-                return evalInvokeSpecial(instructionHandle, instruction, this.constantPoolGen, argumentTypes, arguments);
+                var evalInvokeObjects = evalInvokeObject(instruction, arguments);
+                return evalInvokeObjects.stream().map(evalInvokeObject->evalInvokeSpecial(
+                        instructionHandle, instruction, this.constantPoolGen, evalInvokeObject, argumentTypes, arguments));
             }
             throw newUnsupportedEvalException(instruction, constantPoolGen.getConstantPool());
         }).collect(toList());
     }
 
     private DelayInvoke evalInvokeSpecial(InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                          ConstantPoolGen constantPoolGen, Type[] argumentTypes, EvalArguments arguments) {
+                                          ConstantPoolGen constantPoolGen, EvalInvokeObject invokeObject,
+                                          Type[] argumentTypes, EvalArguments arguments) {
         var methodName = instruction.getMethodName(constantPoolGen);
-        var invokeObject = evalInvokeObject(instruction, arguments);
         var invokeSpec = (INVOKESPECIAL) instruction;
         var loadClassType = invokeSpec.getLoadClassType(constantPoolGen);
         var className = instruction.getClassName(constantPoolGen);
@@ -852,9 +855,6 @@ public class Eval {
         var invokeResultType = instruction.getType(constantPoolGen);
         var bootstrapMethodAndArguments = getBootstrapMethodHandlerAndArguments(
                 (INVOKEDYNAMIC) instruction, bootstrapMethods, constantPoolGen);
-//        var bootstrapMethodInfo = bootstrapMethodAndArguments.getBootstrapMethodInfo();
-//        var className = bootstrapMethodInfo.getClassName();
-//        var methodName = bootstrapMethodInfo.getMethodName();
         var sourceMethodInfo = bootstrapMethodAndArguments.getSourceMethodInfo();
         var className = sourceMethodInfo != null ? sourceMethodInfo.getClassName() : null;
         var methodName = sourceMethodInfo != null ? sourceMethodInfo.getName() : null;
@@ -873,10 +873,9 @@ public class Eval {
     }
 
     private DelayInvoke evalInvokeVirtual(InstructionHandle instructionHandle, InvokeInstruction instruction,
-                                          Type[] argumentTypes, EvalArguments arguments) {
+                                          EvalInvokeObject invokeObject, Type[] argumentTypes, EvalArguments arguments) {
         var methodName = instruction.getMethodName(constantPoolGen);
         var invokeResultType = instruction.getType(constantPoolGen);
-        var invokeObject = evalInvokeObject(instruction, arguments);
         var className = instruction.getClassName(constantPoolGen);
         return delayInvoke(instructionHandle, invokeResultType, this, invokeObject, className, methodName,
                 arguments, (thisDelay, eval, resolver) -> {
@@ -1074,38 +1073,29 @@ public class Eval {
     }
 
     //todo need to migrates on evalPrev in place of getPrev
-    public InvokeObject evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments) {
+    public List<EvalInvokeObject> evalInvokeObject(InvokeInstruction invokeInstruction, EvalArguments evalArguments) {
         final InstructionHandle firstInstruction, lastInstruction;
-        final Result objectCallResult;
-        var lastArgInstruction = evalArguments.getLastArgInstruction();
+//        final List<Result> objectCallResults;
+        var lastArgInstructions = evalArguments.getLastInstructions();
         var methodName = invokeInstruction.getMethodName(constantPoolGen);
         if (invokeInstruction instanceof INVOKESPECIAL && "<init>".equals(methodName)) {
-            var prev = getPrevs(lastArgInstruction).get(0);
-            if (prev.getInstruction() instanceof DUP) {
-                prev = getPrevs(prev).get(0);
-            }
-            if (prev.getInstruction() instanceof NEW) {
-                firstInstruction = prev;
-                lastInstruction = prev;
-            } else {
-                //log warn
-                firstInstruction = lastArgInstruction;
-                lastInstruction = lastArgInstruction;
-            }
-            objectCallResult = null;
+            var lastArgInstructionsVariants = lastArgInstructions.stream()
+                    .map(lastArgInstruction -> getPrevs(lastArgInstruction).stream()
+                            .flatMap(prev -> prev.getInstruction() instanceof DUP ? getPrevs(prev).stream() : Stream.of(prev))
+                            .map(prev -> prev.getInstruction() instanceof NEW ? prev : lastArgInstruction).collect(toList()))
+                    .collect(toList());
+            return lastArgInstructionsVariants.stream().map(lastArgInstructions1 ->
+                    new EvalInvokeObject(lastArgInstructions1, lastArgInstructions1)).collect(toList());
         } else if (invokeInstruction instanceof INVOKESPECIAL
                 || invokeInstruction instanceof INVOKEVIRTUAL
                 || invokeInstruction instanceof INVOKEINTERFACE
         ) {
-            objectCallResult = evalPrev(lastArgInstruction);
-            firstInstruction = objectCallResult.getFirstInstruction();
-            lastInstruction = objectCallResult.getLastInstruction();
+            var objectCallResults = lastArgInstructions.stream().map(this::evalPrev).collect(toList());
+            return objectCallResults.stream().map(objectCallResult -> new EvalInvokeObject(objectCallResult)).collect(toList());
         } else {
-            objectCallResult = null;
-            firstInstruction = lastArgInstruction;
-            lastInstruction = lastArgInstruction;
+            var objectCallResults = lastArgInstructions.stream().map(this::evalPrev).collect(toList());
+            return objectCallResults.stream().map(objectCallResult -> new EvalInvokeObject(lastArgInstructions, lastArgInstructions)).collect(toList());
         }
-        return new InvokeObject(firstInstruction, lastInstruction, objectCallResult);
     }
 
     public Collection<List<Result>> resolveInvokeParameters(DelayInvoke invoke, Resolver resolver) {
@@ -1401,10 +1391,6 @@ public class Eval {
     }
 
     private Eval withArguments(Map<Integer, Result> arguments) {
-        var collect = arguments.values().stream().collect(partitioningBy(Result::isResolved));
-//        if (!collect.get(false).isEmpty()) {
-//            System.out.println(collect);
-//        }
         return new Eval(component, javaClass, method, bootstrapMethods, callCache, argumentVariants, arguments, tree);
     }
 
@@ -1439,16 +1425,15 @@ public class Eval {
                     valuesFork[valIndex] = nextPrev;
 
                     var prevLastInstructions = nextPrev.getLastInstructions();
-                    var instruction = prevLastInstructions.get(0);
+                    var instruction1 = prevLastInstructions.get(0);
 
-                    var evalArguments = evalArguments(instruction, i - 1, valuesFork);
+                    var evalArguments = evalArguments(instruction1, i - 1, valuesFork);
                     result.addAll(evalArguments);
                 }
             }
             var firstPrevLastInstructions = firstPrev.getLastInstructions();
             current = firstPrevLastInstructions.get(0);
         }
-
         result.add(new EvalArguments(this, asList(values), current));
         return result;
     }
@@ -1643,10 +1628,22 @@ public class Eval {
 
     @Data
     @FieldDefaults(makeFinal = true, level = PRIVATE)
-    public static class InvokeObject {
-        InstructionHandle firstInstruction;
-        InstructionHandle lastInstruction;
+    public static class EvalInvokeObject {
+        List<InstructionHandle> firstInstructions;
+        List<InstructionHandle> lastInstructions;
         Result object;
+
+        public EvalInvokeObject(Result object) {
+            this.object = object;
+            firstInstructions = object.getFirstInstructions();
+            lastInstructions = object.getLastInstructions();
+        }
+
+        public EvalInvokeObject(List<InstructionHandle> firstInstructions, List<InstructionHandle> lastInstructions) {
+            this.object = null;
+            this.firstInstructions = firstInstructions;
+            this.lastInstructions = lastInstructions;
+        }
     }
 
     @Data
@@ -1680,9 +1677,18 @@ public class Eval {
     public static class EvalArguments {
         Eval eval;
         List<Result> arguments;
-        //todo incompatibility with Duplicated result
-        @Deprecated
-        InstructionHandle lastArgInstruction;
+        List<InstructionHandle> lastInstructions;
+
+        public EvalArguments(Eval eval, List<Result> arguments, InstructionHandle lastArgInstruction) {
+            this(eval, arguments, getInstructions(lastArgInstruction));
+        }
+
+        public EvalArguments(Eval eval, List<Result> arguments, List<InstructionHandle> lastInstructions) {
+            this.eval = eval;
+            this.arguments = arguments;
+            Result lastArg = !arguments.isEmpty() ? arguments.get(0) : null;
+            this.lastInstructions = lastArg != null ? lastArg.getLastInstructions() : lastInstructions;
+        }
 
         @Override
         public String toString() {

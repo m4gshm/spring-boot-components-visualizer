@@ -33,6 +33,8 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.Mapper.ofClass;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
@@ -62,24 +64,17 @@ public class SchedulingConfigurerUtils {
                 var method = configureTasksMethodClassPair.getValue();
                 var source = configureTasksMethodClassPair.getKey();
                 var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-                return instructions(method).flatMap(instructionHandle -> {
-                    var instruction = instructionHandle.getInstruction();
-                    if (instruction instanceof INVOKEVIRTUAL) {
-                        var invokevirtual = (INVOKEVIRTUAL) instruction;
-                        var methodName = invokevirtual.getMethodName(constantPoolGen);
-                        var fixedRate = "addFixedRateTask".equals(methodName);
-                        var fixeDelay = "addFixedDelayTask".equals(methodName);
-                        var cron = "addCronTask".equals(methodName);
-                        var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
-                                ? TriggerType.fixedDelay : cron
-                                ? TriggerType.cron : null;
-                        if (triggerType != null) {
-                            return extractScheduledMethods(triggerType, instructionHandle, component, componentType,
-                                    source, method, evalContextFactory, resolver, timeUnitStringifier).stream();
-                        }
-                    }
-                    return of();
-                }).collect(toList());
+                return instructions(method).flatMap(ofClass(INVOKEVIRTUAL.class, (handle, invoke) -> {
+                    var methodName = invoke.getMethodName(constantPoolGen);
+                    var fixedRate = "addFixedRateTask".equals(methodName);
+                    var fixeDelay = "addFixedDelayTask".equals(methodName);
+                    var cron = "addCronTask".equals(methodName);
+                    var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
+                            ? TriggerType.fixedDelay : cron
+                            ? TriggerType.cron : null;
+                    return triggerType != null ? extractScheduledMethods(triggerType, handle, component, componentType,
+                            source, method, evalContextFactory, resolver, timeUnitStringifier).stream() : of();
+                }, Stream::of)).collect(toList());
             }
         }
         return List.of();
@@ -336,7 +331,7 @@ public class SchedulingConfigurerUtils {
         var bootstrapMethods = getBootstrapMethods(source);
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
-        return instructions(method.getCode())
+        return instructions(method)
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETFIELD))
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETSTATIC))
                 .map(instructionHandle -> {
