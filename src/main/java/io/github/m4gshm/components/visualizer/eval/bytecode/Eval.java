@@ -405,6 +405,15 @@ public class Eval {
         return withoutNulls;
     }
 
+    private static InstructionHandle getBack(InstructionHandle instructionHandle, int offset) {
+        int targetPosition = instructionHandle.getPosition() - offset;
+        var branch = instructionHandle.getPrev();
+        while (branch != null && branch.getPosition() != targetPosition) {
+            branch = branch.getPrev();
+        }
+        return branch;
+    }
+
     List<EvalArguments> evalArguments(CallPoint calledMethod) {
         var instructionHandle = calledMethod.getInstruction();
         var instruction = instructionHandle.getInstruction();
@@ -1456,23 +1465,19 @@ public class Eval {
                     targeterRequired = true;
                     prev1 = null;
                 }
+                if (prev1 != null) {
+                    prevs.add(prev1);
+                }
             } else if (prevInstruction instanceof BranchInstruction) {
                 //if switch
-                var condition = prev1;
-                var conditionInstruction = condition.getInstruction();
-                var skip = conditionInstruction.consumeStack(constantPoolGen);
-                var skipped = skip;
-                prev1 = condition.getPrev();
-                while (skipped > 0) {
-                    prevInstruction = prev1.getInstruction();
-                    var plusSkip = prevInstruction.consumeStack(constantPoolGen);
-                    prev1 = prev1.getPrev();
-                    skip += plusSkip;
-                    skipped += plusSkip;
-                    skipped--;
-                }
-            }
-            if (prev1 != null) {
+                var branch = prev1;
+                var conditionInstruction = branch.getInstruction();
+
+                //skip self one plus conditions if need
+                var skip = conditionInstruction.consumeStack(constantPoolGen) + 1;
+                var prevsOfBranch = getPrevsOfBranch(branch, skip, 0);
+                prevs.addAll(prevsOfBranch);
+            } else {
                 prevs.add(prev1);
             }
         }
@@ -1480,40 +1485,48 @@ public class Eval {
         var targeters = instructionHandle.getTargeters();
         var fork = targeters.length > 0;
         state(!targeterRequired || fork, "targeter required for " + instructionHandle + ", " + method.getName() + "\n" + method.getCode());
-        if (fork) {
-            for (var targeter : targeters) {
-                if (targeter instanceof BranchInstruction) {
-                    var offset = ((BranchInstruction) targeter).getIndex();
-                    var isGoto = targeter instanceof GotoInstruction;
-                    var isLoop = offset < 0 && isGoto;
-                    if (!isLoop) {
-                        var targetPosition = instructionHandle.getPosition() - offset;
-                        var branch = instructionHandle.getPrev();
-                        while (branch != null && branch.getPosition() != targetPosition) {
-                            branch = branch.getPrev();
-                        }
-                        if (branch != null) {
-                            var targetInstruction = branch.getInstruction();
-                            var skip = targetInstruction.consumeStack(constantPoolGen);
-                            var prev2 = branch.getPrev();
-                            var skipped = skip;
-                            while (skipped > 0) {
-                                prev2 = prev2.getPrev();
-                                var plus = prev2.getInstruction().consumeStack(constantPoolGen);
-                                skip += plus;
-                                skipped += plus;
-                                skipped--;
-                            }
-                            prevs.add(prev2);
-                        }
+        for (var targeter : targeters) {
+            if (targeter instanceof BranchInstruction) {
+                var offset = ((BranchInstruction) targeter).getIndex();
+                var isGoto = targeter instanceof GotoInstruction;
+                var isLoop = offset < 0 && isGoto;
+                if (!isLoop) {
+                    var branch = getBack(instructionHandle, offset);
+                    if (branch != null) {
+                        var targetInstruction = branch.getInstruction();
+                        //skip self one plus conditions if need
+                        var skip = targetInstruction.consumeStack(constantPoolGen) + 1;
+                        var prevsOfBranch = getPrevsOfBranch(branch, skip, 0);
+                        prevs.addAll(prevsOfBranch);
                     }
                 }
             }
         }
-
         prevs.sort(comparingInt(InstructionHandle::getPosition));
 
         return prevs;
+    }
+
+    private List<InstructionHandle> getPrevsOfBranch(InstructionHandle handle, int skip, int skipped) {
+        if (skipped < skip) {
+            var prevs = getPrevs(handle);
+            int alreadySkipped = skipped + 1;
+
+            if (alreadySkipped == skip) {
+                return prevs;
+            }
+
+            var prevsOfPrevs1 = prevs.stream().flatMap(prev -> {
+                var eval = eval(prev);
+                var prevsOfPrevs2 = eval.getLastInstructions().stream().flatMap(h -> {
+                    return getPrevsOfBranch(h, skip, alreadySkipped).stream();
+                }).collect(toList());
+                return prevsOfPrevs2.stream();
+            }).collect(toList());
+            return prevsOfPrevs1;
+        } else {
+            return List.of();
+        }
     }
 
     @Deprecated
@@ -1527,7 +1540,11 @@ public class Eval {
     }
 
     public List<Result> evalPrevs(InstructionHandle instructionHandle) {
-        return getPrevs(instructionHandle).stream().map(this::eval).collect(toList());
+        var prevs = getPrevs(instructionHandle);
+        return prevs.stream().map(instructionHandle1 -> {
+            var eval = eval(instructionHandle1);
+            return eval;
+        }).collect(toList());
     }
 
     @Deprecated
