@@ -35,7 +35,6 @@ import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler
 
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -330,8 +329,8 @@ public class ComponentsExtractor {
         var componentsPerName = mergeComponents(rootComponents, additionalComponents);
         var components = componentsPerName.values();
 
-        var evalCache = new ConcurrentHashMap<EvalContextFactoryCacheImpl.Key, Eval>();
-        var callCache = newCallCache(new HashMap<>(), new HashMap<>());
+//        var evalCache = new ConcurrentHashMap<EvalContextFactoryCacheImpl.Key, Eval>();
+        var callCache = newCallCache();/*noCallCache();*/
 
         var resolver = StringifyResolver.newStringify(options.getStringifyLevel(), options.isFailFast());
 

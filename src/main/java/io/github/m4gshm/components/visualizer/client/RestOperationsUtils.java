@@ -24,7 +24,7 @@ import java.util.Objects;
 
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -39,7 +39,7 @@ public class RestOperationsUtils {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
+            return stream(methods).flatMap(method -> instructions(method).map(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? RestTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? RestOperations.class : null;
@@ -83,7 +83,7 @@ public class RestOperationsUtils {
             String path;
         }
 
-        var methods = variants.stream().map(variant -> {
+        var methods = variants.stream().parallel().map(variant -> {
             var pathArg = variant.get(1);
             var httpMethodArg = "exchange".equals(methodName) ? variant.get(2) : null;
             return new ArgVariant(pathArg, httpMethodArg);

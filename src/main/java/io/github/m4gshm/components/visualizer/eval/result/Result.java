@@ -2,7 +2,7 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalArguments;
-import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.InvokeObject;
+import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.EvalInvokeObject;
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval.ParameterValue;
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalException;
 import io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils;
@@ -34,14 +34,6 @@ import static lombok.AccessLevel.PROTECTED;
 public abstract class Result implements ContextAware {
     List<InstructionHandle> firstInstructions;
     List<InstructionHandle> lastInstructions;
-
-    @Deprecated
-    public Result(InstructionHandle firstInstruction, InstructionHandle lastInstruction) {
-        this(
-                getInstructions(firstInstruction),
-                getInstructions(lastInstruction)
-        );
-    }
 
     public Result(List<InstructionHandle> firstInstructions, List<InstructionHandle> lastInstructions) {
         this.firstInstructions = firstInstructions;
@@ -94,9 +86,10 @@ public abstract class Result implements ContextAware {
         return new DelayLoadFromStore(instructions, instructions, evalContext, description, delayFunction, storeInstructions, type);
     }
 
-    public static Duplicate duplicate(InstructionHandle instructionHandle, InstructionHandle lastInstruction,
-                                      Result onDuplicate, Eval eval) {
-        return new Duplicate(instructionHandle, lastInstruction, onDuplicate, eval);
+    public static Duplicate duplicate(InstructionHandle instructionHandle,
+                                      List<InstructionHandle> lastInstructions,
+                                      Result onDuplicate) {
+        return new Duplicate(getInstructions(instructionHandle), lastInstructions, onDuplicate);
     }
 
     public static Delay delay(String description, InstructionHandle instructionHandle,
@@ -109,17 +102,16 @@ public abstract class Result implements ContextAware {
     }
 
     public static DelayInvoke delayInvoke(InstructionHandle instructionHandle, Type expectedType, Eval evalContext,
-                                          InvokeObject invokeObject, String className, String methodName, EvalArguments arguments,
-                                          DelayFunction<DelayInvoke> delayFunction) {
-        var lastInstruction = invokeObject != null
-                ? invokeObject.getLastInstruction()
-                : arguments.getLastArgInstruction();
+                                          EvalInvokeObject invokeObject, String className, String methodName,
+                                          EvalArguments arguments, DelayFunction<DelayInvoke> delayFunction) {
+        var lastInstructions = invokeObject != null
+                ? invokeObject.getLastInstructions()
+                : arguments.getLastInstructions();
         var object = invokeObject != null ? invokeObject.getObject() : null;
 
         var description = getInstructionString(instructionHandle, evalContext.getConstantPoolGen());
-        var delayInvoke = new DelayInvoke(List.of(instructionHandle), List.of(lastInstruction), evalContext, description,
+        return new DelayInvoke(List.of(instructionHandle), lastInstructions, evalContext, description,
                 delayFunction, expectedType, object, className, methodName, arguments.getArguments());
-        return delayInvoke;
     }
 
     public static Variable methodArg(Eval evalContext, LocalVariable localVariable,
@@ -182,10 +174,10 @@ public abstract class Result implements ContextAware {
         }
     }
 
-    public static Result stub(Variable value, Resolver resolver) {
+    public static Result stub(Variable value, Resolver resolver, Eval eval) {
         if (resolver != null) {
             //log
-            return resolver.resolve(value, null);
+            return resolver.resolve(value, null, eval);
         }
         return new Stub(value);
     }

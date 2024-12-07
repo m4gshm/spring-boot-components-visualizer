@@ -33,6 +33,8 @@ import java.util.stream.Stream;
 import static io.github.m4gshm.components.visualizer.Utils.classByName;
 import static io.github.m4gshm.components.visualizer.client.Utils.getBootstrapMethods;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.*;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.Mapper.ofClass;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getBootstrapMethodHandlerAndArguments;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
@@ -62,24 +64,17 @@ public class SchedulingConfigurerUtils {
                 var method = configureTasksMethodClassPair.getValue();
                 var source = configureTasksMethodClassPair.getKey();
                 var constantPoolGen = new ConstantPoolGen(method.getConstantPool());
-                return instructionHandleStream(method).flatMap(instructionHandle -> {
-                    var instruction = instructionHandle.getInstruction();
-                    if (instruction instanceof INVOKEVIRTUAL) {
-                        var invokevirtual = (INVOKEVIRTUAL) instruction;
-                        var methodName = invokevirtual.getMethodName(constantPoolGen);
-                        var fixedRate = "addFixedRateTask".equals(methodName);
-                        var fixeDelay = "addFixedDelayTask".equals(methodName);
-                        var cron = "addCronTask".equals(methodName);
-                        var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
-                                ? TriggerType.fixedDelay : cron
-                                ? TriggerType.cron : null;
-                        if (triggerType != null) {
-                            return extractScheduledMethods(triggerType, instructionHandle, component, componentType,
-                                    source, method, evalContextFactory, resolver, timeUnitStringifier).stream();
-                        }
-                    }
-                    return of();
-                }).collect(toList());
+                return instructions(method).flatMap(ofClass(INVOKEVIRTUAL.class, (handle, invoke) -> {
+                    var methodName = invoke.getMethodName(constantPoolGen);
+                    var fixedRate = "addFixedRateTask".equals(methodName);
+                    var fixeDelay = "addFixedDelayTask".equals(methodName);
+                    var cron = "addCronTask".equals(methodName);
+                    var triggerType = fixedRate ? TriggerType.fixedRate : fixeDelay
+                            ? TriggerType.fixedDelay : cron
+                            ? TriggerType.cron : null;
+                    return triggerType != null ? extractScheduledMethods(triggerType, handle, component, componentType,
+                            source, method, evalContextFactory, resolver, timeUnitStringifier).stream() : of();
+                }, Stream::of)).collect(toList());
             }
         }
         return List.of();
@@ -227,7 +222,7 @@ public class SchedulingConfigurerUtils {
             var evalContext1 = evalContextFactory.getEvalContext(component1, javaClass1, method1)
                     .withArguments(0, delayInvokeExpr.getArguments());
 
-            var instructionHandles = instructionHandleStream(method1).collect(toList());
+            var instructionHandles = instructions(method1).collect(toList());
 
             var last1 = !instructionHandles.isEmpty() ? instructionHandles.get(instructionHandles.size() - 1) : null;
 
@@ -285,7 +280,7 @@ public class SchedulingConfigurerUtils {
                                                              Result triggerExpr, Component component,
                                                              Class<?> componentType, JavaClass source,
                                                              Runnable runnable, Result runnableExpr,
-                                                             Eval evalContext, Resolver resolver
+                                                             Eval eval, Resolver resolver
     ) {
         final Stream<MethodId> methodIdStream;
         if (component.getBean().equals(runnable)) {
@@ -296,7 +291,7 @@ public class SchedulingConfigurerUtils {
             List<MethodId> scheduledMethodIds;
             if (isLambda(runnableClass)) {
                 scheduledMethodIds = getMethodIds(componentType, runnableExpr.getFirstInstruction(),
-                        evalContext.getConstantPoolGen(), source, getBootstrapMethods(source), touched);
+                        eval.getConstantPoolGen(), source, getBootstrapMethods(source), touched);
                 if (scheduledMethodIds.isEmpty()) {
                     //unnamed methods
                     //log
@@ -309,7 +304,7 @@ public class SchedulingConfigurerUtils {
             methodIdStream = scheduledMethodIds.stream();
         }
 
-        var triggerValues = evalContext.resolve(triggerExpr, resolver).getValue(resolver);
+        var triggerValues = eval.resolve(triggerExpr, resolver).getValue(resolver);
         var triggerExpressions = resolveTriggerExpression(triggerType, triggerValues, triggerExpr,
                 resolver, timeUnitStringifier);
 
@@ -336,7 +331,7 @@ public class SchedulingConfigurerUtils {
         var bootstrapMethods = getBootstrapMethods(source);
         var constantPoolGen = new ConstantPoolGen(source.getConstantPool());
 
-        return instructionHandleStream(method.getCode())
+        return instructions(method)
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETFIELD))
                 .filter(instructionHandle -> !(instructionHandle.getInstruction() instanceof GETSTATIC))
                 .map(instructionHandle -> {

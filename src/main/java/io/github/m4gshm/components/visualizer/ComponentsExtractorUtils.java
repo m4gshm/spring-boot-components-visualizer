@@ -43,8 +43,6 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.Utils.*;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.InvokeDynamicUtils.getInvokeDynamicUsedMethodInfo;
 import static io.github.m4gshm.components.visualizer.model.Component.ComponentKey.newComponentKey;
 import static io.github.m4gshm.components.visualizer.model.HttpMethod.ALL;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.in;
@@ -61,7 +59,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.*;
-import static org.apache.bcel.generic.Type.getType;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
 import static org.springframework.core.annotation.AnnotatedElementUtils.getMergedRepeatableAnnotations;
 

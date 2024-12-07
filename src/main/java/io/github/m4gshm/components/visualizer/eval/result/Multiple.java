@@ -29,11 +29,11 @@ public class Multiple extends Result implements RelationsAware {
         );
         this.results = results;
         this.eval = eval;
-
         this.relations = relations;
     }
 
-    public static List<InstructionHandle> getInstructions(List<Result> results, Function<Result, List<InstructionHandle>> resultListFunction) {
+    public static List<InstructionHandle> getInstructions(
+            Collection<Result> results, Function<Result, List<InstructionHandle>> resultListFunction) {
         return results.stream().map(resultListFunction).flatMap(Collection::stream).collect(toList());
     }
 
