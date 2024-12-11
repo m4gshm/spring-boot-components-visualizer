@@ -1,9 +1,7 @@
 package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.ComponentsExtractor.JmsService;
-import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
-import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactory;
-import io.github.m4gshm.components.visualizer.eval.bytecode.NotInvokedException;
+import io.github.m4gshm.components.visualizer.eval.bytecode.*;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Resolver;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
@@ -21,11 +19,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
 import static io.github.m4gshm.components.visualizer.ComponentsExtractorUtils.getDeclaredMethod;
 import static io.github.m4gshm.components.visualizer.client.RestOperationsUtils.isClass;
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static io.github.m4gshm.components.visualizer.model.Interface.Direction.*;
 import static io.github.m4gshm.components.visualizer.model.MethodId.newMethodId;
 import static java.util.Arrays.stream;
@@ -49,7 +47,7 @@ public class JmsOperationsUtils {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
 
-            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).flatMap(instructionHandle -> {
+            return stream(methods).flatMap(method -> instructions(method).flatMap(instructionHandle -> {
                 var instruction = instructionHandle.getInstruction();
                 var expectedType = instruction instanceof INVOKEVIRTUAL ? JmsTemplate.class :
                         instruction instanceof INVOKEINTERFACE ? JmsOperations.class : null;
@@ -75,7 +73,7 @@ public class JmsOperationsUtils {
         } else {
             var result = (DelayInvoke) eval.eval(instructionHandle);
             var variants = resolveInvokeParameters(eval, result, component, methodName, resolver);
-            var results = variants.stream().flatMap(paramVariant -> {
+            var results = variants.stream().parallel().flatMap(paramVariant -> {
                 return getJmsClientStream(paramVariant, direction, methodName, eval, resolver);
             }).collect(toList());
             return results;

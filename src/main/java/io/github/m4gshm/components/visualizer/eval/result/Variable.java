@@ -23,7 +23,7 @@ public class Variable extends Result implements ContextAware, TypeAware {
 
     public Variable(InstructionHandle firstInstruction, InstructionHandle lastInstruction, VarType varType,
                     Eval eval, int index, String name, Type type) {
-        super(firstInstruction, lastInstruction);
+        super(getInstructions(firstInstruction), getInstructions(lastInstruction));
         this.varType = varType;
         this.eval = eval;
         this.index = index;

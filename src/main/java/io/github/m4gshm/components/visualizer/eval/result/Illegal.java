@@ -2,10 +2,8 @@ package io.github.m4gshm.components.visualizer.eval.result;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.Eval;
 import io.github.m4gshm.components.visualizer.eval.bytecode.IllegalInvokeException;
-import io.github.m4gshm.components.visualizer.model.Component;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
-import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.InstructionHandle;
 
 import java.util.Objects;
@@ -23,7 +21,7 @@ public class Illegal extends Result {
 
     public Illegal(InstructionHandle firstInstruction, InstructionHandle lastInstruction,
                    Set<Status> status, Object target, Result prev, Eval eval) {
-        super(firstInstruction, lastInstruction);
+        super(getInstructions(firstInstruction), getInstructions(lastInstruction));
         this.status = status;
         this.target = target;
         this.prev = prev;

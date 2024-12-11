@@ -19,12 +19,15 @@ import org.springframework.web.socket.client.WebSocketClient;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static io.github.m4gshm.components.visualizer.client.Utils.resolveInvokeParameters;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassSources;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.instructionHandleStream;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.Mapper.ofClass;
+import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static org.apache.bcel.Const.ATTR_BOOTSTRAP_METHODS;
@@ -39,31 +42,20 @@ public class WebsocketClientUtils {
             var constantPoolGen = new ConstantPoolGen(javaClass.getConstantPool());
             var methods = javaClass.getMethods();
             var bootstrapMethods = javaClass.<BootstrapMethods>getAttribute(ATTR_BOOTSTRAP_METHODS);
-            return stream(methods).flatMap(method -> instructionHandleStream(method.getCode()).map(instructionHandle -> {
-                var instruction = instructionHandle.getInstruction();
-                if (instruction instanceof INVOKEINTERFACE) {
-                    var invoke = (InvokeInstruction) instruction;
-
-                    var referenceType = invoke.getReferenceType(constantPoolGen);
-                    var methodName = invoke.getMethodName(constantPoolGen);
-                    var className = referenceType.getClassName();
-
-                    if (isMethodOfClass(WebSocketClient.class, "doHandshake", className, methodName)) try {
-                        var uri = getDoHandshakeUri(component, instructionHandle, javaClass, constantPoolGen,
-                                bootstrapMethods, method, evalContextFactory, resolver);
-                        return uri;
-                    } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
-                             IllegalAccessException e) {
-                        throw new RuntimeException(e);
-                    }
+            return stream(methods).flatMap(method -> instructions(method).flatMap(ofClass(INVOKEINTERFACE.class, (handle, invoke) -> {
+                var referenceType = invoke.getReferenceType(constantPoolGen);
+                var methodName = invoke.getMethodName(constantPoolGen);
+                var className = referenceType.getClassName();
+                if (WebSocketClient.class.getName().equals(className) && "doHandshake".equals(methodName)) try {
+                    return getDoHandshakeUri(component, handle, javaClass, constantPoolGen,
+                            bootstrapMethods, method, evalContextFactory, resolver).stream();
+                } catch (ClassNotFoundException | InvocationTargetException | NoSuchMethodException |
+                         IllegalAccessException e) {
+                    throw new RuntimeException(e);
                 }
-                return null;
-            }).filter(Objects::nonNull).flatMap(Collection::stream)).filter(Objects::nonNull);
+                else return Stream.of();
+            }, Stream::of)));
         }).collect(toList());
-    }
-
-    private static boolean isMethodOfClass(Class<?> expectedClass, String expectedMethodName, String className, String methodName) {
-        return expectedClass.getName().equals(className) && expectedMethodName.equals(methodName);
     }
 
     private static List<String> getDoHandshakeUri(Component component, InstructionHandle instructionHandle,
@@ -93,10 +85,10 @@ public class WebsocketClientUtils {
     }
 
     private static List<String> getUrls(Collection<List<Result>> variants, int paramIndex, Resolver resolver) {
-        var results = variants.stream().flatMap(paramVariant -> {
+        var results = variants.stream().parallel().flatMap(paramVariant -> {
             try {
                 var url = paramVariant.get(paramIndex);
-                return url.getValue(resolver).stream();
+                return url.getValue(resolver).stream().parallel();
             } catch (NotInvokedException e) {
                 //log
                 return Stream.empty();
