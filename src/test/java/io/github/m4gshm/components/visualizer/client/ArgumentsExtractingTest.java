@@ -1,7 +1,6 @@
 package io.github.m4gshm.components.visualizer.client;
 
 import io.github.m4gshm.components.visualizer.eval.bytecode.EvalContextFactoryImpl;
-import io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver;
 import io.github.m4gshm.components.visualizer.eval.result.DelayInvoke;
 import io.github.m4gshm.components.visualizer.eval.result.Multiple;
 import io.github.m4gshm.components.visualizer.eval.result.Result;
@@ -14,21 +13,19 @@ import org.junit.jupiter.api.Test;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import static io.github.m4gshm.components.visualizer.eval.bytecode.Eval.CallCache.noCallCache;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.byName;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.EvalUtils.getClassAndMethodSources;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.Filter.byType;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.InstructionUtils.instructions;
-import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.full;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.Level.varOnly;
 import static io.github.m4gshm.components.visualizer.eval.bytecode.StringifyResolver.newStringify;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class SwitchCaseArgumentsExtractingTest {
+public class ArgumentsExtractingTest {
 
     public static final String SWITCH_CASE_METHOD = "switchCaseMethod";
     public static final String SERVICE_METHOD = "method";
@@ -56,7 +53,7 @@ public class SwitchCaseArgumentsExtractingTest {
 
     @Test
     public void switchCaseArgumentsExtractingTest() {
-        var classMethod = getClassAndMethodSources(SwitchCaseArgumentsExtractingTest.class, byName(SWITCH_CASE_METHOD))
+        var classMethod = getClassAndMethodSources(ArgumentsExtractingTest.class, byName(SWITCH_CASE_METHOD))
                 .findFirst().get();
         var method = classMethod.getValue();
 
@@ -86,7 +83,7 @@ public class SwitchCaseArgumentsExtractingTest {
 
     @Test
     public void ternaryOperatorMethodArgumentsExtractingTest() {
-        var classMethod = getClassAndMethodSources(SwitchCaseArgumentsExtractingTest.class, byName(TERNARY_OPERATOR_METHOD))
+        var classMethod = getClassAndMethodSources(ArgumentsExtractingTest.class, byName(TERNARY_OPERATOR_METHOD))
                 .findFirst().get();
         var method = classMethod.getValue();
 
