@@ -11,12 +11,8 @@ import service1.db.jpa.UserRepository;
 import service1.service.external.jms.JmsQueueService;
 import service1.service.external.rest.Service2FeignClient;
 
-import java.util.function.BiFunction;
-
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static service1.service.scheduled.PeriodUpdateService.Utils.getCall2;
 
 @Service
 @RequiredArgsConstructor
@@ -28,12 +24,6 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
     private final JmsQueueService jmsQueueService;
     private final UserRepository userRepository;
     private final PeriodUpdateService s = this;
-    private final Runnable runnable = getCall();
-
-    @Scheduled(cron = "* * 1 * * *")
-    public void getEvery5Min() {
-        call();
-    }
 
     @Scheduled(fixedDelay = _1_HOUR + _1_MIN + _1_SEC + 500)
     public void getEvery1Hour() {
@@ -57,34 +47,8 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
     @Override
     public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
         taskRegistrar.addFixedRateTask(new IntervalTask(this::call, getHoursMillis(25)));
-        BiFunction<Runnable, Long, IntervalTask> taskBuilder = IntervalTask::new;
-        taskRegistrar.addFixedRateTask(taskBuilder.apply(this::call, getHoursMillis(21)));
-        taskRegistrar.addFixedRateTask(getRunnable(), MINUTES.toMillis(12));
-
         taskRegistrar.addCronTask(getCronTask());
-        taskRegistrar.addCronTask(new Runnable() {
-            @Override
-            public void run() {
-                getCall2(PeriodUpdateService.this).run();
-            }
-        }, "* * * 3 * *");
-
-        taskRegistrar.addCronTask(new Runnable() {
-            @Override
-            public void run() {
-                getCall3(PeriodUpdateService.this::run).run();
-            }
-        }, "* * * 4 * *");
-
         taskRegistrar.addFixedDelayTask(getCall(), 1000);
-        taskRegistrar.addFixedDelayTask(this::call, 2000);
-        taskRegistrar.addFixedDelayTask(getCall2(s), 3000);
-        taskRegistrar.addFixedDelayTask(this, 4000);
-        taskRegistrar.addFixedDelayTask(runnable, 5000);
-    }
-
-    private Runnable getCall3(Runnable runnable) {
-        return runnable::run;
     }
 
     private long getHoursMillis(int duration) {
@@ -99,23 +63,9 @@ public class PeriodUpdateService implements SchedulingConfigurer, Runnable {
         return this::call;
     }
 
-    private Runnable getRunnable() {
-        return new Runnable() {
-            @Override
-            public void run() {
-                s.call();
-            }
-        };
-    }
-
     @Override
     public void run() {
 
     }
 
-    static class Utils {
-        static Runnable getCall2(PeriodUpdateService s) {
-            return s::call;
-        }
-    }
 }

@@ -17,7 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.bcel.classfile.Method;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.jpa.repository.support.JpaMetamodelEntityInformation;
 import org.springframework.data.mongodb.repository.query.MongoEntityInformation;
@@ -86,11 +88,15 @@ public class ComponentsExtractor {
         }
     }
 
-    private final ConfigurableApplicationContext context;
     private final Options options;
+    private final ConfigurableListableBeanFactory beanFactory;
 
     public ComponentsExtractor(ConfigurableApplicationContext context, Options options) {
-        this.context = context;
+        this(context.getBeanFactory(), options);
+    }
+
+    public ComponentsExtractor(ConfigurableListableBeanFactory beanFactory, Options options) {
+        this.beanFactory = beanFactory;
         this.options = options != null ? options : Options.DEFAULT;
     }
 
@@ -290,7 +296,7 @@ public class ComponentsExtractor {
         var excludePackages = exclude.map(BeanFilter::getPackageName).orElse(Set.of());
         var filter = exclude.map(BeanFilter::getFilter).orElse(info -> true);
 
-        var beanFactory = context.getBeanFactory();
+        var beanFactory = this.beanFactory;
 
         var beanInfoMap = filter(stream(beanFactory.getBeanDefinitionNames()).map(name -> {
             var bean = beanFactory.getBean(name);
@@ -449,7 +455,7 @@ public class ComponentsExtractor {
                         .build())
                 .collect(toList());
 
-        var inJmsInterface = extractMethodJmsListeners(componentType, context.getBeanFactory()).stream()
+        var inJmsInterface = extractMethodJmsListeners(componentType, beanFactory).stream()
                 .map(jmsService -> newJmsInterfaceBuilder(jmsService).call(external).build()).collect(toList());
         var inHttpInterfaces = extractControllerHttpMethods(componentType).stream()
                 .map(httpMethod -> Interface.builder().direction(in).type(http).core(httpMethod).call(external).build())
@@ -491,7 +497,7 @@ public class ComponentsExtractor {
             var factoryComponentName = FACTORY_BEAN_PREFIX + componentName;
             Object factory;
             try {
-                factory = context.getBean(factoryComponentName);
+                factory = beanFactory.getBean(factoryComponentName);
             } catch (BeansException e) {
                 log.error("get factory error, {}", factoryComponentName, e);
                 factory = null;
@@ -522,9 +528,10 @@ public class ComponentsExtractor {
                                                 .engine(jpa)
                                                 .build())
                                         .build());
-                            } catch(Exception e) {
+                            } catch (Exception e) {
                                 log.error("get table info error for entityClass {}", entityClassName, e);
-                            } else {
+                            }
+                            else {
                                 log.warn("null entityPersister for entityClass {}", entityClassName);
                             }
                         } else if (metamodel != null) {
@@ -608,7 +615,7 @@ public class ComponentsExtractor {
 
     protected Set<Component> getDependencies(String componentName, Collection<String> rootPackage,
                                              Map<String, BeanInfo> beans, Map<String, Set<Component>> cache) {
-        var dependencies = context.getBeanFactory().getDependenciesForBean(componentName);
+        var dependencies = beanFactory.getDependenciesForBean(componentName);
         return getFilteredDependencyBeans(stream(dependencies), beans)
                 .flatMap(e -> getComponents(e, rootPackage, beans, cache).filter(Objects::nonNull)
                         .filter(component -> isIncluded(component.getType())))
@@ -623,7 +630,7 @@ public class ComponentsExtractor {
             if (cachedComponents != null) {
                 return cachedComponents;
             }
-            var bean = (WebSocketConfigurationSupport) context.getBean(componentName);
+            var bean = (WebSocketConfigurationSupport) beanFactory.getBean(componentName);
             var handlerRegistry = getFieldValue(bean, "handlerRegistry");
             if (handlerRegistry instanceof ServletWebSocketHandlerRegistry) {
                 var handlerMapping = ((ServletWebSocketHandlerRegistry) handlerRegistry).getHandlerMapping();
@@ -768,9 +775,9 @@ public class ComponentsExtractor {
     }
 
     protected String findBeanName(Object object, Class<?> expectedType) {
-        return of(context.getBeanNamesForType(expectedType)).filter(name -> {
+        return of(beanFactory.getBeanNamesForType(expectedType)).filter(name -> {
             try {
-                var bean = context.getBean(name);
+                var bean = beanFactory.getBean(name);
                 return object == bean;
             } catch (NoSuchBeanDefinitionException e) {
                 log.trace("findBeanName", e);

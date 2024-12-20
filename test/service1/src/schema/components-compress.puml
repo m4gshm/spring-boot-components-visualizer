@@ -148,16 +148,10 @@ cloud "internal" as internal #line.dotted;line:gray; {
     }
   }
   rectangle "scheduler" as internal.scheduler {
-    collections "<#transparent,transparent>|cron(* * * 2 * *) |fixedDelay(5sec)|\n\
-<#transparent,transparent>|cron(* * * 3 * *) |fixedRate(12min)|\n\
-<#transparent,transparent>|cron(* * * 4 * *) |fixedRate(1d1h)|\n\
-<#transparent,transparent>|cron(* * * 4 * *) |fixedRate(21h)|\n\
-<#transparent,transparent>|cron(* * 1 * * *) | |\n\
-<#transparent,transparent>|fixedDelay(1h1min1sec500msec) | |\n\
-<#transparent,transparent>|fixedDelay(1sec) | |\n\
-<#transparent,transparent>|fixedDelay(2sec) | |\n\
-<#transparent,transparent>|fixedDelay(3sec) | |\n\
-<#transparent,transparent>|fixedDelay(4sec) | |" as internal.scheduler.interfaces
+    collections "<#transparent,transparent>|cron(* * * 2 * *)|\n\
+<#transparent,transparent>|fixedDelay(1h1min1sec500msec)|\n\
+<#transparent,transparent>|fixedDelay(1sec)|\n\
+<#transparent,transparent>|fixedRate(1d1h)|" as internal.scheduler.interfaces
     internal.scheduler.interfaces .. periodUpdateService
   }
 }

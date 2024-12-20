@@ -16,7 +16,8 @@ configurations.annotationProcessor {
 }
 
 dependencies {
-    compileOnly("org.projectlombok:lombok:1.18.34")
+    compileOnly("org.projectlombok:lombok:1.18.36")
+    testCompileOnly("org.projectlombok:lombok:1.18.36")
 
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -38,7 +39,6 @@ dependencies {
 
     compileOnly("org.springframework.cloud:spring-cloud-openfeign-core:3.1.9")
     compileOnly("org.springframework.cloud:spring-cloud-context:3.1.8")
-    compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
     compileOnly("org.springframework.data:spring-data-commons:2.7.18")
     compileOnly("org.springframework.data:spring-data-jpa:2.7.18")
     compileOnly("org.springframework.data:spring-data-mongodb:3.4.18")
@@ -50,6 +50,9 @@ dependencies {
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+
+    compileOnly("org.springframework.boot:spring-boot-starter-test:$springBootVer")
+    testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVer")
 }
 
 tasks.test {

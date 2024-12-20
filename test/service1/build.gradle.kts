@@ -15,7 +15,8 @@ configurations.annotationProcessor {
 dependencies {
     val springBootVer = "2.7.18"
 
-    compileOnly("org.projectlombok:lombok:1.18.34")
+    compileOnly("org.projectlombok:lombok:1.18.36")
+    testCompileOnly("org.projectlombok:lombok:1.18.36")
 
     api(project(":"))
 
